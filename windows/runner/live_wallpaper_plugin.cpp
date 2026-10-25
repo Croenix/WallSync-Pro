@@ -7,6 +7,17 @@
 #include <windows.h>
 #include <dwmapi.h>
 #include <powrprof.h>
+#include <psapi.h>
+#include <processthreadsapi.h>
+#include <dxgi.h>
+#include <shobjidl_core.h>
+#include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Media.Control.h>
+#include <mmdeviceapi.h>
+#include <audiopolicy.h>
+#include <endpointvolume.h>
 
 #include <flutter/method_channel.h>
 #include <flutter/plugin_registrar_windows.h>
@@ -166,6 +177,19 @@ std::wstring Utf8ToWide(const std::string& utf8_str) {
   return result;
 }
 
+std::string WideToUtf8(const std::wstring& wide_str) {
+  if (wide_str.empty()) return std::string();
+  int size_needed = WideCharToMultiByte(CP_UTF8, 0, wide_str.data(),
+                                        static_cast<int>(wide_str.size()),
+                                        nullptr, 0, nullptr, nullptr);
+  if (size_needed <= 0) return std::string();
+  std::string result(size_needed, 0);
+  WideCharToMultiByte(CP_UTF8, 0, wide_str.data(),
+                      static_cast<int>(wide_str.size()),
+                      &result[0], size_needed, nullptr, nullptr);
+  return result;
+}
+
 }  // namespace
 
 class LiveWallpaperPlugin::Impl {
@@ -188,6 +212,21 @@ class LiveWallpaperPlugin::Impl {
   flutter::EncodableMap PollMpvStart();
   bool SetMpvSettings(const flutter::EncodableMap* args);
   bool StopMpv();
+
+  void OptimizeMemory();
+  void SetLowPowerMode(bool enable);
+  flutter::EncodableMap GetPerformanceMetrics();
+  bool SetStaticWallpaper(const std::wstring& path, const std::string& style);
+  flutter::EncodableMap GetGpuAndDisplayInfo();
+  flutter::EncodableMap GetMediaSessionInfo();
+  bool ControlMediaSession(const std::string& action);
+  bool SetWindowClickThrough(bool enable);
+  bool PinWindowToBottom();
+  bool SetDesktopIconsVisible(bool visible);
+  bool GetDesktopIconsVisible();
+  bool SetTaskbarBlur(int mode);
+  bool IsOtherAudioPlaying();
+  flutter::EncodableMap GetWindowsAccentColor();
 
   std::wstring FindMpvExecutable();
   void SendMpvCommand(const std::string& json_cmd);
@@ -232,6 +271,9 @@ class LiveWallpaperPlugin::Impl {
   double mpv_frame_ready_ms_ = -1.0;
   double mpv_dwm_flush_ms_ = -1.0;
   std::chrono::steady_clock::time_point mpv_last_frame_query_{};
+  HANDLE mpv_stderr_read_ = nullptr;
+  std::string mpv_launch_cmd_line_;
+  std::string mpv_working_dir_;
 };
 
 LiveWallpaperPlugin::Impl::Impl(
@@ -314,6 +356,120 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
     policy[flutter::EncodableValue("batterySaver")] =
         flutter::EncodableValue(battery_saver_enabled_);
     result->Success(flutter::EncodableValue(policy));
+    return;
+  }
+  if (call.method_name() == "optimizeMemory") {
+    OptimizeMemory();
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+  if (call.method_name() == "setLowPowerMode") {
+    bool enable = true;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("enable"));
+      if (it != args->end()) {
+        enable = GetBoolFromEncodable(it->second, true);
+      }
+    }
+    SetLowPowerMode(enable);
+    result->Success(flutter::EncodableValue(true));
+    return;
+  }
+  if (call.method_name() == "getPerformanceMetrics") {
+    result->Success(flutter::EncodableValue(GetPerformanceMetrics()));
+    return;
+  }
+  if (call.method_name() == "setStaticWallpaper") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (!args) {
+      result->Error("INVALID_ARGS", "Expected argument map with path and style.");
+      return;
+    }
+    std::string path_str = "";
+    auto it_path = args->find(flutter::EncodableValue("path"));
+    if (it_path != args->end()) {
+      path_str = GetStringFromEncodable(it_path->second, "");
+    }
+    std::string style_str = "fill";
+    auto it_style = args->find(flutter::EncodableValue("style"));
+    if (it_style != args->end()) {
+      style_str = GetStringFromEncodable(it_style->second, "fill");
+    }
+    std::wstring wide_path = Utf8ToWide(path_str);
+    result->Success(flutter::EncodableValue(SetStaticWallpaper(wide_path, style_str)));
+    return;
+  }
+  if (call.method_name() == "getGpuAndDisplayInfo") {
+    result->Success(flutter::EncodableValue(GetGpuAndDisplayInfo()));
+    return;
+  }
+  if (call.method_name() == "getMediaSessionInfo") {
+    result->Success(flutter::EncodableValue(GetMediaSessionInfo()));
+    return;
+  }
+  if (call.method_name() == "controlMediaSession") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    std::string action = "toggle";
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("action"));
+      if (it != args->end()) {
+        action = GetStringFromEncodable(it->second, "toggle");
+      }
+    }
+    result->Success(flutter::EncodableValue(ControlMediaSession(action)));
+    return;
+  }
+  if (call.method_name() == "setWindowClickThrough") {
+    bool enable = true;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("enable"));
+      if (it != args->end()) {
+        enable = GetBoolFromEncodable(it->second, true);
+      }
+    }
+    result->Success(flutter::EncodableValue(SetWindowClickThrough(enable)));
+    return;
+  }
+  if (call.method_name() == "pinWindowToBottom") {
+    result->Success(flutter::EncodableValue(PinWindowToBottom()));
+    return;
+  }
+  if (call.method_name() == "setDesktopIconsVisible") {
+    bool visible = true;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("visible"));
+      if (it != args->end()) {
+        visible = GetBoolFromEncodable(it->second, true);
+      }
+    }
+    result->Success(flutter::EncodableValue(SetDesktopIconsVisible(visible)));
+    return;
+  }
+  if (call.method_name() == "getDesktopIconsVisible") {
+    result->Success(flutter::EncodableValue(GetDesktopIconsVisible()));
+    return;
+  }
+  if (call.method_name() == "setTaskbarBlur") {
+    int mode = 0;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("mode"));
+      if (it != args->end()) {
+        mode = GetIntFromEncodable(it->second, 0);
+      }
+    }
+    result->Success(flutter::EncodableValue(SetTaskbarBlur(mode)));
+    return;
+  }
+  if (call.method_name() == "isOtherAudioPlaying") {
+    result->Success(flutter::EncodableValue(IsOtherAudioPlaying()));
+    return;
+  }
+  if (call.method_name() == "getWindowsAccentColor") {
+    result->Success(flutter::EncodableValue(GetWindowsAccentColor()));
     return;
   }
   result->NotImplemented();
@@ -592,12 +748,11 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
 
   std::wstringstream cmd_stream;
   cmd_stream << L"\"" << mpv_path << L"\""
-             << (is_muted || volume <= 0 ? L" --mute=yes" : L" --mute=no")
+             << (is_muted || volume <= 0
+                     ? L" --mute=yes --audio=no --ao=null"
+                     : L" --mute=no --ao=wasapi --audio-client-name=\"WallSync Pro\" --aid=auto")
              << L" --volume=" << std::clamp(volume, 0, 100)
              << L" --volume-max=100"
-             << L" --ao=wasapi"
-             << L" --audio-client-name=WallSync"
-             << L" --aid=auto"
              << (is_loop ? L" --loop-file=inf" : L" --loop-file=no")
              << L" --keep-open=yes"
              << L" --media-controls=no"
@@ -612,12 +767,20 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
              << L" --no-osc"
              << L" --input-ipc-server=" << wide_pipe
              << L" --gpu-api=d3d11"
+             << L" --gpu-context=d3d11"
+             << L" --d3d11-exclusive-fs=no"
+             << L" --d3d11-flip=yes"
              << L" --hwdec=d3d11va,auto-safe"
-             << L" --demuxer-max-bytes=24MiB"
-             << L" --demuxer-max-back-bytes=8MiB"
-             << L" --cache-secs=4"
-             << L" --hr-seek=no"
-             << L" --priority=normal"
+             << L" --vd-lavc-dr=yes"
+             << L" --vd-lavc-threads=2"
+             << L" --scale=bilinear"
+             << L" --cscale=bilinear"
+             << L" --demuxer-max-bytes=12MiB"
+             << L" --demuxer-max-back-bytes=2MiB"
+             << L" --cache=no"
+             << L" --cache-secs=2"
+              << L" --hr-seek=no"
+             << L" --priority=belownormal"
              << L" --script-opts=osc-visibility=never"
              << L" --no-config";
 
@@ -637,11 +800,38 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
   std::vector<wchar_t> cmd_line_writable(cmd_line.begin(), cmd_line.end());
   cmd_line_writable.push_back(L'\0');
 
-  STARTUPINFOW si{};
-  si.cb = sizeof(si);
-  PROCESS_INFORMATION pi{};
   const std::wstring mpv_directory =
       std::filesystem::path(mpv_path).parent_path().wstring();
+
+  mpv_launch_cmd_line_ = WideToUtf8(cmd_line);
+  mpv_working_dir_ = WideToUtf8(mpv_directory);
+
+  if (mpv_stderr_read_ != nullptr && mpv_stderr_read_ != INVALID_HANDLE_VALUE) {
+    CloseHandle(mpv_stderr_read_);
+    mpv_stderr_read_ = nullptr;
+  }
+
+  HANDLE stderr_write = nullptr;
+  SECURITY_ATTRIBUTES sa{};
+  sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+  sa.bInheritHandle = TRUE;
+  sa.lpSecurityDescriptor = nullptr;
+  if (CreatePipe(&mpv_stderr_read_, &stderr_write, &sa, 0)) {
+    SetHandleInformation(mpv_stderr_read_, HANDLE_FLAG_INHERIT, 0);
+  }
+
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  si.dwFlags = STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
+  if (stderr_write != nullptr) {
+    si.dwFlags |= STARTF_USESTDHANDLES;
+    si.hStdError = stderr_write;
+    si.hStdOutput = nullptr;
+    si.hStdInput = nullptr;
+  }
+
+  PROCESS_INFORMATION pi{};
   mpv_launch_started_ = std::chrono::steady_clock::now();
   mpv_process_launch_ms_ = 0.0;
   mpv_window_discovered_ms_ = -1.0;
@@ -658,8 +848,14 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
   mpv_last_frame_query_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(100);
 
   BOOL success = CreateProcessW(
-      nullptr, cmd_line_writable.data(), nullptr, nullptr, FALSE,
-      CREATE_NO_WINDOW, nullptr, mpv_directory.c_str(), &si, &pi);
+      nullptr, cmd_line_writable.data(), nullptr, nullptr, TRUE,
+      CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
+      mpv_directory.c_str(), &si, &pi);
+
+  if (stderr_write != nullptr) {
+    CloseHandle(stderr_write);
+    stderr_write = nullptr;
+  }
 
   if (!success) {
     DWORD err = GetLastError();
@@ -679,6 +875,8 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
     failure[flutter::EncodableValue("stage")] = flutter::EncodableValue("process_launch");
     failure[flutter::EncodableValue("error")] = flutter::EncodableValue(err_desc);
     failure[flutter::EncodableValue("win32Error")] = flutter::EncodableValue(static_cast<int>(err));
+    failure[flutter::EncodableValue("cmdLine")] = flutter::EncodableValue(mpv_launch_cmd_line_);
+    failure[flutter::EncodableValue("workingDir")] = flutter::EncodableValue(mpv_working_dir_);
     failure[flutter::EncodableValue("launchMs")] = flutter::EncodableValue(0.0);
     failure[flutter::EncodableValue("cleanupMs")] = flutter::EncodableValue(mpv_previous_cleanup_ms_);
     failure[flutter::EncodableValue("lookupMs")] = flutter::EncodableValue(mpv_executable_lookup_ms_);
@@ -728,9 +926,27 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::PollMpvStart() {
 
   DWORD exit_code = 0;
   if (!GetExitCodeProcess(mpv_process_handle_, &exit_code) || exit_code != STILL_ACTIVE) {
+    std::string stderr_output;
+    if (mpv_stderr_read_ && mpv_stderr_read_ != INVALID_HANDLE_VALUE) {
+      DWORD bytes_avail = 0;
+      if (PeekNamedPipe(mpv_stderr_read_, nullptr, 0, nullptr, &bytes_avail, nullptr) && bytes_avail > 0) {
+        std::vector<char> err_buf(bytes_avail + 1, 0);
+        DWORD bytes_read = 0;
+        if (ReadFile(mpv_stderr_read_, err_buf.data(), bytes_avail, &bytes_read, nullptr) && bytes_read > 0) {
+          stderr_output = std::string(err_buf.data(), bytes_read);
+        }
+      }
+    }
     flutter::EncodableMap fail_res;
-    fail_res[flutter::EncodableValue("error")] = flutter::EncodableValue(
-        "MPV process exited prematurely with exit code: " + std::to_string(exit_code));
+    std::string fail_msg = "MPV process exited prematurely with exit code: " + std::to_string(exit_code);
+    if (!stderr_output.empty()) {
+      fail_msg += " | STDERR: " + stderr_output;
+    }
+    fail_res[flutter::EncodableValue("error")] = flutter::EncodableValue(fail_msg);
+    fail_res[flutter::EncodableValue("stderr")] = flutter::EncodableValue(stderr_output);
+    fail_res[flutter::EncodableValue("exitCode")] = flutter::EncodableValue(static_cast<int>(exit_code));
+    fail_res[flutter::EncodableValue("cmdLine")] = flutter::EncodableValue(mpv_launch_cmd_line_);
+    fail_res[flutter::EncodableValue("workingDir")] = flutter::EncodableValue(mpv_working_dir_);
     add_phase_times(fail_res);
     StopMpv();
     return fail_res;
@@ -957,6 +1173,9 @@ bool LiveWallpaperPlugin::Impl::SetMpvSettings(const flutter::EncodableMap* args
     bool paused = GetBoolFromEncodable(it_paused->second, false);
     SendMpvCommand(paused ? R"({"command":["set_property","pause",true]})"
                           : R"({"command":["set_property","pause",false]})");
+    if (paused && mpv_process_handle_) {
+      EmptyWorkingSet(mpv_process_handle_);
+    }
   }
 
   return true;
@@ -1007,6 +1226,11 @@ bool LiveWallpaperPlugin::Impl::StopMpv() {
   if (mpv_pipe_handle_ != INVALID_HANDLE_VALUE && mpv_pipe_handle_ != nullptr) {
     CloseHandle(mpv_pipe_handle_);
     mpv_pipe_handle_ = INVALID_HANDLE_VALUE;
+  }
+
+  if (mpv_stderr_read_ != nullptr && mpv_stderr_read_ != INVALID_HANDLE_VALUE) {
+    CloseHandle(mpv_stderr_read_);
+    mpv_stderr_read_ = nullptr;
   }
 
   mpv_pid_ = 0;
@@ -1247,6 +1471,484 @@ std::optional<LRESULT> LiveWallpaperPlugin::Impl::HandleWindowMessage(
     RefreshBatterySaverStatus();
   }
   return std::nullopt;
+}
+
+void LiveWallpaperPlugin::Impl::OptimizeMemory() {
+  HANDLE current_proc = GetCurrentProcess();
+  SetProcessWorkingSetSize(current_proc, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+  EmptyWorkingSet(current_proc);
+
+  if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
+    EmptyWorkingSet(mpv_process_handle_);
+  }
+}
+
+void LiveWallpaperPlugin::Impl::SetLowPowerMode(bool enable) {
+  HANDLE current_proc = GetCurrentProcess();
+  SetPriorityClass(current_proc, enable ? BELOW_NORMAL_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS);
+
+  // Configure Windows 11 EcoQoS (Power Throttling)
+  PROCESS_POWER_THROTTLING_STATE throttling{};
+  throttling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+  if (enable) {
+    throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+    throttling.StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+  } else {
+    throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+    throttling.StateMask = 0;
+  }
+  SetProcessInformation(current_proc, ProcessPowerThrottling, &throttling, sizeof(throttling));
+
+  if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
+    SetPriorityClass(mpv_process_handle_, enable ? IDLE_PRIORITY_CLASS : BELOW_NORMAL_PRIORITY_CLASS);
+  }
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetPerformanceMetrics() {
+  flutter::EncodableMap metrics;
+
+  // 1. RAM metrics via GlobalMemoryStatusEx
+  MEMORYSTATUSEX mem_status{};
+  mem_status.dwLength = sizeof(mem_status);
+  if (GlobalMemoryStatusEx(&mem_status)) {
+    metrics[flutter::EncodableValue("ramLoadPercent")] =
+        flutter::EncodableValue(static_cast<double>(mem_status.dwMemoryLoad));
+    metrics[flutter::EncodableValue("totalPhysMb")] =
+        flutter::EncodableValue(static_cast<double>(mem_status.ullTotalPhys / (1024 * 1024)));
+    metrics[flutter::EncodableValue("availPhysMb")] =
+        flutter::EncodableValue(static_cast<double>(mem_status.ullAvailPhys / (1024 * 1024)));
+  }
+
+  // 2. Process Private Working Set & Memory via GetProcessMemoryInfo
+  PROCESS_MEMORY_COUNTERS_EX pmc{};
+  if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc))) {
+    metrics[flutter::EncodableValue("processWorkingSetMb")] =
+        flutter::EncodableValue(static_cast<double>(pmc.WorkingSetSize / (1024 * 1024)));
+    metrics[flutter::EncodableValue("processPrivateBytesMb")] =
+        flutter::EncodableValue(static_cast<double>(pmc.PrivateUsage / (1024 * 1024)));
+  }
+
+  // 3. CPU metrics via GetSystemTimes
+  FILETIME idle_time{}, kernel_time{}, user_time{};
+  if (GetSystemTimes(&idle_time, &kernel_time, &user_time)) {
+    uint64_t idle = (static_cast<uint64_t>(idle_time.dwHighDateTime) << 32) | idle_time.dwLowDateTime;
+    uint64_t kernel = (static_cast<uint64_t>(kernel_time.dwHighDateTime) << 32) | kernel_time.dwLowDateTime;
+    uint64_t user = (static_cast<uint64_t>(user_time.dwHighDateTime) << 32) | user_time.dwLowDateTime;
+
+    static uint64_t s_prev_idle = 0;
+    static uint64_t s_prev_kernel = 0;
+    static uint64_t s_prev_user = 0;
+    static double s_prev_cpu = 0.0;
+
+    if (s_prev_idle != 0) {
+      uint64_t usr = user - s_prev_user;
+      uint64_t ker = kernel - s_prev_kernel;
+      uint64_t idl = idle - s_prev_idle;
+      uint64_t sys = usr + ker;
+      if (sys > 0) {
+        s_prev_cpu = std::clamp((((sys - idl) * 100.0) / sys), 0.0, 100.0);
+      }
+    }
+    s_prev_idle = idle;
+    s_prev_kernel = kernel;
+    s_prev_user = user;
+    metrics[flutter::EncodableValue("cpuPercent")] = flutter::EncodableValue(s_prev_cpu);
+  }
+
+  // 4. Power & Battery status via GetSystemPowerStatus
+  SYSTEM_POWER_STATUS pwr{};
+  if (GetSystemPowerStatus(&pwr)) {
+    metrics[flutter::EncodableValue("batteryPercent")] =
+        flutter::EncodableValue(pwr.BatteryLifePercent <= 100 ? static_cast<int>(pwr.BatteryLifePercent) : -1);
+    metrics[flutter::EncodableValue("isAcConnected")] =
+        flutter::EncodableValue(pwr.ACLineStatus == 1);
+    metrics[flutter::EncodableValue("isCharging")] =
+        flutter::EncodableValue((pwr.BatteryFlag & 8) != 0);
+  }
+
+  return metrics;
+}
+
+bool LiveWallpaperPlugin::Impl::SetStaticWallpaper(const std::wstring& path, const std::string& style) {
+  bool applied = false;
+  std::thread worker([&applied, &path, &style]() {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    winrt::com_ptr<IDesktopWallpaper> wallpaper;
+    HRESULT create_hr = CoCreateInstance(
+        CLSID_DesktopWallpaper, nullptr, CLSCTX_ALL, IID_PPV_ARGS(wallpaper.put()));
+    if (SUCCEEDED(create_hr) && wallpaper) {
+      HRESULT set_hr = wallpaper->SetWallpaper(nullptr, path.c_str());
+      if (SUCCEEDED(set_hr)) {
+        DESKTOP_WALLPAPER_POSITION pos = DWPOS_FILL;
+        if (style == "fit") pos = DWPOS_FIT;
+        else if (style == "stretch") pos = DWPOS_STRETCH;
+        else if (style == "tile") pos = DWPOS_TILE;
+        else if (style == "center") pos = DWPOS_CENTER;
+        else if (style == "span") pos = DWPOS_SPAN;
+        wallpaper->SetPosition(pos);
+        applied = true;
+      }
+    }
+
+    if (!applied) {
+      BOOL spi_res = SystemParametersInfoW(
+          SPI_SETDESKWALLPAPER, 0, const_cast<wchar_t*>(path.c_str()),
+          SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+      applied = (spi_res != 0);
+    }
+
+    if (SUCCEEDED(hr)) {
+      CoUninitialize();
+    }
+  });
+  worker.join();
+  return applied;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetGpuAndDisplayInfo() {
+  flutter::EncodableMap info;
+
+  // 1. GPU Adapter Information via DXGI
+  winrt::com_ptr<IDXGIFactory1> factory;
+  if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(factory.put())))) {
+    winrt::com_ptr<IDXGIAdapter1> adapter;
+    if (SUCCEEDED(factory->EnumAdapters1(0, adapter.put()))) {
+      DXGI_ADAPTER_DESC1 desc{};
+      if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+        char name_buf[128]{};
+        WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name_buf, sizeof(name_buf), nullptr, nullptr);
+        info[flutter::EncodableValue("gpuName")] = flutter::EncodableValue(std::string(name_buf));
+        info[flutter::EncodableValue("dedicatedVramMb")] =
+            flutter::EncodableValue(static_cast<double>(desc.DedicatedVideoMemory / (1024 * 1024)));
+        info[flutter::EncodableValue("sharedVramMb")] =
+            flutter::EncodableValue(static_cast<double>(desc.SharedSystemMemory / (1024 * 1024)));
+      }
+    }
+  }
+
+  // 2. Primary Monitor Information
+  HMONITOR primary = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+  MONITORINFOEXW mi{};
+  mi.cbSize = sizeof(mi);
+  if (GetMonitorInfoW(primary, &mi)) {
+    int width = mi.rcMonitor.right - mi.rcMonitor.left;
+    int height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+    int work_width = mi.rcWork.right - mi.rcWork.left;
+    int work_height = mi.rcWork.bottom - mi.rcWork.top;
+    info[flutter::EncodableValue("screenWidth")] = flutter::EncodableValue(width);
+    info[flutter::EncodableValue("screenHeight")] = flutter::EncodableValue(height);
+    info[flutter::EncodableValue("workAreaWidth")] = flutter::EncodableValue(work_width);
+    info[flutter::EncodableValue("workAreaHeight")] = flutter::EncodableValue(work_height);
+
+    DEVMODEW dm{};
+    dm.dmSize = sizeof(dm);
+    if (EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm)) {
+      info[flutter::EncodableValue("refreshRateHz")] = flutter::EncodableValue(static_cast<int>(dm.dmDisplayFrequency));
+    }
+  }
+
+  return info;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetMediaSessionInfo() {
+  flutter::EncodableMap media;
+  media[flutter::EncodableValue("title")] = flutter::EncodableValue("");
+  media[flutter::EncodableValue("artist")] = flutter::EncodableValue("");
+  media[flutter::EncodableValue("album")] = flutter::EncodableValue("");
+  media[flutter::EncodableValue("status")] = flutter::EncodableValue("Closed");
+  media[flutter::EncodableValue("source")] = flutter::EncodableValue("");
+  media[flutter::EncodableValue("canPlay")] = flutter::EncodableValue(false);
+  media[flutter::EncodableValue("canPause")] = flutter::EncodableValue(false);
+  media[flutter::EncodableValue("canGoNext")] = flutter::EncodableValue(false);
+  media[flutter::EncodableValue("canGoPrevious")] = flutter::EncodableValue(false);
+  media[flutter::EncodableValue("position")] = flutter::EncodableValue(0);
+  media[flutter::EncodableValue("duration")] = flutter::EncodableValue(0);
+
+  std::thread worker([&media]() {
+    try {
+      winrt::init_apartment(winrt::apartment_type::multi_threaded);
+      using namespace winrt::Windows::Media::Control;
+      auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+      if (!manager) {
+        winrt::uninit_apartment();
+        return;
+      }
+      auto session = manager.GetCurrentSession();
+      if (!session) {
+        winrt::uninit_apartment();
+        return;
+      }
+
+      auto source_id = winrt::to_string(session.SourceAppUserModelId());
+      std::string lower_source = source_id;
+      std::transform(lower_source.begin(), lower_source.end(), lower_source.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (lower_source.find("mpv") != std::string::npos || lower_source.find("wallsync") != std::string::npos) {
+        winrt::uninit_apartment();
+        return;
+      }
+      media[flutter::EncodableValue("source")] = flutter::EncodableValue(source_id);
+
+      auto playback_info = session.GetPlaybackInfo();
+      if (playback_info) {
+        auto status = playback_info.PlaybackStatus();
+        if (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) {
+          media[flutter::EncodableValue("status")] = flutter::EncodableValue("Playing");
+        } else if (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused) {
+          media[flutter::EncodableValue("status")] = flutter::EncodableValue("Paused");
+        } else if (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped) {
+          media[flutter::EncodableValue("status")] = flutter::EncodableValue("Stopped");
+        }
+
+        auto controls = playback_info.Controls();
+        if (controls) {
+          media[flutter::EncodableValue("canPlay")] = flutter::EncodableValue(controls.IsPlayEnabled());
+          media[flutter::EncodableValue("canPause")] = flutter::EncodableValue(controls.IsPauseEnabled());
+          media[flutter::EncodableValue("canGoNext")] = flutter::EncodableValue(controls.IsNextEnabled());
+          media[flutter::EncodableValue("canGoPrevious")] = flutter::EncodableValue(controls.IsPreviousEnabled());
+        }
+      }
+
+      auto props = session.TryGetMediaPropertiesAsync().get();
+      if (props) {
+        media[flutter::EncodableValue("title")] = flutter::EncodableValue(winrt::to_string(props.Title()));
+        media[flutter::EncodableValue("artist")] = flutter::EncodableValue(winrt::to_string(props.Artist()));
+        media[flutter::EncodableValue("album")] = flutter::EncodableValue(winrt::to_string(props.AlbumTitle()));
+      }
+
+      auto timeline = session.GetTimelineProperties();
+      if (timeline) {
+        auto pos = std::chrono::duration_cast<std::chrono::seconds>(timeline.Position()).count();
+        auto dur = std::chrono::duration_cast<std::chrono::seconds>(timeline.EndTime()).count();
+        media[flutter::EncodableValue("position")] = flutter::EncodableValue(static_cast<int>(pos));
+        media[flutter::EncodableValue("duration")] = flutter::EncodableValue(static_cast<int>(dur));
+      }
+      winrt::uninit_apartment();
+    } catch (...) {
+    }
+  });
+  worker.join();
+
+  return media;
+}
+
+bool LiveWallpaperPlugin::Impl::ControlMediaSession(const std::string& action) {
+  bool success = false;
+  std::thread worker([&success, &action]() {
+    try {
+      winrt::init_apartment(winrt::apartment_type::multi_threaded);
+      using namespace winrt::Windows::Media::Control;
+      auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+      if (!manager) {
+        winrt::uninit_apartment();
+        return;
+      }
+      auto session = manager.GetCurrentSession();
+      if (!session) {
+        winrt::uninit_apartment();
+        return;
+      }
+
+      if (action == "play") success = session.TryPlayAsync().get();
+      else if (action == "pause") success = session.TryPauseAsync().get();
+      else if (action == "toggle") success = session.TryTogglePlayPauseAsync().get();
+      else if (action == "next") success = session.TrySkipNextAsync().get();
+      else if (action == "previous") success = session.TrySkipPreviousAsync().get();
+
+      winrt::uninit_apartment();
+    } catch (...) {
+    }
+  });
+  worker.join();
+  return success;
+}
+
+bool LiveWallpaperPlugin::Impl::SetWindowClickThrough(bool enable) {
+  if (!window_ || !IsWindow(window_)) return false;
+  HWND root = root_window_ ? root_window_ : window_;
+  LONG_PTR ex_style = GetWindowLongPtrW(root, GWL_EXSTYLE);
+  if (enable) {
+    ex_style |= (WS_EX_TRANSPARENT | WS_EX_LAYERED);
+  } else {
+    ex_style &= ~WS_EX_TRANSPARENT;
+  }
+  SetWindowLongPtrW(root, GWL_EXSTYLE, ex_style);
+  SetWindowPos(root, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+  return true;
+}
+
+bool LiveWallpaperPlugin::Impl::PinWindowToBottom() {
+  if (!window_ || !IsWindow(window_)) return false;
+  HWND root = root_window_ ? root_window_ : window_;
+  SetWindowPos(root, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  return true;
+}
+
+namespace {
+typedef enum _ACCENT_STATE {
+  ACCENT_DISABLED = 0,
+  ACCENT_ENABLE_GRADIENT = 1,
+  ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+  ACCENT_ENABLE_BLURBEHIND = 3,
+  ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
+  ACCENT_INVALID_STATE = 5
+} ACCENT_STATE;
+
+struct ACCENT_POLICY {
+  ACCENT_STATE AccentState;
+  DWORD AccentFlags;
+  DWORD GradientColor;
+  DWORD AnimationId;
+};
+
+struct WINCOMPATTRDATA {
+  DWORD attribute;
+  PVOID pData;
+  ULONG dataSize;
+};
+
+typedef BOOL(WINAPI* pSetWindowCompositionAttribute)(HWND, WINCOMPATTRDATA*);
+}  // namespace
+
+bool LiveWallpaperPlugin::Impl::SetDesktopIconsVisible(bool visible) {
+  HWND progman = FindWindowW(L"Progman", nullptr);
+  HWND def_view = FindWindowExW(progman, nullptr, L"SHELLDLL_DefView", nullptr);
+  if (!def_view) {
+    HWND worker = nullptr;
+    do {
+      worker = FindWindowExW(nullptr, worker, L"WorkerW", nullptr);
+      if (worker) {
+        def_view = FindWindowExW(worker, nullptr, L"SHELLDLL_DefView", nullptr);
+        if (def_view) break;
+      }
+    } while (worker);
+  }
+  if (!def_view) return false;
+  ShowWindow(def_view, visible ? SW_SHOW : SW_HIDE);
+  return true;
+}
+
+bool LiveWallpaperPlugin::Impl::GetDesktopIconsVisible() {
+  HWND progman = FindWindowW(L"Progman", nullptr);
+  HWND def_view = FindWindowExW(progman, nullptr, L"SHELLDLL_DefView", nullptr);
+  if (!def_view) {
+    HWND worker = nullptr;
+    do {
+      worker = FindWindowExW(nullptr, worker, L"WorkerW", nullptr);
+      if (worker) {
+        def_view = FindWindowExW(worker, nullptr, L"SHELLDLL_DefView", nullptr);
+        if (def_view) break;
+      }
+    } while (worker);
+  }
+  if (!def_view) return true;
+  return IsWindowVisible(def_view) != FALSE;
+}
+
+bool LiveWallpaperPlugin::Impl::SetTaskbarBlur(int mode) {
+  HMODULE user32 = GetModuleHandleW(L"user32.dll");
+  if (!user32) return false;
+  auto setAttr = reinterpret_cast<pSetWindowCompositionAttribute>(
+      GetProcAddress(user32, "SetWindowCompositionAttribute"));
+  if (!setAttr) return false;
+
+  ACCENT_POLICY policy{};
+  if (mode == 1) {
+    policy.AccentState = ACCENT_ENABLE_TRANSPARENTGRADIENT;
+    policy.GradientColor = 0x00000000;
+  } else if (mode == 2) {
+    policy.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND;
+    policy.GradientColor = 0xAA000000;
+  } else if (mode == 3) {
+    policy.AccentState = ACCENT_ENABLE_BLURBEHIND;
+  } else {
+    policy.AccentState = ACCENT_DISABLED;
+  }
+
+  WINCOMPATTRDATA data{};
+  data.attribute = 19;  // WCA_ACCENT_POLICY
+  data.pData = &policy;
+  data.dataSize = sizeof(policy);
+
+  HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
+  if (tray) {
+    setAttr(tray, &data);
+  }
+
+  HWND sec_tray = nullptr;
+  do {
+    sec_tray = FindWindowExW(nullptr, sec_tray, L"Shell_SecondaryTrayWnd", nullptr);
+    if (sec_tray) {
+      setAttr(sec_tray, &data);
+    }
+  } while (sec_tray);
+
+  return true;
+}
+
+bool LiveWallpaperPlugin::Impl::IsOtherAudioPlaying() {
+  bool other_playing = false;
+  try {
+    IMMDeviceEnumerator* enumerator = nullptr;
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                  __uuidof(IMMDeviceEnumerator), (void**)&enumerator);
+    if (SUCCEEDED(hr) && enumerator) {
+      IMMDevice* device = nullptr;
+      hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+      enumerator->Release();
+      if (SUCCEEDED(hr) && device) {
+        IAudioSessionManager2* session_mgr = nullptr;
+        hr = device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void**)&session_mgr);
+        device->Release();
+        if (SUCCEEDED(hr) && session_mgr) {
+          IAudioSessionEnumerator* session_enum = nullptr;
+          hr = session_mgr->GetSessionEnumerator(&session_enum);
+          session_mgr->Release();
+          if (SUCCEEDED(hr) && session_enum) {
+            int count = 0;
+            session_enum->GetCount(&count);
+            DWORD our_pid = GetCurrentProcessId();
+            for (int i = 0; i < count; ++i) {
+              IAudioSessionControl* control = nullptr;
+              if (SUCCEEDED(session_enum->GetSession(i, &control)) && control) {
+                IAudioSessionControl2* control2 = nullptr;
+                if (SUCCEEDED(control->QueryInterface(__uuidof(IAudioSessionControl2), (void**)&control2)) && control2) {
+                  DWORD session_pid = 0;
+                  control2->GetProcessId(&session_pid);
+                  AudioSessionState state;
+                  control2->GetState(&state);
+                  if (state == AudioSessionStateActive && session_pid != our_pid && session_pid != mpv_pid_) {
+                    other_playing = true;
+                  }
+                  control2->Release();
+                }
+                control->Release();
+              }
+              if (other_playing) break;
+            }
+            session_enum->Release();
+          }
+        }
+      }
+    }
+  } catch (...) {
+  }
+  return other_playing;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsAccentColor() {
+  flutter::EncodableMap result;
+  DWORD color = 0;
+  BOOL opaque = FALSE;
+  HRESULT hr = DwmGetColorizationColor(&color, &opaque);
+  if (SUCCEEDED(hr)) {
+    result[flutter::EncodableValue("color")] = flutter::EncodableValue(static_cast<int64_t>(color));
+    result[flutter::EncodableValue("opaque")] = flutter::EncodableValue(opaque != FALSE);
+  } else {
+    result[flutter::EncodableValue("color")] = flutter::EncodableValue(static_cast<int64_t>(0xFF0078D7));
+    result[flutter::EncodableValue("opaque")] = flutter::EncodableValue(true);
+  }
+  return result;
 }
 
 LiveWallpaperPlugin::LiveWallpaperPlugin(

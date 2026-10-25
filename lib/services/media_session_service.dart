@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:wall_sync/services/settings_service.dart';
+import 'package:wall_sync/services/system_optimizer_service.dart';
 
 class MediaInfo {
   final String title;
@@ -180,6 +181,38 @@ class MediaSessionService {
       _owners.remove(owner);
       return;
     }
+
+    // Fast initial media state query via native C++ WinRT GSMTC (instant cold start)
+    try {
+      SystemOptimizerService.instance.getMediaSessionInfo().then((nativeInfo) {
+        if (nativeInfo != null && nativeInfo.isNotEmpty) {
+          final title = nativeInfo['title'] as String? ?? '';
+          final artist = nativeInfo['artist'] as String? ?? '';
+          final status = nativeInfo['status'] as String? ?? 'Closed';
+          if (title.isNotEmpty || status == 'Playing') {
+            final info = MediaInfo(
+              title: title,
+              artist: artist,
+              status: status,
+              source: nativeInfo['source'] as String? ?? '',
+              album: nativeInfo['album'] as String? ?? '',
+              canPlay: nativeInfo['canPlay'] as bool? ?? false,
+              canPause: nativeInfo['canPause'] as bool? ?? false,
+              canGoNext: nativeInfo['canGoNext'] as bool? ?? false,
+              canGoPrevious: nativeInfo['canGoPrevious'] as bool? ?? false,
+              position: (nativeInfo['position'] as num?)?.toInt() ?? 0,
+              duration: (nativeInfo['duration'] as num?)?.toInt() ?? 0,
+              hasPosition: (nativeInfo['position'] as num? ?? 0) > 0,
+              hasDuration: (nativeInfo['duration'] as num? ?? 0) > 0,
+            );
+            _current = info;
+            if (!_controller.isClosed) {
+              _controller.add(info);
+            }
+          }
+        }
+      }).catchError((_) {});
+    } catch (_) {}
 
     try {
       final script = '''
@@ -748,6 +781,17 @@ while (\$true) {
       return false;
     }
     _commandInProgress = true;
+    try {
+      final nativeOk = await SystemOptimizerService.instance.controlMediaSession(action.toLowerCase());
+      if (nativeOk) {
+        logInfo('MediaSessionService', 'Executed transport command "$action" via native WinRT GSMTC.');
+        _commandInProgress = false;
+        return true;
+      }
+    } catch (e) {
+      logWarning('MediaSessionService', 'Native transport command "$action" failed ($e), falling back to PowerShell.');
+    }
+
     Process? process;
     try {
       final sessionId = _current.sessionId;

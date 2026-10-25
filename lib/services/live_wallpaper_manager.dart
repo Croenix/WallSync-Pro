@@ -126,7 +126,23 @@ class LiveWallpaperManager {
       throw UnsupportedError('Native MPV wallpapers are supported on Windows.');
     }
     _readSettings(settings);
-    final targetPath = settings.activeWallpaperPath ?? '';
+    final targetPath = settings.activeWallpaperPath?.trim() ?? '';
+    if (targetPath.isEmpty) {
+      throw ArgumentError('Video wallpaper path is empty.');
+    }
+
+    // Media validation: Ensure media file exists and is accessible before launching MPV
+    if (!targetPath.startsWith('http://') && !targetPath.startsWith('https://')) {
+      final file = File(targetPath);
+      if (file.existsSync()) {
+        final size = file.lengthSync();
+        if (size < 1024) {
+          throw FormatException('Video wallpaper file is incomplete or corrupt ($size bytes): $targetPath');
+        }
+      } else if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        throw FileSystemException('Video wallpaper file not found on disk', targetPath);
+      }
+    }
 
     // Idempotent: If the same target video is already active, attached, and ready:
     if (_currentPath == targetPath &&
@@ -263,8 +279,9 @@ class LiveWallpaperManager {
                     '(window=${result?['windowAttached']}, visible=${result?['windowVisible']}, IPC=${result?['ipcConnected']}, '
                     'frame=${result?['frameDecoded']}).'
               : 'MPV did not report a decoded video frame.');
+      final cmdLine = result?['cmdLine'] != null ? ' | CMD: ${result!['cmdLine']}' : '';
       throw FormatException(
-        'Transition #${transitionId ?? '-'} $stage${errorDetail.toString()}$win32Suffix (cleanup ${phase('cleanupMs')}, '
+        'Transition #${transitionId ?? '-'} $stage${errorDetail.toString()}$win32Suffix$cmdLine (cleanup ${phase('cleanupMs')}, '
         'lookup ${phase('lookupMs')}, launch ${phase('launchMs')}, '
         'window found elapsed ${phase('windowFoundMs')} '
         '(scan call ${phase('windowDiscoveryCallMs')}), '

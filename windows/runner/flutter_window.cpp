@@ -42,9 +42,12 @@ void SyncPackageStartupTask(bool enabled, StartupTaskResult result) {
     try {
       winrt::init_apartment(winrt::apartment_type::multi_threaded);
       apartment_initialized = true;
-      auto task =
-          winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"WallSync")
-              .get();
+      winrt::Windows::ApplicationModel::StartupTask task{nullptr};
+      try {
+        task = winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"WallSyncPro").get();
+      } catch (...) {
+        task = winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"WallSync").get();
+      }
       auto state = task.State();
       if (enabled && state == winrt::Windows::ApplicationModel::StartupTaskState::
                                  Disabled) {

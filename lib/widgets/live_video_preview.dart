@@ -11,6 +11,7 @@ import '../services/settings_service.dart';
 import '../services/video_wallpaper_cache.dart';
 import '../services/video_thumbnail_service.dart';
 import '../services/wallpaper_metadata_service.dart';
+import '../services/system_optimizer_service.dart';
 
 /// Hardware-accelerated live video preview widget using WebView2.
 class LiveVideoPreview extends StatefulWidget {
@@ -63,6 +64,7 @@ class LiveVideoPreviewState extends State<LiveVideoPreview> {
       try {
         c.dispose();
       } catch (_) {}
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
     }
   }
 
@@ -180,7 +182,7 @@ class LiveVideoPreviewState extends State<LiveVideoPreview> {
         final localAppData =
             Platform.environment['LOCALAPPDATA'] ?? Directory.systemTemp.path;
         final previewProfileDir = Directory(
-          '$localAppData\\WallSync\\PreviewWebView2',
+          '$localAppData\\WallSyncPro\\PreviewWebView2',
         );
         if (!await previewProfileDir.exists()) {
           await previewProfileDir.create(recursive: true);
@@ -190,9 +192,13 @@ class LiveVideoPreviewState extends State<LiveVideoPreview> {
             userDataPath: previewProfileDir.path,
             additionalArguments:
                 '--autoplay-policy=no-user-gesture-required '
-                '--disable-features=HardwareMediaKeyHandling '
-                '--disable-background-timer-throttling '
-                '--enable-features=HardwareAccelerationMode',
+                '--disable-features=HardwareMediaKeyHandling,MediaRouter,Translate '
+                '--disable-background-networking '
+                '--disable-background-timer-throttling=0 '
+                '--renderer-process-limit=1 '
+                '--enable-features=HardwareAccelerationMode,VaapiVideoDecoder '
+                '--enable-zero-copy '
+                '--enable-gpu-rasterization',
           );
         } catch (_) {}
         _environmentInitialized = true;

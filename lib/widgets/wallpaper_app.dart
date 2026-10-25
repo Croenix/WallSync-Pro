@@ -96,7 +96,7 @@ class _WallpaperAppState extends State<WallpaperApp> {
       final localAppData =
           Platform.environment['LOCALAPPDATA'] ?? Directory.systemTemp.path;
       final webviewDataDirectory = Directory(
-        '$localAppData\\WallSync\\WallpaperWebView2',
+        '$localAppData\\WallSyncPro\\WallpaperWebView2',
       );
       await webviewDataDirectory.create(recursive: true);
 
@@ -108,7 +108,13 @@ class _WallpaperAppState extends State<WallpaperApp> {
         userDataPath: webviewDataDirectory.path,
         additionalArguments:
             '--autoplay-policy=no-user-gesture-required '
-            '--disable-features=HardwareMediaKeyHandling',
+            '--disable-features=HardwareMediaKeyHandling,MediaRouter,Translate '
+            '--disable-background-networking '
+            '--disable-background-timer-throttling=0 '
+            '--renderer-process-limit=1 '
+            '--enable-features=VaapiVideoDecoder '
+            '--enable-zero-copy '
+            '--enable-gpu-rasterization',
       ).timeout(const Duration(seconds: 30));
 
       logInfo('WallpaperApp', 'Initializing WebView2 for video playback...');

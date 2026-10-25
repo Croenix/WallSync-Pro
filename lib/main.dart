@@ -12,6 +12,7 @@ import 'services/notification_service.dart';
 import 'services/overlay_lifecycle_service.dart';
 import 'services/settings_service.dart';
 import 'services/wallpaper_engine.dart';
+import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
@@ -336,12 +337,12 @@ void main(List<String> args) async {
   }
   if (isOverlayMode) {
     PaintingBinding.instance.imageCache.maximumSizeBytes =
-        16 * 1024 * 1024; // 16 MB max for lightweight overlay
-    PaintingBinding.instance.imageCache.maximumSize = 20;
+        4 * 1024 * 1024; // 4 MB max for ultra-lightweight overlay
+    PaintingBinding.instance.imageCache.maximumSize = 8;
   } else {
     PaintingBinding.instance.imageCache.maximumSizeBytes =
-        48 * 1024 * 1024; // 48 MB bounded cache to prevent memory bloat
-    PaintingBinding.instance.imageCache.maximumSize = 60;
+        32 * 1024 * 1024; // 32 MB bounded cache to prevent memory bloat
+    PaintingBinding.instance.imageCache.maximumSize = 40;
   }
 
   // Profile dashboard and overlay frames in debug mode; avoid periodic sampling
@@ -927,6 +928,12 @@ void main(List<String> args) async {
         'Overlay first Flutter post-frame callback completed after '
             '${startupStopwatch.elapsedMilliseconds}ms of process startup.',
       );
+      // Enable EcoQoS and trim working set for the overlay process
+      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      SystemOptimizerService.instance.startBackgroundMemoryOptimizer(
+        interval: const Duration(minutes: 5),
+      );
     });
   } else if (isWallpaperMode) {
     logInfo('Main', 'Entering Live Wallpaper mode');
@@ -1075,6 +1082,10 @@ void main(List<String> args) async {
         unawaited(NotificationService.instance.init());
         unawaited(ShortbirdClient().init());
       }
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      SystemOptimizerService.instance.startBackgroundMemoryOptimizer(
+        interval: const Duration(minutes: 5),
+      );
     });
   }
 }

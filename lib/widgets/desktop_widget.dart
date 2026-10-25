@@ -16,6 +16,7 @@ import '../services/weather_service.dart';
 import '../services/media_session_service.dart';
 import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
+import '../services/system_optimizer_service.dart';
 import 'custom_widget_renderer.dart';
 
 Uint8List _decodeMediaThumbnail(String encoded, String owner) {
@@ -101,6 +102,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
   SystemMetricsSnapshot _systemMetrics = const SystemMetricsSnapshot();
 
   void _updateSystemStats() {
+    SystemOptimizerService.instance.getPerformanceMetrics().then((metrics) {
+      if (!mounted) return;
+      if (metrics != null) {
+        if (metrics.cpuPercent != null) _cpuUsage = metrics.cpuPercent!;
+        if (metrics.ramLoadPercent != null) _ramUsage = metrics.ramLoadPercent!;
+        return;
+      }
+      _updateSystemStatsFallback();
+    }).catchError((_) {
+      _updateSystemStatsFallback();
+    });
+  }
+
+  void _updateSystemStatsFallback() {
     final idleTime = calloc<FILETIME>();
     final kernelTime = calloc<FILETIME>();
     final userTime = calloc<FILETIME>();
@@ -392,6 +407,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
       _syncConnectivityService();
       _syncNeonAnimation();
       _resetInactivityTimer();
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
       if (widget.initialSettings == null) {
         try {
           await windowManager.setBackgroundColor(Colors.transparent);

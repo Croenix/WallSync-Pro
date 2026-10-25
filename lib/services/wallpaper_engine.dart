@@ -7,6 +7,7 @@ import 'package:win32/win32.dart';
 import 'app_runtime_service.dart';
 import 'settings_service.dart';
 import 'live_wallpaper_manager.dart';
+import 'system_optimizer_service.dart';
 
 String _normalizeWallpaperPath(String p) {
   var s = p.trim().replaceAll('/', '\\');
@@ -331,6 +332,28 @@ class WallpaperEngine {
         'Transition #${transitionId ?? '-'} cancelled before static apply.',
       );
       return false;
+    }
+
+    // Try high-performance native C++ path first
+    bool fastNativeOk = false;
+    try {
+      fastNativeOk = await SystemOptimizerService.instance.setStaticWallpaper(
+        cleanPath,
+        style: style,
+      );
+    } catch (e) {
+      logWarning(
+        'WallpaperEngine',
+        'Transition #${transitionId ?? '-'} native C++ setStaticWallpaper failed: $e',
+      );
+    }
+    if (fastNativeOk) {
+      final elapsed = sw.elapsedMilliseconds;
+      logPerf(
+        'WallpaperEngine',
+        'Transition #${transitionId ?? '-'} static wallpaper applied via native C++ fast path in ${elapsed}ms.',
+      );
+      return true;
     }
 
     var wallpaperApplied = false;

@@ -28,6 +28,7 @@ import '../services/launch_popup_service.dart';
 import '../services/overlay_lifecycle_service.dart';
 import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
+import '../services/system_optimizer_service.dart';
 import 'animated_backgrounds.dart';
 import 'color_picker_widget.dart';
 import 'gradient_picker_widget.dart';
@@ -817,6 +818,20 @@ class _DashboardViewState extends State<DashboardView>
   int _lastUserTime = 0;
 
   void _updateSystemStats() {
+    SystemOptimizerService.instance.getPerformanceMetrics().then((metrics) {
+      if (!mounted) return;
+      if (metrics != null) {
+        if (metrics.cpuPercent != null) _cpuUsage = metrics.cpuPercent!;
+        if (metrics.ramLoadPercent != null) _ramUsage = metrics.ramLoadPercent!;
+        return;
+      }
+      _updateSystemStatsFallback();
+    }).catchError((_) {
+      _updateSystemStatsFallback();
+    });
+  }
+
+  void _updateSystemStatsFallback() {
     final idleTime = calloc<FILETIME>();
     final kernelTime = calloc<FILETIME>();
     final userTime = calloc<FILETIME>();
@@ -1230,6 +1245,7 @@ class _DashboardViewState extends State<DashboardView>
       });
       unawaited(_initSettingsWatcher());
       unawaited(_initSystemTray());
+      SystemOptimizerService.instance.startBackgroundMemoryOptimizer();
       if (!widget.isStartupBackground) {
         unawaited(_loadWallpapers());
         _updateCheckTimer = Timer(const Duration(milliseconds: 600), () {
@@ -1522,6 +1538,7 @@ class _DashboardViewState extends State<DashboardView>
       const MethodChannel('com.wallsync/startup').setMethodCallHandler(null);
     }
     MediaSessionService().stop(owner: 'dashboard');
+    SystemOptimizerService.instance.stopBackgroundMemoryOptimizer();
     super.dispose();
   }
 
@@ -1655,12 +1672,16 @@ class _DashboardViewState extends State<DashboardView>
     _isWindowVisible = false;
     _backgroundFlowController.stop();
     await windowManager.hide();
+    unawaited(SystemOptimizerService.instance.optimizeMemory());
+    unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
   }
 
   @override
   void onWindowMinimize() {
     _isWindowVisible = false;
     _backgroundFlowController.stop();
+    unawaited(SystemOptimizerService.instance.optimizeMemory());
+    unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
   }
 
   @override
@@ -1669,6 +1690,7 @@ class _DashboardViewState extends State<DashboardView>
     if (mounted) {
       _backgroundFlowController.repeat();
     }
+    unawaited(SystemOptimizerService.instance.setLowPowerMode(false));
   }
 
   @override
@@ -4849,94 +4871,96 @@ class _DashboardViewState extends State<DashboardView>
   Widget _buildLiveWallpapersView() {
     final videoWallpapers = _cachedLiveWallpapers;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── If Live Video Active: "NOW PLAYING" Header Deck with Live Preview & Controls ──
-          // ── If NOT Active: Clean Invitation Banner (NO playback controls clutter) ──
-          _buildLiveVideoControls(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = (constraints.maxWidth / 280)
+            .floor()
+            .clamp(2, 5);
 
-          const SizedBox(height: 12),
+        return CustomScrollView(
+          cacheExtent: 250.0,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── If Live Video Active: "NOW PLAYING" Header Deck with Live Preview & Controls ──
+                  // ── If NOT Active: Clean Invitation Banner (NO playback controls clutter) ──
+                  _buildLiveVideoControls(),
 
-          // ── If recent video wallpapers exist: Horizontal shelf of Recent Live Wallpapers ──
-          if (_settings.recentWallpapers.any((w) => w.isVideo))
-            _buildRecentLiveVideosShelf(),
+                  const SizedBox(height: 12),
 
-          // ── Section Title: Live Video Catalog ──
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.video_library_rounded,
-                  size: 16,
-                  color: Color(0xFF38BDF8),
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'CURATED LIVE WALLPAPERS',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white70,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${videoWallpapers.length} VIDEOS',
-                    style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF38BDF8),
+                  // ── If recent video wallpapers exist: Horizontal shelf of Recent Live Wallpapers ──
+                  if (_settings.recentWallpapers.any((w) => w.isVideo))
+                    _buildRecentLiveVideosShelf(),
+
+                  // ── Section Title: Live Video Catalog ──
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.video_library_rounded,
+                          size: 16,
+                          color: Color(0xFF38BDF8),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'CURATED LIVE WALLPAPERS',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white70,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${videoWallpapers.length} VIDEOS',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF38BDF8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+              sliver: SliverGrid.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 1.3,
                 ),
-              ],
+                itemCount: videoWallpapers.length,
+                itemBuilder: (context, idx) {
+                  final wp = videoWallpapers[idx];
+                  return RepaintBoundary(
+                    child: _buildWallpaperCard(wp),
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-
-          // ── Grid of Live Video Wallpapers ──
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount = (constraints.maxWidth / 280)
-                    .floor()
-                    .clamp(2, 5);
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  cacheExtent: 250.0,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 1.3,
-                  ),
-                  itemCount: videoWallpapers.length,
-                  itemBuilder: (context, idx) {
-                    final wp = videoWallpapers[idx];
-                    return _buildWallpaperCard(wp);
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 

@@ -45,6 +45,16 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
+  if(MSVC)
+    target_compile_options(${TARGET} PRIVATE
+      $<$<CONFIG:Release>:/O2 /Oi /Ot /GF /Gy>
+      $<$<CONFIG:Profile>:/O2 /Oi /Ot /GF /Gy>
+    )
+    target_link_options(${TARGET} PRIVATE
+      $<$<CONFIG:Release>:/OPT:REF /OPT:ICF>
+      $<$<CONFIG:Profile>:/OPT:REF /OPT:ICF>
+    )
+  endif()
 endfunction()
 
 # Flutter library and tool build rules.
