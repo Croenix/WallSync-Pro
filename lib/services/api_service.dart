@@ -297,7 +297,7 @@ class ApiService {
       'clientId': clientId,
       'hostname': Platform.localHostname,
       'platform': Platform.operatingSystem,
-      'appVersion': '1.0.32.0',
+      'appVersion': '1.0.0.0.1',
       'activeWallpaper': wallpaperPath,
       'activeWallpaperType': wallpaperType,
       'timestamp': DateTime.now().toIso8601String(),

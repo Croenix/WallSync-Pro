@@ -1180,7 +1180,7 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WallSync',
+      title: 'WallSync Pro',
       debugShowCheckedModeBanner: false,
       scrollBehavior: MyCustomScrollBehavior(),
       theme: ThemeData(

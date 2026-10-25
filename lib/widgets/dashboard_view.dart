@@ -1306,7 +1306,7 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               ),
               content: const Text(
-                'A new version of WallSync is available. Would you like to update now?',
+                'A new version of WallSync Pro is available. Would you like to update now?',
                 style: TextStyle(color: Colors.white70),
               ),
               actions: [
@@ -1553,7 +1553,7 @@ class _DashboardViewState extends State<DashboardView>
             );
           }
           await trayManager.setIcon(iconPath);
-          await trayManager.setToolTip('WallSync - Live Wallpapers & Widgets');
+          await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
           await _updateTrayMenu();
           logInfo(
             'OverlayStartup',
@@ -1562,7 +1562,7 @@ class _DashboardViewState extends State<DashboardView>
           return;
         }
         await trayManager.setIcon('assets/app_icon.png');
-        await trayManager.setToolTip('WallSync - Live Wallpapers & Widgets');
+        await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
         await _updateTrayMenu();
         return;
       } catch (e, st) {
@@ -1578,7 +1578,7 @@ class _DashboardViewState extends State<DashboardView>
             st,
           );
         } else {
-          await Future.delayed(Duration(milliseconds: 500 * attempt));
+          await Future.delayed(Duration(milliseconds: 300 * attempt));
         }
       }
     }
@@ -1593,7 +1593,7 @@ class _DashboardViewState extends State<DashboardView>
 
       final menu = Menu(
         items: [
-          MenuItem(key: 'open_dashboard', label: 'Open WallSync'),
+          MenuItem(key: 'open_dashboard', label: 'Open WallSync Pro'),
           MenuItem.separator(),
           MenuItem(
             key: 'toggle_widget',
@@ -1607,7 +1607,7 @@ class _DashboardViewState extends State<DashboardView>
                   : 'Resume Live Wallpaper',
             ),
           MenuItem.separator(),
-          MenuItem(key: 'exit_app', label: 'Exit WallSync'),
+          MenuItem(key: 'exit_app', label: 'Exit WallSync Pro'),
         ],
       );
       await trayManager.setContextMenu(menu);
@@ -2788,7 +2788,7 @@ class _DashboardViewState extends State<DashboardView>
                         ).createShader(bounds);
                       },
                       child: const Text(
-                        'WALLSYNC',
+                        'WALLSYNC PRO',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
@@ -2897,7 +2897,7 @@ class _DashboardViewState extends State<DashboardView>
                       color: Colors.white70,
                     ),
                     onPressed: () => setState(() => _currentMainTab = 'about'),
-                    tooltip: 'About WallSync',
+                    tooltip: 'About WallSync Pro',
                   ),
                   if (_currentMainTab == 'wallpapers')
                     IconButton(
@@ -15377,7 +15377,7 @@ class _DashboardViewState extends State<DashboardView>
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
-                          'VERSION 1.0.32.0 UPDATE',
+                          'VERSION 1.0.0.0.1 UPDATE',
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
@@ -15388,7 +15388,7 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                       const SizedBox(height: 14),
                       const Text(
-                        'Welcome to WallSync Customizer',
+                        'Welcome to WallSync Pro Customizer',
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
@@ -19456,7 +19456,7 @@ class _DashboardViewState extends State<DashboardView>
             ),
             const SizedBox(height: 4),
             const Text(
-              'WallSync · Version 1.0.32.0',
+              'WallSync Pro · Version 1.0.0.0.1',
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 5),

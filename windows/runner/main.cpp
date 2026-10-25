@@ -55,7 +55,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
 
     if (!is_debug_or_flutter) {
-      HWND existing_window = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"WallSync");
+      HWND existing_window = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"WallSync Pro");
       if (existing_window) {
         if (!is_startup_bootstrap) {
           ::ShowWindow(existing_window, SW_SHOW);
@@ -81,7 +81,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     const wchar_t* title =
         is_overlay ? L"WallSyncOverlay"
                    : (is_wallpaper ? L"WallSyncWallpaper"
-                                   : L"WallSync");
+                                   : L"WallSync Pro");
     if (!window.Create(title, origin, size)) {
       exit_code = EXIT_FAILURE;
     } else {

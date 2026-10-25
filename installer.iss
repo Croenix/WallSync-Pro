@@ -1,12 +1,12 @@
 [Setup]
 AppId={{5F7A348D-85B4-4B7C-8A6B-9D0E40A56C42}
-AppName=WallSync
-AppVersion=1.0.32.0
+AppName=WallSync Pro
+AppVersion=1.0.0.0.1
 AppPublisher=RedSkill Studios
-DefaultDirName={autopf}\WallSync
+DefaultDirName={autopf}\WallSync Pro
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=WallSync_Installer
+OutputBaseFilename=WallSyncPro_Installer
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -24,12 +24,12 @@ Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignorever
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{autoprograms}\WallSync"; Filename: "{app}\WallSync.exe"
-Name: "{autodesktop}\WallSync"; Filename: "{app}\WallSync.exe"; Tasks: desktopicon
+Name: "{autoprograms}\WallSync Pro"; Filename: "{app}\WallSync.exe"
+Name: "{autodesktop}\WallSync Pro"; Filename: "{app}\WallSync.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\WallSync.exe"; Parameters: "--sync-startup-registration"; WorkingDir: "{app}"; Flags: runasoriginaluser runhidden waituntilterminated
-Filename: "{app}\WallSync.exe"; Description: "{cm:LaunchProgram,WallSync}"; Flags: runasoriginaluser nowait postinstall skipifsilent
+Filename: "{app}\WallSync.exe"; Description: "{cm:LaunchProgram,WallSync Pro}"; Flags: runasoriginaluser nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /F /TN ""\WallSyncOverlayStartup"""; Flags: runhidden

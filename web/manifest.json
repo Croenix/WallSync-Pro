@@ -1,6 +1,6 @@
 {
-    "name": "wall_sync",
-    "short_name": "wall_sync",
+    "name": "WallSync Pro",
+    "short_name": "WallSync Pro",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
