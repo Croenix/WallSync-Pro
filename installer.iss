@@ -1,7 +1,7 @@
 [Setup]
 AppId={{5F7A348D-85B4-4B7C-8A6B-9D0E40A56C42}
 AppName=WallSync
-AppVersion=1.0.31.0
+AppVersion=1.0.32.0
 AppPublisher=RedSkill Studios
 DefaultDirName={autopf}\WallSync
 DisableProgramGroupPage=yes

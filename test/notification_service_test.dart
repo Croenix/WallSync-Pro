@@ -15,26 +15,26 @@ void main() {
   test('AppNotification parses JSON payload correctly', () {
     final json = {
       'id': 'notif_1001',
-      'title': 'WallSync v1.0.31.0 Update',
+      'title': 'WallSync v1.0.32.0 Update',
       'message': 'New features and live wallpapers are ready!',
       'type': 'update',
-      'version': '1.0.31.0',
+      'version': '1.0.32.0',
       'url': 'https://wallsync.app',
       'timestamp': 1792270000000,
     };
 
     final notif = AppNotification.fromJson(json);
     expect(notif.id, 'notif_1001');
-    expect(notif.title, 'WallSync v1.0.31.0 Update');
+    expect(notif.title, 'WallSync v1.0.32.0 Update');
     expect(notif.message, contains('New features'));
     expect(notif.type, 'update');
-    expect(notif.version, '1.0.31.0');
+    expect(notif.version, '1.0.32.0');
     expect(notif.actionUrl, 'https://wallsync.app');
     expect(notif.timestamp, 1792270000000);
 
     final mapped = notif.toJson();
     expect(mapped['id'], 'notif_1001');
-    expect(mapped['title'], 'WallSync v1.0.31.0 Update');
+    expect(mapped['title'], 'WallSync v1.0.32.0 Update');
   });
 
   test(

@@ -2992,7 +2992,7 @@ const notifPresets = {
         title: '🚀 WallSync Update Available',
         message: 'A new version of WallSync is ready with performance improvements and new features. Restart to apply!',
         type: 'update',
-        version: '1.0.31.0',
+        version: '1.0.32.0',
     },
     wallpaper: {
         title: '🎨 New Wallpapers Added',

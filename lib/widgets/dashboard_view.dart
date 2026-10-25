@@ -15377,7 +15377,7 @@ class _DashboardViewState extends State<DashboardView>
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
-                          'VERSION 1.0.31.0 UPDATE',
+                          'VERSION 1.0.32.0 UPDATE',
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w900,
@@ -19456,7 +19456,7 @@ class _DashboardViewState extends State<DashboardView>
             ),
             const SizedBox(height: 4),
             const Text(
-              'WallSync · Version 1.0.31.0',
+              'WallSync · Version 1.0.32.0',
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 5),
