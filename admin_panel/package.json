@@ -1,0 +1,23 @@
+{
+  "name": "wallsync-admin-server",
+  "version": "1.0.0",
+  "description": "WallSync Admin Panel Node.js Server & Real-time Live Sync API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "set-url": "node set_rtdb_url.js"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "keywords": [
+    "wallsync",
+    "admin",
+    "wallpapers",
+    "heartbeat",
+    "sync"
+  ],
+  "author": "",
+  "license": "ISC"
+}

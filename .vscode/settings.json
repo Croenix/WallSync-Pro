@@ -1,0 +1,10 @@
+{
+    "dart.defaultDeviceId": "windows",
+    "cmake.sourceDirectory": "${workspaceFolder}/windows",
+    "chat.tools.terminal.autoApprove": {
+        "/^dart format lib\\\\main\\.dart$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

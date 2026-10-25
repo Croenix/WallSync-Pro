@@ -1,0 +1,114 @@
+WALLSYNC APPLICATION REPORT
+Generated: 2026-10-14
+
+1. APPLICATION SUMMARY
+WallSync is a Windows desktop wallpaper and desktop-widget application built
+with Flutter and Dart. The repository also includes a browser-based admin
+panel and Firebase Cloud Functions used to manage the remote wallpaper catalog.
+
+2. MAIN APPLICATION COMPONENTS
+- lib/main.dart
+  Startup, global error logging, settings initialization, and routing into
+  dashboard, transparent overlay, or live wallpaper mode based on launch flags.
+- lib/services/settings_service.dart
+  Widget settings model, JSON persistence, application support files, PID/lock
+  file locations, and Windows startup registration.
+- lib/widgets/dashboard_view.dart
+  Main customization interface, overlay lifecycle controls, and wallpaper
+  selection/configuration.
+- lib/widgets/desktop_widget.dart
+  Desktop clock/widget UI, settings updates, and weather/media presentation.
+- lib/widgets/wallpaper_app.dart and lib/services/wallpaper_engine.dart
+  Live wallpaper rendering and Windows desktop-window integration.
+- lib/services/weather_service.dart
+  Location search/detection and weather retrieval.
+- lib/services/media_session_service.dart
+  Windows media-session integration and playback controls.
+- lib/services/firebase_service.dart
+  Remote wallpaper catalog, caching/download support, bug reports, and update
+  metadata.
+- lib/services/shortbird_client.dart
+  Shorebird release-mode code-push initialization and update checks.
+- lib/widgets/splash_screen.dart, animated_backgrounds.dart, and
+  color_picker_widget.dart
+  Startup presentation, animated backgrounds, and color-picker controls.
+- admin_panel/
+  Browser UI for authorized administrators to select Cloudinary images and
+  submit wallpaper metadata.
+- functions/index.js and functions/validation.js
+  Authenticated Firebase HTTPS API, Cloudinary image listing, wallpaper input
+  validation, and Realtime Database updates.
+- windows/runner/
+  Native Windows Flutter runner and window integration.
+
+3. OBSERVED STARTUP MODES
+- Default: opens the WallSync dashboard and initializes the update client.
+- --overlay: opens a transparent, frameless desktop widget, writes its PID,
+  and acquires an exclusive overlay instance lock.
+- --wallpaper: opens the live wallpaper window and reparents it into the
+  Windows desktop window hierarchy.
+
+4. DEBUG FINDINGS AND CHANGES
+- Wallpaper startup now acquires an exclusive wallpaper.lock before writing
+  wallpaper.pid. The lock stays held for the process lifetime.
+- Wallpaper launch now waits for a readiness marker written after WebView2 loads.
+  A launch is not reported as successful if the child exits, WebView startup
+  fails, or desktop reparenting fails. Failed reparenting exits rather than
+  leaving a floating black window.
+- Desktop reparenting validates the desktop target size, verifies the parent
+  window, checks final positioning, and frees the temporary window-title
+  pointer.
+- Static wallpaper application preserves an active video wallpaper until the
+  new static image is applied. Process stop now confirms the old wallpaper
+  process has exited before starting another.
+- Firebase image requests retain their original hostname for TLS SNI and normal
+  certificate verification; IPv4 URL rewriting and the accept-all certificate
+  callback were removed.
+- Thumbnail requests now retry briefly, enforce response/stream timeouts,
+  reject non-image responses, share in-flight downloads, and remove partial
+  cache files. URL-based SHA-256 cache names prevent collisions and stale
+  images when a source URL changes.
+- Full-resolution images are no longer downloaded eagerly for the entire
+  catalog. They download on demand with bounded concurrency and progress.
+  Cloudinary image cards request resized thumbnails and fall back to the
+  original image URL if the transformed URL cannot be loaded. Image cards show
+  loading/error states, and their Download/Set Wallpaper actions show busy
+  indicators and ignore duplicate actions.
+- Firebase catalog parsing now tolerates malformed optional fields rather than
+  discarding the entire server catalog.
+- Live video controls and cache clearing have disabled/loading states during
+  their asynchronous operations.
+
+5. VALIDATION RESULTS
+- flutter analyze: passed after the latest changes; no issues found.
+- flutter test: passed after the latest changes; 4 Flutter tests, including cache-name safety and
+  malformed catalog-field coverage.
+- npm test --prefix functions: passed; 8 Cloud Functions/configuration tests.
+- flutter build windows --release: passed after the latest changes; produced
+  build/windows/x64/runner/Release/WallSync.exe.
+- An earlier flutter build windows --debug attempt was blocked because a running
+  desktop_widget_overlay process (PID 31200) held
+  build/windows/x64/runner/Debug/WebView2Loader.dll open. The build failed
+  after MSBuild retries. This was an environment/file-lock issue; the release
+  build completed successfully.
+
+6. COVERAGE AND LIMITATIONS
+Automated tests cover settings serialization, a dashboard widget smoke test,
+Cloud Functions wallpaper validation, Realtime Database access rules, and
+admin-panel markup/security assumptions. They do not exercise live Windows
+desktop reparenting, WebView wallpaper playback, real Firebase/Cloudinary
+network interactions, or end-to-end administrator sign-in. Those integrations
+should be checked on a Windows machine with valid runtime configuration.
+
+7. DEPLOYMENT AND CONFIGURATION NOTES
+- Desktop build: flutter build windows --release
+- Admin panel configuration: copy
+  admin_panel/firebase-config.example.js to admin_panel/firebase-config.js
+  and fill in the Firebase Web API key. Serve the panel over HTTP/HTTPS, not
+  file://.
+- Backend: configure Cloudinary API credentials as Firebase Function secrets,
+  configure the Cloudinary account name, administrator UIDs, and allowed panel
+  origins, then deploy the database rules and functions using the Firebase CLI.
+- Do not store Cloudinary API secrets in the browser panel or Realtime Database.
+
+END OF REPORT

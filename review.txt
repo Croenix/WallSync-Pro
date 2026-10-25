@@ -1,0 +1,78 @@
+================================================================
+               WALLSYNC RUNTIME DIAGNOSTIC REPORT               
+================================================================
+Timestamp: 2026-10-21T05:19:13.006800
+Platform: Windows ("Windows 10 Home Single Language" 10.0 (Build 26300))
+Dart SDK: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "windows_x64"
+Process ID: 10408
+CPU Cores: 12
+
+--- 1. MEMORY & RAM PROFILING ---
+Process Working Set:     664.65 MB (Main PID 10408; RSS/working set includes shared and mapped pages)
+Peak Working Set:        1646.65 MB (PeakWorkingSetSize — lifetime high-water mark, not current)
+Private Commit:          840.73 MB (PROCESS_MEMORY_COUNTERS_EX.PrivateUsage: process commit charge)
+MPV Child PID:           3096
+MPV Working Set (RSS):   81.95 MB
+MPV Private Commit:      174.61 MB
+Overlay Child Process:   Not running or not queryable
+Dart Heap:               Not exposed by this runtime sampler
+GPU/shared allocations:  Not exposed by GetProcessMemoryInfo
+Image Cache Footprint:   13.42 MB (29 decoded images)
+System Physical RAM:     7913 MB total
+System Available RAM:    1093 MB free
+System Memory Load:      86%
+
+--- 2. CPU UTILIZATION ---
+WallSync Process CPU:    9.49%
+System CPU Overall:      67.86%
+Measurement Interval:    0 ms
+
+--- 3. STORAGE & DISK FOOTPRINT ---
+WallSync Total Disk:     377.56 MB
+AppData Folder:          79.27 MB
+LocalAppData Folder:     298.30 MB
+Video Wallpapers Cache:  43.20 MB
+Video Thumbnails Cache:  4.28 MB
+Debug Log File:          4.63 MB
+
+--- 4. UI SMOOTHNESS & 60 FPS JANK METRICS ---
+Total Frames Rendered:   1031
+Smoothness Score:        49.6%
+Measured Frames:         1027 active; 125 had >50ms non-work span; 4 >1s timing gaps excluded
+Average Stage Work:      53.09 ms max(build,raster); build 15.55ms, raster 46.71ms
+Average Total Span:      81.31 ms (includes pipeline/vsync gaps)
+Worst Active Compute:    15582.22 ms (UI Build: 4176.42ms, Raster: 15582.22ms)
+Jank Frames (>16.6ms):   518
+Severe Jank (>33.3ms):   229
+Timing Gaps Excluded:    4 (cause not inferred from FrameTiming)
+Jank Denominator:        1027 eligible frames
+Recent Raw Frame Timings:
+  build=3.62ms raster=17.04ms totalSpan=23.47ms outsideStages=6.43ms class=jank
+  build=5.17ms raster=11.32ms totalSpan=27.87ms outsideStages=16.55ms class=smooth
+  build=3.95ms raster=20.24ms totalSpan=27.32ms outsideStages=7.08ms class=jank
+  build=3.00ms raster=11.63ms totalSpan=25.96ms outsideStages=14.33ms class=smooth
+  build=7.80ms raster=18.29ms totalSpan=30.44ms outsideStages=12.15ms class=jank
+  build=1.74ms raster=12.00ms totalSpan=28.60ms outsideStages=16.60ms class=smooth
+  build=3.58ms raster=15.71ms totalSpan=20.73ms outsideStages=5.03ms class=smooth
+  build=6.03ms raster=11.89ms totalSpan=25.03ms outsideStages=13.14ms class=smooth
+  build=6.66ms raster=17.38ms totalSpan=29.26ms outsideStages=11.88ms class=jank
+  build=3.88ms raster=11.99ms totalSpan=27.41ms outsideStages=15.41ms class=smooth
+  build=3.69ms raster=22.56ms totalSpan=28.48ms outsideStages=5.93ms class=jank
+  build=4.22ms raster=11.72ms totalSpan=33.30ms outsideStages=21.58ms class=smooth
+  build=2.87ms raster=19.28ms totalSpan=24.84ms outsideStages=5.56ms class=jank
+  build=12.23ms raster=11.98ms totalSpan=30.02ms outsideStages=17.79ms class=smooth
+  build=6.46ms raster=22.52ms totalSpan=31.09ms outsideStages=8.57ms class=jank
+  build=4.05ms raster=12.21ms totalSpan=29.47ms outsideStages=17.26ms class=smooth
+  build=5.94ms raster=16.98ms totalSpan=26.04ms outsideStages=9.06ms class=jank
+  build=5.82ms raster=11.53ms totalSpan=30.67ms outsideStages=19.13ms class=smooth
+  build=6.23ms raster=20.36ms totalSpan=30.24ms outsideStages=9.88ms class=jank
+  build=3.07ms raster=11.86ms totalSpan=28.24ms outsideStages=16.38ms class=smooth
+
+--- 5. RUNTIME STABILITY & HANG DETECTIONS ---
+Recorded Hang Events:    4
+  * [2026-10-21T05:18:01.016721] [EVENT LOOP GAP] No watchdog heartbeat for 1250 ms; this is not frame-work time. OS/debugger cause is unverified. Active async ops: 0
+  * [2026-10-21T05:18:04.690031] [EVENT LOOP GAP] No watchdog heartbeat for 2362 ms; this is not frame-work time. OS/debugger cause is unverified. Active async ops: 0
+  * [2026-10-21T05:18:21.995500] [EVENT LOOP GAP] No watchdog heartbeat for 14155 ms; this is not frame-work time. OS/debugger cause is unverified. Active async ops: 0
+  * [2026-10-21T05:18:27.651316] [EVENT LOOP GAP] No watchdog heartbeat for 3812 ms; this is not frame-work time. OS/debugger cause is unverified. Active async ops: 0
+Currently Active Ops:    0
+================================================================

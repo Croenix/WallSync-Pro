@@ -1,0 +1,11 @@
+Hardware Requirements
+
+Minimum Specifications:
+- Processor: Intel Core i3 or AMD Ryzen 3
+- Graphics: Integrated Graphics or entry-level dedicated GPU (e.g., NVIDIA GT 1030 / AMD Radeon RX 550)
+- Memory (RAM): 4 GB
+
+Recommended Specifications:
+- Processor: Intel Core i5 / i7 or AMD Ryzen 5 / 7
+- Graphics: Mid-range to High-end dedicated GPU (e.g., NVIDIA RTX 3060 / AMD Radeon RX 6600 or better)
+- Memory (RAM): 16 GB

@@ -1,0 +1,19 @@
+Running build hooks...Running build hooks...Progman HWND: 20422
+SendMessageTimeout sent.
+Window #0: HWND=203b8, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #1: HWND=170764, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #2: HWND=1507be, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #3: HWND=3003a, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #4: HWND=4042e, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #5: HWND=408b4, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #6: HWND=20332, Class=WorkerW, Title="", Size=0x0, HasSHELLDLL_DefView=false
+Window #7: HWND=20494, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #8: HWND=20424, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #9: HWND=2041e, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #10: HWND=15089a, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #11: HWND=a0388, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #12: HWND=300ca, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #13: HWND=603da, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #14: HWND=70442, Class=WorkerW, Title="", Size=118x0, HasSHELLDLL_DefView=false
+Window #15: HWND=20422, Class=Progman, Title="Program Manager", Size=1536x864, HasSHELLDLL_DefView=true
+  SHELLDLL_DefView HWND: 2047a

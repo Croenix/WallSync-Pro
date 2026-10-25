@@ -1,0 +1,20 @@
+{
+  "functions": {
+    "source": "functions"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "wallsync-e043c",
+          "configurations": {
+            "windows": "1:273002033077:web:239a7aa71bb6ff8faa33fc"
+          }
+        }
+      }
+    }
+  }
+}

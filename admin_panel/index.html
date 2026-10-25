@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WallSync Admin Panel</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <img src="logo.png" alt="WallSync Logo" class="logo-icon">
+                <h1>WallSync<span>Admin</span></h1>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" id="nav-overview">System Overview</button>
+                <button class="nav-item" id="nav-reports">Reports</button>
+                <button class="nav-item" id="nav-catalog">Active Wallpapers (<span id="catalog-nav-count">0</span>)</button>
+                <button class="nav-item" id="nav-popup">Launch Popup</button>
+                <button class="nav-item" id="nav-static">Static Wallpapers</button>
+                <button class="nav-item" id="nav-videos">Video Wallpapers</button>
+                <button class="nav-item" id="nav-gallery" disabled>Cloudinary Gallery</button>
+                <button class="nav-item" id="nav-upload" disabled>Upload Queue (<span id="queue-nav-count">0</span>)</button>
+                <button class="nav-item" id="nav-credentials">System &amp; Account</button>
+            </nav>
+            <div class="sidebar-status-group">
+                <div class="status-indicator">
+                    <span class="dot disconnected" id="firebase-status-dot"></span>
+                    <span id="firebase-status-text">Disconnected</span>
+                </div>
+                <div class="live-sync-indicator" id="live-sync-indicator">
+                    <div class="sync-metric">
+                        <span class="dot pulse-dot disconnected" id="live-users-dot"></span>
+                        <span class="sync-label">Live:</span>
+                        <span class="sync-val" id="live-users-count">0</span>
+                    </div>
+                    <div class="sync-metric total-metric">
+                        <span class="sync-label">Total:</span>
+                        <span class="sync-val" id="total-users-count">0</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- System Overview Dashboard Section -->
+            <section id="section-overview" class="content-section active">
+                <header class="section-header">
+                    <h2>WallSync System Overview</h2>
+                    <p>Real-time system health, catalog breakdown, and connected client devices.</p>
+                </header>
+
+                <!-- Top KPI Metric Cards -->
+                <div class="overview-kpi-grid">
+                    <div class="kpi-card glass-card">
+                        <div class="kpi-icon-wrapper kpi-purple">🖼️</div>
+                        <div class="kpi-content">
+                            <span class="kpi-label">Total Wallpapers</span>
+                            <div class="kpi-value-row">
+                                <span class="kpi-value" id="dashboard-total-wallpapers">0</span>
+                                <div class="kpi-sub-badges">
+                                    <span class="badge-mini badge-images"><span id="dashboard-total-images">0</span> Images</span>
+                                    <span class="badge-mini badge-videos"><span id="dashboard-total-videos">0</span> Videos</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card glass-card">
+                        <div class="kpi-icon-wrapper kpi-green">🟢</div>
+                        <div class="kpi-content">
+                            <span class="kpi-label">Active Live Clients</span>
+                            <div class="kpi-value-row">
+                                <span class="kpi-value" id="dashboard-live-users">0</span>
+                                <span class="live-pulse-badge"><span class="pulse-ring"></span> Live Now</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card glass-card">
+                        <div class="kpi-icon-wrapper kpi-blue">💻</div>
+                        <div class="kpi-content">
+                            <span class="kpi-label">Registered Devices</span>
+                            <div class="kpi-value-row">
+                                <span class="kpi-value" id="dashboard-total-devices">0</span>
+                                <span class="kpi-sub-text">Total installs</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card glass-card">
+                        <div class="kpi-icon-wrapper kpi-amber">⚡</div>
+                        <div class="kpi-content">
+                            <span class="kpi-label">Backend Server</span>
+                            <div class="kpi-value-row">
+                                <span class="kpi-value kpi-status-text" id="dashboard-server-status">Online</span>
+                                <span class="kpi-sub-text" id="dashboard-server-uptime">Uptime: 0m</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Action Launchpad Cards -->
+                <div class="card glass-card" style="margin-top: 24px;">
+                    <h3 style="margin-bottom: 16px; font-size: 16px; font-weight: 700; color: var(--text-primary);">Quick Actions</h3>
+                    <div class="quick-actions-grid">
+                        <button type="button" class="quick-action-card" id="btn-quick-add-static">
+                            <div class="action-icon">🖼️</div>
+                            <div class="action-details">
+                                <div class="action-title">Add Static Wallpaper</div>
+                                <div class="action-desc">Upload PNG, JPG, or WebP desktop wallpaper</div>
+                            </div>
+                            <span class="action-arrow">→</span>
+                        </button>
+                        <button type="button" class="quick-action-card" id="btn-quick-add-video">
+                            <div class="action-icon">🎥</div>
+                            <div class="action-details">
+                                <div class="action-title">Add Video Wallpaper</div>
+                                <div class="action-desc">Upload MP4, WebM or configure direct stream URL</div>
+                            </div>
+                            <span class="action-arrow">→</span>
+                        </button>
+                        <button type="button" class="quick-action-card" id="btn-quick-view-catalog">
+                            <div class="action-icon">📂</div>
+                            <div class="action-details">
+                                <div class="action-title">Manage Active Catalog</div>
+                                <div class="action-desc">Search, filter, preview, and delete wallpapers</div>
+                            </div>
+                            <span class="action-arrow">→</span>
+                        </button>
+                        <button type="button" class="quick-action-card" id="btn-quick-browse-cloudinary">
+                            <div class="action-icon">☁️</div>
+                            <div class="action-details">
+                                <div class="action-title">Cloudinary Media Gallery</div>
+                                <div class="action-desc">Import existing media from Cloudinary storage</div>
+                            </div>
+                            <span class="action-arrow">→</span>
+                        </button>
+                        <button type="button" class="quick-action-card" id="btn-quick-launch-popup">
+                            <div class="action-icon">🚀</div>
+                            <div class="action-details">
+                                <div class="action-title">Launch Popup Modal</div>
+                                <div class="action-desc">Configure app-launch poster banner & click URL</div>
+                            </div>
+                            <span class="action-arrow">→</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Connected Clients Monitor Table -->
+                <div class="card glass-card" style="margin-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h3 style="font-size: 16px; font-weight: 700; color: var(--text-primary);">Registered & Live Client Devices</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Desktop clients tracked by unique Device ID reporting real-time heartbeats (every 15s).</p>
+                        </div>
+                        <button type="button" class="btn secondary-btn" id="btn-clear-registered-devices" style="font-size: 12px; padding: 6px 14px; color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); display: inline-flex; align-items: center; gap: 6px;">
+                            <span>🗑️</span> Clear Registered Devices
+                        </button>
+                    </div>
+
+                    <div class="clients-table-wrapper">
+                        <table class="clients-table">
+                            <thead>
+                                <tr>
+                                    <th>Client / Hostname</th>
+                                    <th>Platform</th>
+                                    <th>App Version</th>
+                                    <th>Active Wallpaper</th>
+                                    <th>Last Ping</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="connected-clients-list">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                        <div id="clients-empty-notice" class="clients-empty-notice">
+                            <span>No client devices currently active. Launch WallSync desktop app to see live heartbeats.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Push Notifications & Desktop Alerts Card -->
+                <div class="card glass-card" id="push-notifications-card" style="margin-top: 24px;">
+                    <div class="server-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                                <span>🔔</span> Push Notifications & Desktop Alerts
+                            </h3>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 13px;">
+                                Broadcast system update notifications directly to connected WallSync users' Windows desktops outside the application.
+                            </p>
+                        </div>
+                        <button type="button" class="btn secondary-btn" id="btn-clear-notifications" style="font-size: 12px; padding: 6px 14px; color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); display: inline-flex; align-items: center; gap: 6px;">
+                            <span>🗑️</span> Clear History
+                        </button>
+                    </div>
+
+                    <!-- Preset Quick Templates -->
+                    <div style="margin-bottom: 16px;">
+                        <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Quick Presets:</span>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;">
+                            <button type="button" class="btn secondary-btn notif-preset-btn" data-preset="update" style="font-size: 12px; padding: 5px 12px; cursor: pointer;">
+                                🚀 App Update Available
+                            </button>
+                            <button type="button" class="btn secondary-btn notif-preset-btn" data-preset="wallpaper" style="font-size: 12px; padding: 5px 12px; cursor: pointer;">
+                                🎨 New Wallpapers Added
+                            </button>
+                            <button type="button" class="btn secondary-btn notif-preset-btn" data-preset="announcement" style="font-size: 12px; padding: 5px 12px; cursor: pointer;">
+                                📢 System Maintenance
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Notification Broadcast Form -->
+                    <form id="push-notification-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="notif-title" style="font-size: 13px; font-weight: 600;">Notification Title *</label>
+                            <input type="text" id="notif-title" placeholder="e.g. WallSync v1.0.31.0 Update Available" required />
+                        </div>
+
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="notif-message" style="font-size: 13px; font-weight: 600;">Notification Message / Description *</label>
+                            <textarea id="notif-message" rows="3" placeholder="e.g. A new update is available with optimized live wallpaper performance. Restart WallSync to apply." required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="notif-type" style="font-size: 13px; font-weight: 600;">Notification Type</label>
+                            <select id="notif-type">
+                                <option value="update">🚀 App Update (update)</option>
+                                <option value="wallpaper">🎨 Wallpaper Drop (wallpaper)</option>
+                                <option value="announcement">📢 Announcement (announcement)</option>
+                                <option value="info">ℹ️ General Info (info)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="notif-version" style="font-size: 13px; font-weight: 600;">Target Version / Link (Optional)</label>
+                            <input type="text" id="notif-version" placeholder="e.g. 1.0.31.0 or https://wallsync.app" />
+                        </div>
+
+                        <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 8px;">
+                            <span id="notif-status-indicator" style="font-size: 13px; color: var(--text-secondary);"></span>
+                            <button type="submit" class="btn primary-btn" id="btn-send-notification" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px;">
+                                <span>📡</span> Broadcast Desktop Notification
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Notification History -->
+                    <div style="margin-top: 24px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h4 style="margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">
+                                Sent Notifications History (<span id="notif-count-badge">0</span>)
+                            </h4>
+                        </div>
+                        <div id="notifications-history-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 260px; overflow-y: auto;">
+                            <!-- Populated dynamically -->
+                            <div class="clients-empty-notice" id="notifs-empty-notice">
+                                <span>No broadcast notifications sent yet. Use the form above to send desktop alerts to all devices.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="section-reports" class="content-section">
+                <header class="section-header">
+                    <h2>User Reports</h2>
+                    <p>Live feedback and wallpaper moderation reports submitted by WallSync users.</p>
+                </header>
+                <div id="reports-list" class="reports-inbox" aria-live="polite">
+                    <div class="clients-empty-notice">Sign in with an administrator account to load reports.</div>
+                </div>
+                <div class="card glass-card wallpaper-reports-card">
+                    <div class="wallpaper-reports-heading">
+                        <div>
+                            <h3>Wallpaper Reports</h3>
+                            <p>Review reports linked to permanent wallpaper IDs.</p>
+                        </div>
+                        <div class="wallpaper-report-filters">
+                            <input id="wallpaper-report-search" type="search" placeholder="Search IDs, title, or email" aria-label="Search wallpaper reports">
+                            <select id="wallpaper-report-status" aria-label="Filter wallpaper reports by status">
+                                <option value="all">All statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="reviewing">Reviewing</option>
+                                <option value="resolved">Resolved</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="wallpaper-reports-list" class="wallpaper-reports-table-wrap" aria-live="polite">
+                        <div class="clients-empty-notice">Sign in with an administrator account to load wallpaper reports.</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Credentials Section -->
+            <section id="section-credentials" class="content-section">
+                <header class="section-header">
+                    <h2>Connection Setup</h2>
+                    <p>Connect to WallSync Firebase and configure Cloudinary credentials.</p>
+                </header>
+                
+                <div class="card glass-card" id="server-status-card" style="margin-bottom: 24px;">
+                    <div class="server-card-header">
+                        <div class="server-badge">
+                            <span class="dot disconnected" id="server-status-dot"></span>
+                            <span id="server-status-text">Backend Node Server: Connecting...</span>
+                        </div>
+                        <span class="server-port-tag" id="server-port-tag">Port 3000</span>
+                    </div>
+                    <div class="stats-overview-grid">
+                        <div class="stat-box live-box">
+                            <div class="stat-number-wrapper">
+                                <span class="stat-number" id="card-live-users-count">0</span>
+                                <span class="pulse-ring"></span>
+                            </div>
+                            <span class="stat-title">Active Live Clients</span>
+                            <span class="stat-sub">Heartbeat every 15s</span>
+                        </div>
+                        <div class="stat-box total-box">
+                            <span class="stat-number" id="card-total-users-count">0</span>
+                            <span class="stat-title">Total Registered Devices</span>
+                            <span class="stat-sub">Direct API sync</span>
+                        </div>
+                    </div>
+                    <div id="local-mode-banner" class="info-banner hidden" style="margin-top: 16px;">
+                        <span class="info-icon">⚡</span>
+                        <div>
+                            <strong>Local Server Direct Mode Active</strong>
+                            <p id="local-mode-description">Direct backend sync is active. Wallpaper publishing and real-time monitoring are enabled.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card glass-card" id="signin-card">
+                    <h3>Administrator Sign In</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 14px;">Sign in with an authorized Firebase account to manage wallpapers.</p>
+                    <form id="signin-form">
+                        <div class="form-group">
+                            <label for="admin-email">Email</label>
+                            <input type="email" id="admin-email" autocomplete="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-password">Password</label>
+                            <input type="password" id="admin-password" autocomplete="current-password" required>
+                        </div>
+                        <button type="submit" class="btn primary-btn" id="btn-signin">Sign In</button>
+                    </form>
+                    <div id="signin-status" class="status-message" role="status" aria-live="polite"></div>
+                </div>
+
+                <div class="card glass-card hidden" id="account-card">
+                    <h3>Administrator Account</h3>
+                    <p id="account-email" style="color: var(--text-secondary); margin-bottom: 16px; font-size: 14px;"></p>
+                    <button class="btn secondary-btn" id="btn-signout">Sign Out</button>
+                </div>
+
+                <div class="card glass-card" id="cloudinary-config-card" style="margin-top: 24px;">
+                    <h3>Cloudinary Upload Settings</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 14px;">Configure your Cloudinary Cloud Name and Unsigned Upload Preset to enable direct file picker video and image uploads without needing Firebase sign-in.</p>
+                    <form id="cloudinary-config-form">
+                        <div class="form-group">
+                            <label for="cloudinary-cloud-name">Cloudinary Cloud Name *</label>
+                            <input type="text" id="cloudinary-cloud-name" placeholder="e.g. wallsync or your-cloud-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="cloudinary-upload-preset">Upload Preset (Unsigned) *</label>
+                            <input type="text" id="cloudinary-upload-preset" placeholder="e.g. wallsync_preset or ml_default" required>
+                            <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">Created in Cloudinary Console &rarr; Settings &rarr; Upload &rarr; Upload presets (Mode: Unsigned).</small>
+                        </div>
+                        <button type="submit" class="btn primary-btn" id="btn-save-cloudinary-config">Save Cloudinary Settings</button>
+                    </form>
+                    <div id="cloudinary-config-status" class="status-message" role="status" aria-live="polite"></div>
+                </div>
+            </section>
+
+            <!-- Active Wallpapers Section (Synced from Firebase Realtime Database) -->
+            <section id="section-catalog" class="content-section">
+                <header class="section-header">
+                    <h2>Active Wallpapers Database</h2>
+                    <p>Live wallpapers synced directly from Firebase Realtime Database. Filter, search, preview, and manage published wallpapers.</p>
+                    <div class="header-actions">
+                        <div class="catalog-type-toggle">
+                            <button type="button" class="tab-btn active" id="btn-catalog-type-all">All</button>
+                            <button type="button" class="tab-btn" id="btn-catalog-type-images">Images</button>
+                            <button type="button" class="tab-btn" id="btn-catalog-type-videos">Videos</button>
+                        </div>
+                        <button class="btn secondary-btn" id="btn-refresh-catalog">Refresh Database</button>
+                    </div>
+                </header>
+
+                <div class="catalog-toolbar">
+                    <div class="search-box">
+                        <input type="search" id="catalog-search-input" placeholder="Search by title, category, or tag...">
+                    </div>
+                    <div class="filter-box">
+                        <label for="catalog-category-select">Category:</label>
+                        <select id="catalog-category-select">
+                            <option value="all">All Categories</option>
+                        </select>
+                    </div>
+                    <div class="catalog-summary">
+                        <span id="catalog-summary-text">Showing 0 wallpapers</span>
+                    </div>
+                </div>
+
+                <div id="catalog-loading" class="loading-spinner hidden">
+                    <div class="spinner"></div>
+                    <p id="catalog-loading-text">Loading database wallpapers...</p>
+                </div>
+
+                <div class="catalog-grid" id="catalog-grid">
+                    <!-- Catalog wallpaper cards will be injected here -->
+                </div>
+            </section>
+
+            <!-- Gallery Section -->
+            <section id="section-gallery" class="content-section">
+                <header class="section-header">
+                    <h2>Cloudinary Media Gallery</h2>
+                    <p>Select landscape wallpapers from Cloudinary to add to your catalog.</p>
+                    <div class="header-actions">
+                        <div class="gallery-type-toggle">
+                            <button type="button" class="tab-btn active" id="btn-gallery-type-images">Images</button>
+                            <button type="button" class="tab-btn" id="btn-gallery-type-videos">Videos</button>
+                        </div>
+                        <button class="btn secondary-btn" id="btn-refresh-gallery">Refresh Gallery</button>
+                        <button class="btn primary-btn" id="btn-process-selected" disabled>Process Selected (<span id="selected-count">0</span>)</button>
+                    </div>
+                </header>
+
+                <div id="gallery-loading" class="loading-spinner hidden">
+                    <div class="spinner"></div>
+                    <p id="gallery-loading-text">Fetching media...</p>
+                </div>
+
+                <div class="gallery-grid" id="gallery-grid">
+                    <!-- Media will be injected here -->
+                </div>
+            </section>
+
+            <!-- Static Image Wallpapers Section -->
+            <section id="section-static" class="content-section">
+                <header class="section-header">
+                    <h2>Static Image Wallpapers</h2>
+                    <p>Upload high-resolution image files to Cloudinary or link direct image URLs for desktop wallpapers.</p>
+                </header>
+
+                <div class="card glass-card">
+                    <div class="video-mode-selector">
+                        <button type="button" class="tab-btn active" id="btn-static-mode-cloudinary">Cloudinary Image Upload</button>
+                        <button type="button" class="tab-btn" id="btn-static-mode-direct">Direct Image URL</button>
+                    </div>
+
+                    <!-- Cloudinary Image Upload Panel -->
+                    <div id="panel-static-cloudinary" class="video-source-panel">
+                        <div class="info-banner">
+                            <span class="info-icon">☁️</span>
+                            <div>
+                                <strong>Cloudinary Image Storage</strong>
+                                <p>Upload high-resolution wallpapers directly to Cloudinary. <strong>Maximum upload file size: 25 MB</strong>. Recommended format: PNG, JPG, WebP (16:9, 1080p / 4K Ultra HD).</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="static-file-input">Select Image File</label>
+                            <input type="file" id="static-file-input" accept="image/png,image/jpeg,image/webp,image/avif,image/bmp">
+                            <div class="file-size-badge" id="static-file-size-badge">Max allowed file size: 25 MB</div>
+                        </div>
+
+                        <!-- Progress Bar during upload -->
+                        <div id="static-upload-progress-container" class="upload-progress-container hidden">
+                            <div class="progress-bar-track">
+                                <div id="static-upload-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                            </div>
+                            <div class="progress-text">
+                                <span id="static-upload-status">Uploading to Cloudinary...</span>
+                                <span id="static-upload-percent">0%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Direct URL Panel -->
+                    <div id="panel-static-direct" class="video-source-panel hidden">
+                        <div class="info-banner">
+                            <span class="info-icon">🔗</span>
+                            <div>
+                                <strong>Direct Image URL (No File Upload)</strong>
+                                <p>Provide a direct image URL (PNG, JPG, WebP) or local asset path (e.g. <code>/assets/aurora.png</code>).</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="static-direct-url-input">Direct Image URL *</label>
+                            <input type="url" id="static-direct-url-input" placeholder="https://images.unsplash.com/... or https://res.cloudinary.com/... or /assets/...">
+                        </div>
+                    </div>
+
+                    <!-- Static Image Preview Wrapper -->
+                    <div id="static-preview-wrapper" class="video-preview-wrapper hidden">
+                        <label>Image Preview</label>
+                        <div class="static-preview-image-box">
+                            <img id="static-preview-element" alt="Static Wallpaper Preview">
+                        </div>
+                        <div id="static-specs-text" class="video-specs"></div>
+                    </div>
+
+                    <!-- Metadata Fields Form -->
+                    <div class="metadata-form-grid" style="margin-top: 24px;">
+                        <div class="form-group">
+                            <label for="static-id-input">Database ID Key *</label>
+                            <input type="text" id="static-id-input" placeholder="e.g. golden_hour_mountains">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="static-title-input">Wallpaper Title / Name *</label>
+                            <input type="text" id="static-title-input" required placeholder="e.g. Golden Hour Mountains">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="static-category-input">Category *</label>
+                            <input type="text" id="static-category-input" list="static-category-suggestions" required placeholder="e.g. Nature, Space, Cyberpunk, Minimalist">
+                            <datalist id="static-category-suggestions">
+                                <option value="Nature">
+                                <option value="Space">
+                                <option value="Cyberpunk">
+                                <option value="Minimalist">
+                                <option value="Abstract">
+                                <option value="Landscape">
+                                <option value="Anime">
+                                <option value="3D Render">
+                            </datalist>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="static-tags-input">Keywords / Tags (Comma separated)</label>
+                            <input type="text" id="static-tags-input" placeholder="e.g. mountain, sunset, golden hour, nature, 4k, landscape">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="static-description-input">Description</label>
+                            <textarea id="static-description-input" rows="2" placeholder="Brief summary of the static wallpaper..."></textarea>
+                        </div>
+
+                        <div class="form-group pro-toggle-group full-width" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 183, 3, 0.08); border: 1px solid rgba(255, 183, 3, 0.25); border-radius: 10px; padding: 12px 16px; margin-top: 4px;">
+                            <div>
+                                <label for="static-is-pro-input" style="color: #ffb703; font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <span>👑 WallSync Pro Wallpaper</span>
+                                </label>
+                                <span style="font-size: 12px; color: var(--text-secondary);">Mark as exclusive to WallSync Pro users (free users cannot set as background)</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="static-is-pro-input">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="video-action-bar" style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn secondary-btn" id="btn-add-static-to-queue">Add to Upload Queue</button>
+                        <button type="button" class="btn primary-btn" id="btn-save-static-direct">Publish Static Wallpaper</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Video Wallpapers Section -->
+            <section id="section-videos" class="content-section">
+                <header class="section-header">
+                    <h2>Live Video Wallpapers</h2>
+                    <p>Upload video files to Cloudinary or link direct video streaming URLs.</p>
+                </header>
+
+                <div class="card glass-card">
+                    <div class="video-mode-selector">
+                        <button type="button" class="tab-btn active" id="btn-mode-cloudinary">Cloudinary Video Upload</button>
+                        <button type="button" class="tab-btn" id="btn-mode-direct-url">Direct Video URL</button>
+                    </div>
+
+                    <!-- Cloudinary Video Upload Panel -->
+                    <div id="panel-cloudinary-upload" class="video-source-panel">
+                        <div class="info-banner">
+                            <span class="info-icon">☁️</span>
+                            <div>
+                                <strong>Cloudinary Video Storage</strong>
+                                <p>Upload high-definition looping videos directly to Cloudinary. <strong>Maximum upload file size: 100 MB</strong>. Recommended format: MP4 / WebM (16:9, 1080p/720p 60fps loop).</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="video-file-input">Select Video File</label>
+                            <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska">
+                            <div class="file-size-badge" id="video-file-size-badge">Max allowed file size: 100 MB</div>
+                        </div>
+
+                        <!-- Progress Bar during upload -->
+                        <div id="video-upload-progress-container" class="upload-progress-container hidden">
+                            <div class="progress-bar-track">
+                                <div id="video-upload-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                            </div>
+                            <div class="progress-text">
+                                <span id="video-upload-status">Uploading to Cloudinary...</span>
+                                <span id="video-upload-percent">0%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Direct URL Panel -->
+                    <div id="panel-direct-url" class="video-source-panel hidden">
+                        <div class="info-banner">
+                            <span class="info-icon">🔗</span>
+                            <div>
+                                <strong>Direct Video URL (No File Upload)</strong>
+                                <p>Provide a direct MP4, WebM, or Cloudinary URL. The video will be linked directly without consuming local upload bandwidth.</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="direct-video-url-input">Direct Video Stream URL *</label>
+                            <input type="url" id="direct-video-url-input" placeholder="https://assets.mixkit.co/... or https://res.cloudinary.com/... or raw .mp4/.webm URL">
+                        </div>
+                    </div>
+
+                    <!-- Video Preview Player -->
+                    <div id="video-preview-wrapper" class="video-preview-wrapper hidden">
+                        <label>Live Video Player Preview</label>
+                        <div class="video-preview-player-box">
+                            <video id="video-preview-element" controls loop muted playsinline></video>
+                        </div>
+                        <div id="video-specs-text" class="video-specs"></div>
+                    </div>
+
+                    <!-- Metadata Fields Form (Same as image uploading: Category, Title, Description, Keywords/Tags) -->
+                    <div class="metadata-form-grid" style="margin-top: 24px;">
+                        <div class="form-group">
+                            <label for="video-id-input">Database ID Key *</label>
+                            <input type="text" id="video-id-input" placeholder="e.g. sci_fi_neon_city">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="video-title-input">Wallpaper Title / Name *</label>
+                            <input type="text" id="video-title-input" required placeholder="e.g. Sci-Fi Neon City">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="video-category-input">Category *</label>
+                            <input type="text" id="video-category-input" list="category-suggestions" required placeholder="e.g. Cyberpunk, Nature, Anime, Space">
+                            <datalist id="category-suggestions">
+                                <option value="Cyberpunk">
+                                <option value="Nature">
+                                <option value="Anime">
+                                <option value="Space">
+                                <option value="Abstract">
+                                <option value="Gaming">
+                                <option value="City">
+                                <option value="Live Video">
+                            </datalist>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="video-thumbnail-input">Poster / Thumbnail URL (Optional)</label>
+                            <input type="url" id="video-thumbnail-input" placeholder="https://... (Leave blank to auto-generate from video)">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="video-tags-input">Keywords / Tags (Comma separated)</label>
+                            <input type="text" id="video-tags-input" placeholder="e.g. neon, loop, 4k, cyberpunk, futuristic, motion">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="video-description-input">Description</label>
+                            <textarea id="video-description-input" rows="2" placeholder="Brief summary of the live video wallpaper..."></textarea>
+                        </div>
+
+                        <div class="form-group pro-toggle-group full-width" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 183, 3, 0.08); border: 1px solid rgba(255, 183, 3, 0.25); border-radius: 10px; padding: 12px 16px; margin-top: 4px;">
+                            <div>
+                                <label for="video-is-pro-input" style="color: #ffb703; font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <span>👑 WallSync Pro Live Wallpaper</span>
+                                </label>
+                                <span style="font-size: 12px; color: var(--text-secondary);">Mark as exclusive to WallSync Pro users (free users cannot set as background)</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="video-is-pro-input">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="video-action-bar" style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn secondary-btn" id="btn-add-video-to-queue">Add to Upload Queue</button>
+                        <button type="button" class="btn primary-btn" id="btn-save-video-direct">Publish Live Wallpaper</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Upload Queue Section -->
+            <section id="section-upload" class="content-section">
+                <header class="section-header">
+                    <h2>Upload Queue</h2>
+                    <p>Review metadata and publish wallpapers to Firebase.</p>
+                    <div class="header-actions">
+                        <button class="btn primary-btn" id="btn-bulk-upload">Upload All to Firebase</button>
+                    </div>
+                </header>
+
+                <div class="queue-list" id="queue-list">
+                    <!-- Queue items will be injected here -->
+                </div>
+            </section>
+
+            <!-- Promotional Launch Popup Section -->
+            <section id="section-popup" class="content-section">
+                <header class="section-header">
+                    <h2>Promotional Launch Popup</h2>
+                    <p>Manage the one-time poster popup displayed to users when the WallSync desktop app opens.</p>
+                </header>
+
+                <div class="popup-management-grid">
+                    <!-- Form Card -->
+                    <div class="card glass-card">
+                        <div class="popup-status-header">
+                            <div>
+                                <h3 style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">Popup Status</h3>
+                                <p style="font-size: 13px; color: var(--text-secondary);">Master switch to enable or disable the app open popup</p>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <span id="popup-status-badge" class="badge-status badge-disabled">DISABLED</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="popup-enabled-toggle">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <form id="popup-config-form">
+                            <div class="form-group" style="margin-bottom: 16px;">
+                                <label for="popup-image-url" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary);">
+                                    Poster Image URL <span style="color: var(--accent-color);">*</span>
+                                </label>
+                                <input type="url" id="popup-image-url" class="form-control" placeholder="https://example.com/poster.jpg or Cloudinary URL" style="width: 100%; padding: 10px 14px; background: rgba(15, 17, 26, 0.8); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px;" required>
+                                <span style="font-size: 12px; color: var(--text-secondary); display: block; margin-top: 4px;">Enter an image link (HTTPS or Cloudinary). Recommended aspect ratio: 3:4 or vertical poster.</span>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 16px;">
+                                <label for="popup-action-text" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary);">
+                                    Action Button Text
+                                </label>
+                                <input type="text" id="popup-action-text" class="form-control" placeholder="Continue" value="Continue" style="width: 100%; padding: 10px 14px; background: rgba(15, 17, 26, 0.8); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px;">
+                                <span style="font-size: 12px; color: var(--text-secondary); display: block; margin-top: 4px;">Label for the primary action button (defaults to "Continue").</span>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label for="popup-action-url" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary);">
+                                    Action Redirect URL
+                                </label>
+                                <input type="url" id="popup-action-url" class="form-control" placeholder="https://..." style="width: 100%; padding: 10px 14px; background: rgba(15, 17, 26, 0.8); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px;">
+                                <span style="font-size: 12px; color: var(--text-secondary); display: block; margin-top: 4px;">When users click the action button, this link opens in their default browser.</span>
+                            </div>
+
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px;">
+                                <button type="submit" id="btn-save-popup" class="btn primary-btn" style="padding: 10px 24px; font-weight: 600; border-radius: 8px; cursor: pointer;">
+                                    Save Popup Settings
+                                </button>
+                                <span id="popup-save-status" style="font-size: 13px; color: var(--text-secondary);"></span>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Live Interactive Preview Card -->
+                    <div class="card glass-card popup-preview-container">
+                        <h3 style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px;">Desktop Live Preview</h3>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">Real-time preview of how the poster popup will appear on the WallSync Windows desktop client on launch.</p>
+                        
+                        <div class="popup-modal-preview" id="popup-modal-preview">
+                            <!-- Top Close Button (X) -->
+                            <button type="button" class="preview-close-btn" id="preview-popup-close-btn" title="Close" aria-label="Close">✕</button>
+                            
+                            <!-- Poster Image Preview -->
+                            <div class="preview-image-wrapper" id="preview-image-wrapper">
+                                <img id="preview-poster-img" src="" alt="Poster Preview" style="display: none;">
+                                <div class="preview-image-placeholder" id="preview-image-placeholder">
+                                    <span style="font-size: 32px; margin-bottom: 8px;">🖼️</span>
+                                    <span style="font-size: 13px; color: var(--text-secondary);">Enter a poster image URL to preview</span>
+                                </div>
+                            </div>
+
+                            <!-- Bottom Action Button Row -->
+                            <div class="preview-action-row">
+                                <button type="button" class="preview-action-btn" id="preview-action-btn">
+                                    <span id="preview-action-btn-text">Continue</span>
+                                    <span style="font-size: 14px; margin-left: 4px;">↗</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Wallpaper Preview Modal -->
+    <div id="catalog-preview-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3 id="modal-wallpaper-title">Wallpaper Preview</h3>
+                <button type="button" class="btn-close" id="btn-close-modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-media-container" class="modal-media-container"></div>
+                <div class="modal-details" id="modal-wallpaper-details"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wallpaper Edit Modal -->
+    <div id="catalog-edit-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-card modal-card-edit">
+            <div class="modal-header">
+                <h3 id="modal-edit-heading">Edit Wallpaper</h3>
+                <button type="button" class="btn-close" id="btn-close-edit-modal">✕</button>
+            </div>
+            <form id="form-edit-wallpaper" class="modal-body edit-form-body">
+                <input type="hidden" id="edit-wallpaper-id">
+
+                <div class="edit-preview-banner" id="edit-preview-banner">
+                    <img id="edit-preview-image" src="" alt="Thumbnail preview" class="edit-thumbnail-preview hidden">
+                    <span id="edit-preview-placeholder" class="edit-preview-placeholder">Live Preview</span>
+                    <div class="edit-id-badge" id="edit-id-display">ID: ...</div>
+                </div>
+
+                <div class="form-grid edit-form-grid">
+                    <div class="form-group full-width">
+                        <label for="edit-title-input">Title / Name *</label>
+                        <input type="text" id="edit-title-input" required placeholder="Wallpaper title">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-category-input">Category *</label>
+                        <input type="text" id="edit-category-input" required list="category-datalist" placeholder="e.g. Cyberpunk, Nature, Car">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-type-select">Type *</label>
+                        <select id="edit-type-select">
+                            <option value="static">Static Image</option>
+                            <option value="video">Live Video</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="edit-url-input">Direct Asset URL / Stream URL *</label>
+                        <input type="url" id="edit-url-input" required placeholder="https://res.cloudinary.com/... or https://...">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="edit-thumbnail-input">Poster / Thumbnail URL (Optional)</label>
+                        <input type="url" id="edit-thumbnail-input" placeholder="https://... (Leave empty to auto-derive for Cloudinary/videos)">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="edit-tags-input">Keywords / Tags (Comma separated)</label>
+                        <input type="text" id="edit-tags-input" placeholder="e.g. 4k, neon, dark, supercar, nature">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="edit-description-input">Description</label>
+                        <textarea id="edit-description-input" rows="3" placeholder="Description of the wallpaper..."></textarea>
+                    </div>
+
+                    <div class="form-group pro-toggle-group full-width" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 183, 3, 0.08); border: 1px solid rgba(255, 183, 3, 0.25); border-radius: 10px; padding: 12px 16px; margin-top: 4px;">
+                        <div>
+                            <label for="edit-is-pro-input" style="color: #ffb703; font-weight: 700; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <span>👑 WallSync Pro Wallpaper</span>
+                            </label>
+                            <span style="font-size: 12px; color: var(--text-secondary);">Toggle Pro exclusivity on or off</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="edit-is-pro-input">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
+                    <button type="button" class="btn secondary-btn" id="btn-cancel-edit">Cancel</button>
+                    <button type="submit" class="btn primary-btn" id="btn-save-edit">Save Changes to RTDB</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

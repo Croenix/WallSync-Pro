@@ -1,0 +1,9 @@
+CompileFlags:
+  Add:
+    - "-IC:/Users/achub/OneDrive/Documents/WALLSYNC/windows/flutter/ephemeral/cpp_client_wrapper/include"
+    - "-IC:/Users/achub/OneDrive/Documents/WALLSYNC/windows/flutter/ephemeral"
+    - "-IC:/Users/achub/OneDrive/Documents/WALLSYNC/windows/runner"
+    - "-IC:/Users/achub/OneDrive/Documents/WALLSYNC/windows"
+    - "-DUNICODE"
+    - "-D_UNICODE"
+    - "-std=c++17"
