@@ -2756,10 +2756,10 @@ class _DashboardViewState extends State<DashboardView>
 
   Widget _buildTopNavBar() {
     return Container(
-      height: 65,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      height: 66,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
       decoration: BoxDecoration(
-        color: const Color(0xEB0A0A12),
+        color: const Color(0xF5080A10),
         border: Border(
           bottom: BorderSide(
             color: Colors.white.withValues(alpha: 0.08),
@@ -2768,164 +2768,203 @@ class _DashboardViewState extends State<DashboardView>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 20,
             offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: const Color(0xFF38BDF8).withValues(alpha: 0.04),
+            blurRadius: 30,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 1000;
+          final compact = constraints.maxWidth < 1100;
+          final ultraCompact = constraints.maxWidth < 820;
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Logo & Name
+              // Logo & Brand
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    width: 44,
-                    height: 44,
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF38BDF8).withValues(alpha: 0.20),
+                          const Color(0xFF818CF8).withValues(alpha: 0.10),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(5),
                     child: Image.asset(
                       'assets/wallsync_logo.png',
                       fit: BoxFit.contain,
-                      cacheWidth: 120,
-                      cacheHeight: 120,
+                      cacheWidth: 96,
+                      cacheHeight: 96,
                       errorBuilder: (_, _, _) => const Icon(
-                        Icons.widgets,
+                        Icons.widgets_rounded,
                         color: Color(0xFF38BDF8),
-                        size: 32,
+                        size: 24,
                       ),
                     ),
                   ),
-                  if (!compact) const SizedBox(width: 12),
-                  // Gradient title text
-                  if (!compact)
+                  if (!ultraCompact) ...[
+                    const SizedBox(width: 12),
                     ShaderMask(
-                      shaderCallback: (bounds) {
-                        return const LinearGradient(
-                          colors: [Color(0xFF38BDF8), Color(0xFFF472B6)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ).createShader(bounds);
-                      },
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFFFFFFF),
+                          Color(0xFFE2E8F0),
+                          Color(0xFF38BDF8),
+                        ],
+                        stops: [0.0, 0.6, 1.0],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(bounds),
                       child: const Text(
-                        'WALLSYNC PRO',
+                        'WALLSYNC',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
+                          letterSpacing: 2.0,
                           color: Colors.white,
                         ),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF38BDF8),
+                            Color(0xFF818CF8),
+                            Color(0xFFEC4899),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(7),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.45),
+                            blurRadius: 10,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.stars_rounded,
+                            size: 10,
+                            color: Color(0xFF070913),
+                          ),
+                          SizedBox(width: 3),
+                          Text(
+                            'PRO EDITION',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF070913),
+                              letterSpacing: 0.9,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
 
-              // Central sliding pill-tabs
+              // Central sliding pill-tabs dock
               Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(3.5),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(24),
+                  color: Colors.white.withValues(alpha: 0.035),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.08),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 10,
+                    ),
+                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        _buildMainTabButton(
-                          'Wallpapers',
-                          'wallpapers',
-                          Icons.wallpaper_rounded,
-                          compact: compact,
-                        ),
-                        if (!compact)
-                          Positioned(
-                            top: -4,
-                            right: 4,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 1.5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF59E0B),
-                                borderRadius: BorderRadius.circular(6),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFFF59E0B,
-                                    ).withValues(alpha: 0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                              child: const Text(
-                                'BETA',
-                                style: TextStyle(
-                                  fontSize: 7,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.black,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                    _buildMainTabButton(
+                      'Wallpapers',
+                      'wallpapers',
+                      Icons.wallpaper_rounded,
+                      compact: compact,
                     ),
+                    const SizedBox(width: 3),
                     _buildMainTabButton(
                       'Widgets',
                       'widgets',
                       Icons.widgets_rounded,
                       compact: compact,
                     ),
+                    const SizedBox(width: 3),
+                    _buildMainTabButton(
+                      'Diagnostics',
+                      'diagnostics',
+                      Icons.analytics_rounded,
+                      compact: compact,
+                    ),
+                    const SizedBox(width: 3),
+                    _buildMainTabButton(
+                      'Bug Report',
+                      'bug_report',
+                      Icons.bug_report_rounded,
+                      compact: compact,
+                    ),
+                    const SizedBox(width: 3),
+                    _buildMainTabButton(
+                      'About',
+                      'about',
+                      Icons.info_outline_rounded,
+                      compact: compact,
+                    ),
                   ],
                 ),
               ),
 
-              // Quick status
+              // Quick actions & Desktop status
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    constraints: BoxConstraints.tightFor(
-                      width: compact ? 36 : 48,
-                      height: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.bug_report_rounded,
-                      size: 18,
-                      color: Colors.white70,
-                    ),
-                    onPressed: () =>
-                        setState(() => _currentMainTab = 'bug_report'),
-                    tooltip: 'Report a Bug',
-                  ),
-                  IconButton(
-                    constraints: BoxConstraints.tightFor(
-                      width: compact ? 36 : 48,
-                      height: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.info_outline_rounded,
-                      size: 18,
-                      color: Colors.white70,
-                    ),
-                    onPressed: () => setState(() => _currentMainTab = 'about'),
-                    tooltip: 'About WallSync Pro',
-                  ),
                   if (_currentMainTab == 'wallpapers')
                     IconButton(
-                      constraints: BoxConstraints.tightFor(
-                        width: compact ? 36 : 48,
-                        height: 40,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 38,
+                        height: 38,
                       ),
                       padding: EdgeInsets.zero,
                       icon: const Icon(
@@ -2934,46 +2973,35 @@ class _DashboardViewState extends State<DashboardView>
                         color: Colors.white70,
                       ),
                       onPressed: _loadWallpapers,
-                      tooltip: 'Refresh Gallery',
+                      tooltip: 'Refresh Wallpapers',
+                      hoverColor: const Color(0xFF38BDF8).withValues(alpha: 0.12),
                     ),
-                  if (!compact) const SizedBox(width: 8),
-                  if (compact)
-                    Tooltip(
-                      message: _isOverlayRunning
-                          ? 'Desktop widget active'
-                          : 'Desktop widget inactive',
-                      child: Icon(
-                        Icons.circle,
-                        size: 10,
-                        color: _isOverlayRunning
-                            ? const Color(0xFF43E97B)
-                            : Colors.white30,
-                      ),
-                    ),
-                  if (!compact)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: _isOverlayRunning
+                        ? 'Desktop widget active & running'
+                        : 'Desktop widget inactive',
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 9 : 13,
+                        vertical: 6.5,
                       ),
                       decoration: BoxDecoration(
                         color: _isOverlayRunning
-                            ? const Color(0xFF43E97B).withValues(alpha: 0.08)
+                            ? const Color(0xFF10B981).withValues(alpha: 0.10)
                             : Colors.white.withValues(alpha: 0.03),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: _isOverlayRunning
-                              ? const Color(0xFF43E97B).withValues(alpha: 0.35)
+                              ? const Color(0xFF10B981).withValues(alpha: 0.40)
                               : Colors.white.withValues(alpha: 0.08),
                           width: 1.0,
                         ),
                         boxShadow: _isOverlayRunning
                             ? [
                                 BoxShadow(
-                                  color: const Color(
-                                    0xFF43E97B,
-                                  ).withValues(alpha: 0.1),
-                                  blurRadius: 8,
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                  blurRadius: 10,
                                 ),
                               ]
                             : null,
@@ -2982,37 +3010,41 @@ class _DashboardViewState extends State<DashboardView>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 8,
-                            height: 8,
+                            width: 7.5,
+                            height: 7.5,
                             decoration: BoxDecoration(
                               color: _isOverlayRunning
-                                  ? const Color(0xFF43E97B)
+                                  ? const Color(0xFF10B981)
                                   : Colors.white30,
                               shape: BoxShape.circle,
                               boxShadow: _isOverlayRunning
                                   ? [
                                       BoxShadow(
-                                        color: const Color(0xFF43E97B),
-                                        blurRadius: 6,
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                                        blurRadius: 8,
+                                        spreadRadius: 1,
                                       ),
                                     ]
                                   : null,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isOverlayRunning ? 'Active' : 'Inactive',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _isOverlayRunning
-                                  ? const Color(0xFF43E97B)
-                                  : Colors.white60,
-                              fontWeight: FontWeight.w700,
+                          if (!compact) ...[
+                            const SizedBox(width: 7.5),
+                            Text(
+                              _isOverlayRunning ? 'Desktop Active' : 'Desktop Off',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _isOverlayRunning
+                                    ? const Color(0xFF10B981)
+                                    : Colors.white60,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
+                  ),
                 ],
               ),
             ],
@@ -3032,58 +3064,98 @@ class _DashboardViewState extends State<DashboardView>
     if (compact) {
       return Tooltip(
         message: label,
-        child: IconButton(
-          constraints: const BoxConstraints.tightFor(width: 42, height: 40),
-          padding: EdgeInsets.zero,
-          onPressed: () => setState(() => _currentMainTab = tabKey),
-          icon: Icon(
-            icon,
-            size: 17,
-            color: isSelected ? const Color(0xFF38BDF8) : Colors.white60,
+        child: InkWell(
+          onTap: () => setState(() => _currentMainTab = tabKey),
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? LinearGradient(
+                      colors: [
+                        const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                        const Color(0xFF818CF8).withValues(alpha: 0.12),
+                      ],
+                    )
+                  : null,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFF38BDF8).withValues(alpha: 0.45)
+                    : Colors.transparent,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.20),
+                        blurRadius: 8,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: isSelected ? const Color(0xFF38BDF8) : Colors.white60,
+            ),
           ),
         ),
       );
     }
-    return GestureDetector(
+    return InkWell(
       onTap: () => setState(() => _currentMainTab = tabKey),
+      borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7.5),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.white.withValues(alpha: 0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [
+                    const Color(0xFF38BDF8).withValues(alpha: 0.20),
+                    const Color(0xFF818CF8).withValues(alpha: 0.10),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isSelected ? null : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
-                ? Colors.white.withValues(alpha: 0.15)
+                ? const Color(0xFF38BDF8).withValues(alpha: 0.45)
                 : Colors.transparent,
             width: 1.0,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 4,
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
                 ]
               : null,
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 16,
-              color: isSelected ? const Color(0xFF38BDF8) : Colors.white38,
+              size: 15,
+              color: isSelected ? const Color(0xFF38BDF8) : Colors.white54,
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected ? Colors.white : Colors.white60,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                color: isSelected ? Colors.white : Colors.white70,
+                letterSpacing: 0.3,
               ),
             ),
           ],
@@ -3490,39 +3562,44 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Widget _buildWallpaperSubTabSelector() {
-    final isRecentTab = _wallpaperSubTab == 'recent';
-    final isLiveTab = _wallpaperSubTab == 'live';
+    final liveCount = _cachedLiveWallpapers.length;
+    final staticCount = _cachedStaticWallpapers.length;
+    final recentCount = _settings.recentWallpapers.length;
 
-    final icon = isRecentTab
-        ? Icons.history_rounded
-        : (isLiveTab ? Icons.movie_filter_rounded : Icons.image_rounded);
-
-    final title = isRecentTab
-        ? 'RECENT WALLPAPERS'
-        : (isLiveTab ? 'LIVE VIDEO WALLPAPERS' : 'DESKTOP WALLPAPERS');
-
-    final color = isRecentTab
-        ? const Color(0xFFEC4899)
-        : const Color(0xFF38BDF8);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 10),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 1.1,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 3,
+                height: 16,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'WALLPAPERS GALLERY',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ],
           ),
           const Spacer(),
           Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(12),
@@ -3536,19 +3613,23 @@ class _DashboardViewState extends State<DashboardView>
                   label: 'Recent',
                   icon: Icons.history_rounded,
                   activeColor: const Color(0xFFEC4899),
-                  count: _settings.recentWallpapers.length,
+                  count: recentCount > 0 ? recentCount : null,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 3),
                 _buildWallpaperSubTabChip(
                   id: 'static',
                   label: 'Static Wallpapers',
                   icon: Icons.photo_library_rounded,
+                  activeColor: const Color(0xFF38BDF8),
+                  count: staticCount > 0 ? staticCount : null,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 3),
                 _buildWallpaperSubTabChip(
                   id: 'live',
                   label: 'Live Video',
                   icon: Icons.videocam_rounded,
+                  activeColor: const Color(0xFF818CF8),
+                  count: liveCount > 0 ? liveCount : null,
                 ),
               ],
             ),
@@ -4971,11 +5052,29 @@ class _DashboardViewState extends State<DashboardView>
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF38BDF8).withValues(alpha: 0.08),
+              const Color(0xFF818CF8).withValues(alpha: 0.04),
+              Colors.white.withValues(alpha: 0.02),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+            width: 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4983,6 +5082,21 @@ class _DashboardViewState extends State<DashboardView>
             Expanded(
               child: Row(
                 children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.8),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   const Icon(
                     Icons.wallpaper_rounded,
                     size: 16,
@@ -4999,14 +5113,14 @@ class _DashboardViewState extends State<DashboardView>
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 2,
+                      horizontal: 12,
+                      vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: Colors.white.withValues(alpha: 0.12),
                       ),
                     ),
                     child: DropdownButtonHideUnderline(
@@ -5095,18 +5209,21 @@ class _DashboardViewState extends State<DashboardView>
               onPressed: _isVideoWallpaperBusy ? null : _clearWallpaper,
               icon: const Icon(Icons.restore_rounded, size: 14),
               label: const Text(
-                'Restore Default',
+                'Clear Wallpaper',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
               ),
               style: TextButton.styleFrom(
-                foregroundColor: Colors.redAccent.shade100,
+                foregroundColor: const Color(0xFFF87171),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
+                  horizontal: 14,
                   vertical: 8,
                 ),
-                backgroundColor: Colors.redAccent.withValues(alpha: 0.08),
+                backgroundColor: const Color(0xFFF87171).withValues(alpha: 0.10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(
+                    color: const Color(0xFFF87171).withValues(alpha: 0.25),
+                  ),
                 ),
               ),
             ),
@@ -5117,13 +5234,6 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _applyVideoWallpaper(String pathOrUrl) async {
-    final proMatch = _cachedLiveWallpapers
-        .where((w) => w.isPro && (w.url == pathOrUrl || w.id == pathOrUrl))
-        .firstOrNull;
-    if (proMatch != null) {
-      await _showProExclusiveDialog(proMatch);
-      return;
-    }
     await _enqueueWallpaperTransition('video:$pathOrUrl', (requestId) async {
       await _applyVideoWallpaperNow(pathOrUrl, requestId);
     });
@@ -5419,43 +5529,79 @@ class _DashboardViewState extends State<DashboardView>
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF38BDF8).withValues(alpha: 0.08),
+                    const Color(0xFF818CF8).withValues(alpha: 0.04),
+                    Colors.white.withValues(alpha: 0.02),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.20),
+                  width: 1.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.movie_creation_outlined,
-                      size: 18,
-                      color: Color(0xFF38BDF8),
+                    child: const Center(
+                      child: Icon(
+                        Icons.movie_creation_rounded,
+                        size: 20,
+                        color: Color(0xFF070913),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Live Video Wallpaper Engine',
+                          'Live Motion Wallpaper Engine',
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
                             color: Colors.white,
+                            letterSpacing: 0.2,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        SizedBox(height: 3),
                         Text(
-                          'Select any live wallpaper below to apply hardware-accelerated motion on your desktop',
-                          style: TextStyle(fontSize: 11, color: Colors.white54),
+                          'Hardware-accelerated 60 FPS motion backgrounds • Ultra-low GPU latency',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white60,
+                          ),
                         ),
                       ],
                     ),
@@ -5471,7 +5617,7 @@ class _DashboardViewState extends State<DashboardView>
                       _showVideoSettingsExpanded
                           ? Icons.expand_less_rounded
                           : Icons.add_to_photos_rounded,
-                      size: 14,
+                      size: 15,
                     ),
                     label: Text(
                       _showVideoSettingsExpanded
@@ -5479,20 +5625,22 @@ class _DashboardViewState extends State<DashboardView>
                           : 'Custom Video / URL',
                       style: const TextStyle(
                         fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
                       ),
                     ),
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF38BDF8),
-                      backgroundColor: const Color(
-                        0xFF38BDF8,
-                      ).withValues(alpha: 0.1),
+                      foregroundColor: Colors.white,
+                      backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.16),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
-                        vertical: 8,
+                        vertical: 9,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(11),
+                        side: BorderSide(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        ),
                       ),
                     ),
                   ),
@@ -7005,7 +7153,7 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<File?> _downloadOnlyBg(FirebaseWallpaper wallpaper) async {
-    if (wallpaper.isPro || !mounted) return null;
+    if (!mounted) return null;
     setState(() => _downloadProgress[wallpaper.id] = 0.01);
 
     try {
@@ -7096,16 +7244,16 @@ class _DashboardViewState extends State<DashboardView>
       },
       child: Tooltip(
         message: wp.isPro
-            ? 'WallSync Pro Exclusive • ${wp.name}'
+            ? (isVideo
+                  ? 'WallSync Pro Live Video • ${wp.name}'
+                  : 'WallSync Pro Wallpaper • ${wp.name}')
             : isVideo
             ? (isActive
                   ? 'Active live video wallpaper • Click to preview & set'
                   : 'Live video wallpaper • Click to preview & set')
             : 'Set wallpaper',
         child: GestureDetector(
-          onTap: wp.isPro
-              ? () => _showProExclusiveDialog(wp)
-              : isApplying || _isVideoWallpaperBusy || _isClearingWallpaperCache
+          onTap: isApplying || _isVideoWallpaperBusy || _isClearingWallpaperCache
               ? null
               : isVideo
               ? () => showLiveVideoPreviewDialog(
@@ -7120,24 +7268,31 @@ class _DashboardViewState extends State<DashboardView>
             glowColor: isActive
                 ? themeColor
                 : (isVideo ? const Color(0xFF38BDF8) : const Color(0xFFEC4899)),
-            maxGlowOpacity: isActive ? 0.35 : 0.18,
-            blurRadius: isActive ? 16 : 10,
-            scaleUp: 1.03,
+            maxGlowOpacity: isActive ? 0.40 : 0.22,
+            blurRadius: isActive ? 20 : 14,
+            scaleUp: 1.035,
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E2A).withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFF131622),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: isActive
                       ? themeColor
                       : (isVideo
-                            ? const Color(0xFF38BDF8).withValues(alpha: 0.25)
-                            : Colors.white.withValues(alpha: 0.08)),
-                  width: isActive ? 1.5 : 1.0,
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.30)
+                            : Colors.white.withValues(alpha: 0.09)),
+                  width: isActive ? 1.8 : 1.0,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(isActive ? 14 : 15),
+                borderRadius: BorderRadius.circular(isActive ? 16 : 17),
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -7248,24 +7403,24 @@ class _DashboardViewState extends State<DashboardView>
 
                     if (wp.isPro)
                       Positioned(
-                        top: 8,
-                        left: isVideo ? 108 : 8,
+                        top: 9,
+                        left: isVideo ? 116 : 9,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
+                            horizontal: 7.5,
                             vertical: 3.5,
                           ),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
                               colors: [Color(0xFFFFB703), Color(0xFFFB8500)],
                             ),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(7),
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(
                                   0xFFFB8500,
-                                ).withValues(alpha: 0.5),
-                                blurRadius: 8,
+                                ).withValues(alpha: 0.55),
+                                blurRadius: 10,
                                 offset: const Offset(0, 2),
                               ),
                             ],
@@ -7274,13 +7429,13 @@ class _DashboardViewState extends State<DashboardView>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons.workspace_premium_rounded,
+                                Icons.stars_rounded,
                                 size: 11,
                                 color: Color(0xFF0F111A),
                               ),
-                              SizedBox(width: 3),
+                              SizedBox(width: 3.5),
                               Text(
-                                'PRO',
+                                'PRO UNLOCKED',
                                 style: TextStyle(
                                   color: Color(0xFF0F111A),
                                   fontSize: 8.5,
@@ -7295,17 +7450,19 @@ class _DashboardViewState extends State<DashboardView>
 
                     if (isVideo)
                       Positioned(
-                        top: 8,
-                        left: 8,
+                        top: 9,
+                        left: 9,
                         child: isHoveredVideo
                             ? Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
+                                  horizontal: 8,
                                   vertical: 3.5,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF0284C7),
-                                  borderRadius: BorderRadius.circular(6),
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
+                                  ),
+                                  borderRadius: BorderRadius.circular(7),
                                   boxShadow: [
                                     BoxShadow(
                                       color: const Color(
@@ -7337,7 +7494,7 @@ class _DashboardViewState extends State<DashboardView>
                               )
                             : Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
+                                  horizontal: 8,
                                   vertical: 3.5,
                                 ),
                                 decoration: BoxDecoration(
@@ -7347,7 +7504,7 @@ class _DashboardViewState extends State<DashboardView>
                                       Color(0xFF6366F1),
                                     ],
                                   ),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(7),
                                   boxShadow: [
                                     BoxShadow(
                                       color: const Color(
@@ -7368,10 +7525,10 @@ class _DashboardViewState extends State<DashboardView>
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      isActive ? 'ACTIVE VIDEO' : 'LIVE VIDEO',
+                                      isActive ? 'ACTIVE VIDEO' : '60FPS LIVE',
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 9,
+                                        fontSize: 8.5,
                                         fontWeight: FontWeight.w900,
                                         letterSpacing: 0.5,
                                       ),
@@ -7463,90 +7620,105 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                           if (isVideo) ...[
                             Tooltip(
-                              message: wp.isPro
-                                  ? 'WallSync Pro Exclusive'
-                                  : 'Full Video Preview & Options',
-                              child: IconButton(
-                                onPressed: wp.isPro
-                                    ? () => _showProExclusiveDialog(wp)
-                                    : () => showLiveVideoPreviewDialog(
-                                  context: context,
-                                  wallpaper: wp,
-                                  isActive: isActive,
-                                  onApplyWallpaper: _applyVideoWallpaper,
+                              message: 'Full Video Preview & Options',
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                                    width: 1.0,
+                                  ),
                                 ),
-                                icon: const Icon(
-                                  Icons.visibility_rounded,
-                                  size: 16,
-                                ),
-                                color: Colors.white,
-                                style: IconButton.styleFrom(
-                                  backgroundColor: const Color(
-                                    0xFF38BDF8,
-                                  ).withValues(alpha: 0.2),
-                                  hoverColor: const Color(
-                                    0xFF38BDF8,
-                                  ).withValues(alpha: 0.4),
-                                  padding: const EdgeInsets.all(7),
-                                  minimumSize: const Size(32, 32),
+                                child: IconButton(
+                                  onPressed: () => showLiveVideoPreviewDialog(
+                                    context: context,
+                                    wallpaper: wp,
+                                    isActive: isActive,
+                                    onApplyWallpaper: _applyVideoWallpaper,
+                                    onReportWallpaper: _showWallpaperReportDialog,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.visibility_rounded,
+                                    size: 15,
+                                  ),
+                                  color: Colors.white,
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                                    hoverColor: const Color(0xFF38BDF8).withValues(alpha: 0.38),
+                                    padding: const EdgeInsets.all(7),
+                                    minimumSize: const Size(32, 32),
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 6),
                           ],
                           Tooltip(
-                            message: wp.isPro
-                                ? 'WallSync Pro Exclusive'
-                                : isVideo
+                            message: isVideo
                                 ? (isActive
                                       ? 'Active Live Wallpaper'
                                       : 'Set Live Wallpaper')
                                 : (isDownloaded ? 'Set wallpaper' : 'Download'),
-                            child: IconButton(
-                              onPressed: wp.isPro
-                                  ? () => _showProExclusiveDialog(wp)
-                                  : isBusy ||
-                                      _isVideoWallpaperBusy ||
-                                      _isClearingWallpaperCache
-                                  ? null
-                                  : isVideo
-                                  ? () => _applyVideoWallpaper(wp.url)
-                                  : isDownloaded
-                                  ? () => _applyWallpaper(wp)
-                                  : () => _downloadOnly(wp),
-                              icon: wp.isPro
-                                  ? const Icon(
-                                      Icons.lock_rounded,
-                                      size: 18,
-                                      color: Color(0xFFFFB703),
-                                    )
-                                  : isBusy
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isActive
+                                      ? themeColor.withValues(alpha: 0.8)
+                                      : wp.isPro
+                                      ? const Color(0xFFFFB703).withValues(alpha: 0.5)
+                                      : Colors.white.withValues(alpha: 0.15),
+                                  width: 1.0,
+                                ),
+                                boxShadow: isActive
+                                    ? [
+                                        BoxShadow(
+                                          color: themeColor.withValues(alpha: 0.35),
+                                          blurRadius: 8,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: IconButton(
+                                onPressed: isBusy ||
+                                        _isVideoWallpaperBusy ||
+                                        _isClearingWallpaperCache
+                                    ? null
+                                    : isVideo
+                                    ? () => _applyVideoWallpaper(wp.url)
+                                    : isDownloaded
+                                    ? () => _applyWallpaper(wp)
+                                    : () => _downloadOnly(wp),
+                                icon: isBusy
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        isActive
+                                            ? Icons.check_rounded
+                                            : isVideo
+                                            ? Icons.play_arrow_rounded
+                                            : isDownloaded
+                                            ? Icons.wallpaper_rounded
+                                            : Icons.download_rounded,
+                                        size: 16,
                                       ),
-                                    )
-                                  : Icon(
-                                      isActive
-                                          ? Icons.check_rounded
-                                          : isVideo
-                                          ? Icons.play_circle_fill_rounded
-                                          : isDownloaded
-                                          ? Icons.wallpaper_rounded
-                                          : Icons.download_rounded,
-                                      size: 18,
-                                    ),
-                              color: Colors.white,
-                              style: IconButton.styleFrom(
-                                backgroundColor: wp.isPro
-                                    ? const Color(0xFFFFB703).withValues(alpha: 0.15)
-                                    : isActive
-                                    ? themeColor
-                                    : Colors.white.withValues(alpha: 0.08),
-                                disabledBackgroundColor: Colors.white
-                                    .withValues(alpha: 0.08),
+                                color: Colors.white,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: isActive
+                                      ? themeColor
+                                      : wp.isPro
+                                      ? const Color(0xFFFFB703).withValues(alpha: 0.22)
+                                      : Colors.white.withValues(alpha: 0.08),
+                                  disabledBackgroundColor: Colors.white
+                                      .withValues(alpha: 0.08),
+                                  padding: const EdgeInsets.all(7),
+                                  minimumSize: const Size(32, 32),
+                                ),
                               ),
                             ),
                           ),
@@ -7930,10 +8102,6 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _downloadOnly(FirebaseWallpaper wallpaper) async {
-    if (wallpaper.isPro) {
-      await _showProExclusiveDialog(wallpaper);
-      return;
-    }
     if (_explicitWallpaperDownloads.contains(wallpaper.id)) return;
     setState(() => _explicitWallpaperDownloads.add(wallpaper.id));
     logInfo('DashboardView', 'Downloading wallpaper: ${wallpaper.url}');
@@ -7984,10 +8152,6 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _applyWallpaper(FirebaseWallpaper wallpaper) async {
-    if (wallpaper.isPro) {
-      await _showProExclusiveDialog(wallpaper);
-      return;
-    }
     await _enqueueWallpaperTransition('static:${wallpaper.id}', (
       requestId,
     ) async {
@@ -19066,34 +19230,41 @@ class _DashboardViewState extends State<DashboardView>
   Widget _buildCategoryChip(String cat, bool isSelected) {
     return GestureDetector(
       onTap: () => setState(() => _selectedCategory = cat),
-      child: HoverCard(
-        scaleUp: 1.04,
-        borderRadius: BorderRadius.circular(16),
-        glowColor: const Color(0xFFA855F7),
-        maxGlowOpacity: 0.15,
-        blurRadius: 8,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                )
+              : null,
+          color: isSelected ? null : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
             color: isSelected
-                ? const Color(0xFFA855F7).withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected
-                  ? const Color(0xFFA855F7).withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.08),
-              width: 1.0,
-            ),
+                ? Colors.transparent
+                : Colors.white.withValues(alpha: 0.09),
+            width: 1.0,
           ),
-          child: Text(
-            cat,
-            style: TextStyle(
-              fontSize: 12,
-              color: isSelected ? Colors.white : Colors.white60,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          cat,
+          style: TextStyle(
+            fontSize: 12,
+            color: isSelected ? const Color(0xFF070913) : Colors.white70,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            letterSpacing: 0.3,
           ),
         ),
       ),
@@ -19104,6 +19275,7 @@ class _DashboardViewState extends State<DashboardView>
 
   Widget _buildAboutTab({Key? key}) {
     const accent = Color(0xFF38BDF8);
+    const secondaryAccent = Color(0xFF818CF8);
     const mutedText = Color(0xFFB7C1D1);
 
     Widget policyPoint({
@@ -19116,11 +19288,28 @@ class _DashboardViewState extends State<DashboardView>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(11),
+              gradient: LinearGradient(
+                colors: [
+                  accent.withValues(alpha: 0.15),
+                  secondaryAccent.withValues(alpha: 0.08),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.30),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.12),
+                  blurRadius: 8,
+                ),
+              ],
             ),
             child: Icon(icon, size: 18, color: accent),
           ),
@@ -19160,27 +19349,63 @@ class _DashboardViewState extends State<DashboardView>
       required Widget child,
     }) => Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF10131B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.075)),
+        gradient: const LinearGradient(
+          colors: [Color(0xF5101422), Color(0xF50A0C14)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1.1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.40),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: accent.withValues(alpha: 0.03),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(13),
+                    gradient: LinearGradient(
+                      colors: [
+                        accent.withValues(alpha: 0.18),
+                        secondaryAccent.withValues(alpha: 0.10),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.35),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.20),
+                        blurRadius: 10,
+                      ),
+                    ],
                   ),
-                  child: Icon(icon, color: accent, size: 21),
+                  child: Icon(icon, color: accent, size: 22),
                 ),
-                const SizedBox(width: 13),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -19191,13 +19416,14 @@ class _DashboardViewState extends State<DashboardView>
                           color: Colors.white,
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                          color: Colors.white54,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
                           fontSize: 12,
                         ),
                       ),
@@ -19206,7 +19432,7 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             child,
           ],
         ),
@@ -19218,21 +19444,45 @@ class _DashboardViewState extends State<DashboardView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: secondaryAccent,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: secondaryAccent.withValues(alpha: 0.6),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 5),
-          Text(
-            body,
-            style: const TextStyle(
-              color: mutedText,
-              fontSize: 13,
-              height: 1.55,
+          Padding(
+            padding: const EdgeInsets.only(left: 14),
+            child: Text(
+              body,
+              style: const TextStyle(
+                color: mutedText,
+                fontSize: 13,
+                height: 1.55,
+              ),
             ),
           ),
         ],
@@ -19260,49 +19510,129 @@ class _DashboardViewState extends State<DashboardView>
                     padding: EdgeInsets.all(compact ? 22 : 30),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF13283D), Color(0xFF121623)],
+                        colors: [
+                          Color(0xFF0F1E36),
+                          Color(0xFF13172E),
+                          Color(0xFF090B14),
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: accent.withValues(alpha: 0.20)),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.28),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.12),
+                          blurRadius: 30,
+                          offset: const Offset(0, 10),
+                        ),
+                        BoxShadow(
+                          color: secondaryAccent.withValues(alpha: 0.08),
+                          blurRadius: 40,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
                     ),
                     child: Row(
                       children: [
                         Container(
-                          width: compact ? 52 : 64,
-                          height: compact ? 52 : 64,
+                          width: compact ? 54 : 68,
+                          height: compact ? 54 : 68,
                           decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.13),
-                            borderRadius: BorderRadius.circular(18),
+                            gradient: LinearGradient(
+                              colors: [
+                                accent.withValues(alpha: 0.25),
+                                secondaryAccent.withValues(alpha: 0.12),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: accent.withValues(alpha: 0.45),
+                              width: 1.3,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(alpha: 0.30),
+                                blurRadius: 18,
+                                spreadRadius: 1,
+                              ),
+                            ],
                           ),
                           child: const Icon(
                             Icons.wallpaper_rounded,
-                            size: 32,
+                            size: 34,
                             color: accent,
                           ),
                         ),
-                        const SizedBox(width: 18),
+                        const SizedBox(width: 20),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'About WallSync',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: compact ? 22 : 27,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                ),
+                              Row(
+                                children: [
+                                  ShaderMask(
+                                    shaderCallback: (bounds) => const LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Color(0xFFE0E7FF),
+                                        Color(0xFF38BDF8),
+                                      ],
+                                      stops: [0.0, 0.65, 1.0],
+                                    ).createShader(bounds),
+                                    child: Text(
+                                      'About WallSync',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: compact ? 22 : 28,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF38BDF8).withValues(alpha: 0.40),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Text(
+                                      'PRO EDITION',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF070913),
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'Personalize your desktop with wallpapers and widgets.',
+                                'Personalize your Windows desktop with dynamic live video wallpapers and real-time widgets.',
                                 style: TextStyle(
                                   color: Color(0xFFC3D1E0),
                                   fontSize: 13,
-                                  height: 1.4,
+                                  height: 1.45,
                                 ),
                               ),
                             ],
@@ -19311,7 +19641,7 @@ class _DashboardViewState extends State<DashboardView>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
                   sectionCard(
                     icon: Icons.shield_outlined,
                     title: 'Privacy Policy',
@@ -19328,28 +19658,28 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Divider(color: Colors.white12, height: 1),
+                        Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
                         policyPoint(
                           icon: Icons.person_off_outlined,
                           title: 'Zero personal data collection',
                           text:
                               'WallSync does not collect, store, track, or process any personally identifiable information (PII), sensitive data, telemetry, or user analytics under any circumstances.',
                         ),
-                        const Divider(color: Colors.white10, height: 1),
+                        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
                         policyPoint(
                           icon: Icons.devices_outlined,
                           title: 'Local operation',
                           text:
                               'The application operates locally on your device. We do not use persistent identifiers, user tracking cookies, or dynamic background activity logs.',
                         ),
-                        const Divider(color: Colors.white10, height: 1),
+                        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
                         policyPoint(
                           icon: Icons.cloud_outlined,
                           title: 'Network and cloud access',
                           text:
                               'Network connectivity is required solely to fetch wallpaper assets, desktop widgets, and associated metadata from designated Cloudinary and Firebase servers. No personal identifiers or usage history are attached to these network requests.',
                         ),
-                        const Divider(color: Colors.white10, height: 1),
+                        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
                         policyPoint(
                           icon: Icons.support_agent_rounded,
                           title: 'Support and bug reporting',
@@ -19359,7 +19689,7 @@ class _DashboardViewState extends State<DashboardView>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   sectionCard(
                     icon: Icons.gavel_rounded,
                     title: 'Terms and Conditions',
@@ -19410,15 +19740,27 @@ class _DashboardViewState extends State<DashboardView>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   Container(
                     padding: EdgeInsets.all(compact ? 18 : 22),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10131B),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.075),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xF5101422), Color(0xF50A0C14)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        width: 1.1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 18,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: compact
                         ? Column(
@@ -19451,12 +19793,29 @@ class _DashboardViewState extends State<DashboardView>
   Widget _buildAboutDeveloperInfo() => Row(
     children: [
       Container(
-        width: 50,
-        height: 50,
+        width: 52,
+        height: 52,
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFFEF4444).withValues(alpha: 0.16),
+              Colors.white.withValues(alpha: 0.04),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+            width: 1.1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+              blurRadius: 10,
+            ),
+          ],
         ),
         child: Image.asset(
           'assets/redskills_studios.png',
@@ -19470,13 +19829,38 @@ class _DashboardViewState extends State<DashboardView>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'RedSkill Studios',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                const Text(
+                  'RedSkill Studios',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.30),
+                      width: 0.9,
+                    ),
+                  ),
+                  child: const Text(
+                    'VERIFIED CREATOR',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF10B981),
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             const Text(
@@ -19502,9 +19886,10 @@ class _DashboardViewState extends State<DashboardView>
     label: const Text('Uninstall'),
     style: OutlinedButton.styleFrom(
       foregroundColor: const Color(0xFFFCA5A5),
-      side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.35)),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.06),
+      side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.30)),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
   );
 
@@ -19554,14 +19939,26 @@ class _DashboardViewState extends State<DashboardView>
           width: 760,
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
+            gradient: const LinearGradient(
+              colors: [Color(0xF80F121E), Color(0xF8090B13)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.09),
+              width: 1.1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF38BDF8).withValues(alpha: 0.05),
+                color: Colors.black.withValues(alpha: 0.5),
                 blurRadius: 30,
-                spreadRadius: 2,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.06),
+                blurRadius: 35,
+                spreadRadius: 1,
               ),
             ],
           ),
@@ -19576,15 +19973,27 @@ class _DashboardViewState extends State<DashboardView>
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(11),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(
-                              0xFF38BDF8,
-                            ).withValues(alpha: 0.3),
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                              const Color(0xFF818CF8).withValues(alpha: 0.10),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.40),
+                            width: 1.2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+                              blurRadius: 12,
+                            ),
+                          ],
                         ),
                         child: const Icon(
                           Icons.monitor_heart_rounded,
@@ -19596,21 +20005,49 @@ class _DashboardViewState extends State<DashboardView>
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Performance & Diagnostics Monitor',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: -0.3,
-                            ),
+                          Row(
+                            children: [
+                              const Text(
+                                'Performance & Diagnostics Monitor',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                                    width: 0.9,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'LIVE TELEMETRY',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF10B981),
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 3),
                           Text(
-                            'Live profiling: RAM, CPU, Storage, GPU, 60 FPS Jank & Hang Watchdog',
+                            'Real-time profiling: RAM, CPU, Storage, GPU, 60 FPS Jank & Hang Watchdog',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.5),
+                              color: Colors.white.withValues(alpha: 0.55),
                             ),
                           ),
                         ],
@@ -19624,14 +20061,19 @@ class _DashboardViewState extends State<DashboardView>
                       _diagnosticsStorageSnapshot = diag.getStorageSnapshot();
                     }),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.07),
-                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      foregroundColor: const Color(0xFF38BDF8),
+                      elevation: 0,
+                      side: BorderSide(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+                        width: 1.0,
+                      ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                        horizontal: 16,
+                        vertical: 10,
                       ),
                     ),
                   ),
@@ -19818,25 +20260,43 @@ class _DashboardViewState extends State<DashboardView>
               // Watchdog & Runtime Stability Card
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.02),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.06),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xF5101624), Color(0xF50A1018)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                    width: 1.1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.06),
+                      blurRadius: 16,
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.security_rounded,
-                          size: 18,
-                          color: Color(0xFF34D399),
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.security_rounded,
+                            size: 18,
+                            color: Color(0xFF10B981),
+                          ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         const Text(
                           'Runtime Watchdog & Hang / Over-waiting Detector',
                           style: TextStyle(
@@ -19852,14 +20312,10 @@ class _DashboardViewState extends State<DashboardView>
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF34D399,
-                            ).withValues(alpha: 0.1),
+                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: const Color(
-                                0xFF34D399,
-                              ).withValues(alpha: 0.3),
+                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
                             ),
                           ),
                           child: const Row(
@@ -19868,14 +20324,14 @@ class _DashboardViewState extends State<DashboardView>
                               Icon(
                                 Icons.check_circle_rounded,
                                 size: 12,
-                                color: Color(0xFF34D399),
+                                color: Color(0xFF10B981),
                               ),
                               SizedBox(width: 4),
                               Text(
                                 'Watchdog Running',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF34D399),
+                                  color: Color(0xFF10B981),
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -19884,7 +20340,7 @@ class _DashboardViewState extends State<DashboardView>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Text(
                       '• Heartbeat cadence: 500 ms | Hang/ANR warning threshold: 1000 ms\n'
                       '• Active parallel async operations: ${diag.activeOperationCount} tasks currently in flight\n'
@@ -19892,8 +20348,8 @@ class _DashboardViewState extends State<DashboardView>
                       '• Asynchronous Non-blocking Log Queue: Enabled (prevents main thread I/O stutters)',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.7),
-                        height: 1.5,
+                        color: Colors.white.withValues(alpha: 0.75),
+                        height: 1.55,
                       ),
                     ),
                   ],
@@ -19905,39 +20361,56 @@ class _DashboardViewState extends State<DashboardView>
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.description_rounded, size: 18),
-                      label: const Text(
-                        'Generate & Export review.txt',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
                         ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                            blurRadius: 14,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                      onPressed: () async {
-                        try {
-                          final file = await diag.saveReviewReportToFile();
-                          if (mounted) {
-                            _showAnimatedSnackBar(
-                              'Review report generated successfully at: ${file.path}',
-                              isSuccess: true,
-                            );
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.description_rounded, size: 18),
+                        label: const Text(
+                          'Generate & Export review.txt',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        onPressed: () async {
+                          try {
+                            final file = await diag.saveReviewReportToFile();
+                            if (mounted) {
+                              _showAnimatedSnackBar(
+                                'Review report generated successfully at: ${file.path}',
+                                isSuccess: true,
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              _showAnimatedSnackBar(
+                                'Failed to save review report: $e',
+                                isSuccess: false,
+                              );
+                            }
                           }
-                        } catch (e) {
-                          if (mounted) {
-                            _showAnimatedSnackBar(
-                              'Failed to save review report: $e',
-                              isSuccess: false,
-                            );
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF38BDF8),
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          foregroundColor: const Color(0xFF070913),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
                     ),
@@ -19959,12 +20432,16 @@ class _DashboardViewState extends State<DashboardView>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.08),
                       foregroundColor: Colors.white,
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        width: 1.0,
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 14,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
@@ -19985,12 +20462,16 @@ class _DashboardViewState extends State<DashboardView>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.08),
                       foregroundColor: Colors.white,
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        width: 1.0,
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 14,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
@@ -20017,14 +20498,18 @@ class _DashboardViewState extends State<DashboardView>
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      foregroundColor: Colors.white,
+                      backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.10),
+                      foregroundColor: const Color(0xFF38BDF8),
+                      side: BorderSide(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        width: 1.0,
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 14,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
@@ -20049,11 +20534,33 @@ class _DashboardViewState extends State<DashboardView>
   }) {
     return Container(
       width: width,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xF5131726),
+            Color(0xF50D0F18),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.22),
+          width: 1.1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -20061,14 +20568,31 @@ class _DashboardViewState extends State<DashboardView>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  gradient: LinearGradient(
+                    colors: [
+                      accentColor.withValues(alpha: 0.25),
+                      accentColor.withValues(alpha: 0.08),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: accentColor.withValues(alpha: 0.40),
+                    width: 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.20),
+                      blurRadius: 10,
+                    ),
+                  ],
                 ),
                 child: Icon(icon, size: 18, color: accentColor),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -20084,14 +20608,14 @@ class _DashboardViewState extends State<DashboardView>
                     subtitle,
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.45),
+                      color: Colors.white.withValues(alpha: 0.50),
                     ),
                   ),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             mainValue,
             style: TextStyle(
@@ -20099,21 +20623,27 @@ class _DashboardViewState extends State<DashboardView>
               fontWeight: FontWeight.bold,
               color: accentColor,
               letterSpacing: -0.5,
+              shadows: [
+                Shadow(
+                  color: accentColor.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                ),
+              ],
             ),
           ),
           Text(
             mainLabel,
             style: TextStyle(
               fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.5),
+              color: Colors.white.withValues(alpha: 0.55),
             ),
           ),
           const SizedBox(height: 12),
-          const Divider(color: Colors.white10, height: 1),
+          Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
           const SizedBox(height: 10),
           ...items.map(
             (item) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2.5),
+              padding: const EdgeInsets.symmetric(vertical: 3.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -20121,7 +20651,7 @@ class _DashboardViewState extends State<DashboardView>
                     item.$1,
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.6),
+                      color: Colors.white.withValues(alpha: 0.65),
                     ),
                   ),
                   Text(
@@ -20148,43 +20678,84 @@ class _DashboardViewState extends State<DashboardView>
       return Center(
         key: key,
         child: Container(
-          width: 400,
-          padding: const EdgeInsets.all(32),
+          width: 440,
+          padding: const EdgeInsets.all(36),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              colors: [Color(0xF80F1B18), Color(0xF80A120F)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: const Color(0xFF43E97B).withValues(alpha: 0.3),
+              color: const Color(0xFF10B981).withValues(alpha: 0.40),
+              width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF43E97B).withValues(alpha: 0.1),
-                blurRadius: 20,
+                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                blurRadius: 30,
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 30,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                size: 64,
-                color: Color(0xFF43E97B),
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF10B981).withValues(alpha: 0.25),
+                      const Color(0xFF38BDF8).withValues(alpha: 0.10),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.50),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.30),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  size: 44,
+                  color: Color(0xFF10B981),
+                ),
               ),
               const SizedBox(height: 24),
               const Text(
-                'Thanks for reporting bug',
+                'Report Successfully Received',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 21,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
+                  letterSpacing: -0.3,
                 ),
               ),
               const SizedBox(height: 12),
               const Text(
-                'Your feedback helps us improve WallSync.',
+                'Your feedback is logged and will help us refine and optimize WallSync Pro.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.white60),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFFB7C1D1),
+                  height: 1.45,
+                ),
               ),
               const SizedBox(height: 32),
               ElevatedButton(
@@ -20198,17 +20769,27 @@ class _DashboardViewState extends State<DashboardView>
                   });
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.1),
-                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  foregroundColor: const Color(0xFF10B981),
+                  side: BorderSide(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.40),
+                    width: 1.0,
+                  ),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+                    horizontal: 28,
+                    vertical: 14,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Text('Report Another Issue'),
+                child: const Text(
+                  'Report Another Issue',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
@@ -20219,13 +20800,31 @@ class _DashboardViewState extends State<DashboardView>
     return Center(
       key: key,
       child: Container(
-        width: 500,
+        width: 520,
         margin: const EdgeInsets.symmetric(vertical: 32),
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          gradient: const LinearGradient(
+            colors: [Color(0xF80F121E), Color(0xF80A0C14)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: const Color(0xFFEC4899).withValues(alpha: 0.25),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 36,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: const Color(0xFFEC4899).withValues(alpha: 0.08),
+              blurRadius: 40,
+            ),
+          ],
         ),
         child: Form(
           key: _bugFormKey,
@@ -20234,57 +20833,95 @@ class _DashboardViewState extends State<DashboardView>
             children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.bug_report_rounded,
-                    size: 28,
-                    color: Color(0xFFEC4899),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Report a Bug',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFFEC4899).withValues(alpha: 0.25),
+                          const Color(0xFF818CF8).withValues(alpha: 0.12),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFFEC4899).withValues(alpha: 0.45),
+                        width: 1.2,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFA855F7).withValues(alpha: 0.35),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          color: const Color(0xFFEC4899).withValues(alpha: 0.25),
+                          blurRadius: 12,
                         ),
                       ],
                     ),
-                    child: const Text(
-                      'PRO',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: 0.8,
-                      ),
+                    child: const Icon(
+                      Icons.bug_report_rounded,
+                      size: 24,
+                      color: Color(0xFFEC4899),
                     ),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Report an Issue',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFA855F7).withValues(alpha: 0.35),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Text(
+                              'PRO',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Direct transmission to engineering & QA',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.50),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Please provide details about the issue you encountered.',
-                style: TextStyle(fontSize: 14, color: Colors.white60),
-              ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 28),
 
               _buildTextFormField(
                 controller: _gmailCtrl,
@@ -20328,17 +20965,33 @@ class _DashboardViewState extends State<DashboardView>
                 validator: (v) =>
                     v == null || v.isEmpty ? 'Please describe the issue' : null,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 30),
 
-              SizedBox(
-                height: 50,
+              Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFEC4899), Color(0xFF818CF8)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFEC4899).withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: ElevatedButton(
                   onPressed: _submittingBug ? null : _submitBug,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEC4899),
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: _submittingBug
@@ -20350,12 +21003,20 @@ class _DashboardViewState extends State<DashboardView>
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Submit Report',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.send_rounded, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Submit Priority Report',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ),
@@ -20379,28 +21040,35 @@ class _DashboardViewState extends State<DashboardView>
       maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white54),
+        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
         prefixIcon: maxLines == 1
-            ? Icon(icon, color: Colors.white38, size: 20)
+            ? Icon(icon, color: const Color(0xFF818CF8), size: 20)
             : null,
         filled: true,
-        fillColor: Colors.black.withValues(alpha: 0.2),
+        fillColor: Colors.black.withValues(alpha: 0.30),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF38BDF8)),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(
-            color: Colors.redAccent.withValues(alpha: 0.5),
+            color: Colors.redAccent.withValues(alpha: 0.55),
+          ),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(
+            color: Colors.redAccent,
+            width: 1.5,
           ),
         ),
       ),
@@ -21528,22 +22196,25 @@ class _DashboardAmbientPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final radius = math.min(size.width, size.height) * 0.56;
-    final blobs = <(Offset, Color)>[
-      (Offset(size.width * 0.24, size.height * 0.25), const Color(0xFF00E5FF)),
-      (Offset(size.width * 0.78, size.height * 0.38), const Color(0xFFEC4899)),
-      (Offset(size.width * 0.52, size.height * 0.83), const Color(0xFFA855F7)),
+    final radius = math.min(size.width, size.height) * 0.60;
+    final blobs = <(Offset, Color, double)>[
+      (Offset(size.width * 0.15, size.height * 0.18), const Color(0xFF00F2FE), 0.22),
+      (Offset(size.width * 0.85, size.height * 0.25), const Color(0xFF818CF8), 0.18),
+      (Offset(size.width * 0.75, size.height * 0.75), const Color(0xFFEC4899), 0.16),
+      (Offset(size.width * 0.22, size.height * 0.82), const Color(0xFF6366F1), 0.20),
+      (Offset(size.width * 0.50, size.height * 0.45), const Color(0xFF10B981), 0.08),
     ];
     for (final blob in blobs) {
       final color = blob.$2;
+      final opacity = blob.$3;
       final paint = Paint()
         ..shader = RadialGradient(
           colors: [
-            color.withValues(alpha: 0.20),
-            color.withValues(alpha: 0.07),
+            color.withValues(alpha: opacity),
+            color.withValues(alpha: opacity * 0.35),
             color.withValues(alpha: 0.0),
           ],
-          stops: const [0.0, 0.52, 1.0],
+          stops: const [0.0, 0.50, 1.0],
         ).createShader(Rect.fromCircle(center: blob.$1, radius: radius));
       canvas.drawCircle(blob.$1, radius, paint);
     }

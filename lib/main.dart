@@ -1195,11 +1195,64 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
       debugShowCheckedModeBanner: false,
       scrollBehavior: MyCustomScrollBehavior(),
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueAccent,
-          brightness: Brightness.dark,
-        ),
         useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF07080C),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF38BDF8),
+          secondary: Color(0xFF818CF8),
+          tertiary: Color(0xFFEC4899),
+          surface: Color(0xFF0F111A),
+          error: Color(0xFFEF4444),
+          onPrimary: Color(0xFF0F172A),
+          onSurface: Colors.white,
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF131622),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: const Color(0xFF10131E),
+          elevation: 24,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+        ),
+        tooltipTheme: TooltipThemeData(
+          decoration: BoxDecoration(
+            color: const Color(0xF0181B26),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          textStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+          waitDuration: const Duration(milliseconds: 350),
+        ),
+        scrollbarTheme: ScrollbarThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.hovered)) {
+              return const Color(0xFF38BDF8).withValues(alpha: 0.5);
+            }
+            return Colors.white.withValues(alpha: 0.15);
+          }),
+          radius: const Radius.circular(8),
+          thickness: WidgetStateProperty.all(6.0),
+        ),
       ),
       home: Scaffold(
         body: _showSplash

@@ -1000,21 +1000,22 @@ class _LiveVideoPreviewDialogState extends State<_LiveVideoPreviewDialog> {
           constraints: const BoxConstraints(maxHeight: 680),
           margin: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: const Color(0xFF131722),
-            borderRadius: BorderRadius.circular(20),
+            color: const Color(0xF70C0F18),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-              width: 1.5,
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.28),
+              width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                blurRadius: 32,
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                blurRadius: 36,
                 spreadRadius: 2,
               ),
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.8),
-                blurRadius: 24,
+                color: Colors.black.withValues(alpha: 0.85),
+                blurRadius: 30,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
@@ -1345,9 +1346,9 @@ class _LiveVideoPreviewDialogState extends State<_LiveVideoPreviewDialog> {
 
                     const SizedBox(width: 16),
 
-                    // Apply / Set Wallpaper Button
+                    // Apply / Set Wallpaper Button (Fully Unlocked in WallSync Pro)
                     ElevatedButton.icon(
-                      onPressed: (wp.isPro || _isApplying)
+                      onPressed: _isApplying
                           ? null
                           : () async {
                               setState(() => _isApplying = true);
@@ -1372,21 +1373,21 @@ class _LiveVideoPreviewDialogState extends State<_LiveVideoPreviewDialog> {
                               ),
                             )
                           : Icon(
-                              wp.isPro
-                                  ? Icons.lock_rounded
-                                  : widget.isActive
+                              widget.isActive
                                   ? Icons.check_circle_rounded
-                                  : Icons.wallpaper_rounded,
+                                  : (wp.isPro
+                                        ? Icons.stars_rounded
+                                        : Icons.wallpaper_rounded),
                               size: 18,
                             ),
                       label: Text(
                         _isApplying
                             ? 'Applying...'
-                            : wp.isPro
-                            ? 'WallSync Pro Only'
                             : (widget.isActive
                                   ? 'Active Wallpaper'
-                                  : 'Set as Desktop Wallpaper'),
+                                  : (wp.isPro
+                                        ? 'Set Pro Wallpaper'
+                                        : 'Set as Desktop Wallpaper')),
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -1394,20 +1395,26 @@ class _LiveVideoPreviewDialogState extends State<_LiveVideoPreviewDialog> {
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: wp.isPro
-                            ? const Color(0xFFFFB703).withValues(alpha: 0.2)
-                            : widget.isActive
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFF38BDF8),
-                        foregroundColor: Colors.black,
+                        backgroundColor: widget.isActive
+                            ? const Color(0xFF10B981)
+                            : (wp.isPro
+                                  ? const Color(0xFFFFB703)
+                                  : const Color(0xFF38BDF8)),
+                        foregroundColor: const Color(0xFF070913),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 22,
+                          horizontal: 24,
                           vertical: 14,
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        elevation: 4,
+                        elevation: 6,
+                        shadowColor: (widget.isActive
+                                ? const Color(0xFF10B981)
+                                : (wp.isPro
+                                      ? const Color(0xFFFFB703)
+                                      : const Color(0xFF38BDF8)))
+                            .withValues(alpha: 0.4),
                       ),
                     ),
                   ],
