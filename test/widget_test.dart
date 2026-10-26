@@ -108,4 +108,47 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'Taskbar preview containers render inside FittedBox without hasSize or layout failure',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 220,
+                height: 150,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    width: 190,
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 10),
+                        const SizedBox(width: 4),
+                        const Text('12:45'),
+                        Expanded(
+                          child: Row(
+                            children: const [
+                              Expanded(child: Text('Nightcall', overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Nightcall'), findsOneWidget);
+    },
+  );
 }

@@ -239,4 +239,23 @@ void main() {
     final dir2 = await service.getAppDirectory();
     expect(identical(dir1, dir2), isTrue);
   });
+
+  test('widget template defaults contain valid dimensions for all templates', () {
+    final defaults = WidgetSettings.templateDefaults;
+
+    for (final entry in defaults.entries) {
+      final key = entry.key;
+      final val = entry.value;
+      expect(val['width'], isNotNull, reason: '$key has width');
+      expect(val['height'], isNotNull, reason: '$key has height');
+      expect(val['sizeFactor'], isNotNull, reason: '$key has sizeFactor');
+      expect(val['width']! > 0, isTrue);
+      expect(val['height']! > 0, isTrue);
+
+      if (key.startsWith('taskbar_')) {
+        expect(val['height']! <= 50.0, isTrue, reason: '$key compact taskbar height');
+        expect(val['height']! >= 36.0, isTrue, reason: '$key taskbar height minimum');
+      }
+    }
+  });
 }

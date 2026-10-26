@@ -17,6 +17,8 @@ import '../services/media_session_service.dart';
 import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
 import '../services/system_optimizer_service.dart';
+import '../services/discord_ipc_service.dart';
+import '../services/steam_monitor_service.dart';
 import 'custom_widget_renderer.dart';
 
 Uint8List _decodeMediaThumbnail(String encoded, String owner) {
@@ -85,6 +87,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
   // Media session state
   StreamSubscription<MediaInfo>? _mediaSubscription;
   StreamSubscription<SystemConnectivitySnapshot>? _connectivitySubscription;
+  StreamSubscription<DiscordVoiceSnapshot>? _discordSub;
+  StreamSubscription<SteamDownloadSnapshot>? _steamSub;
   SystemConnectivitySnapshot _connectivity =
       SystemConnectivityService.instance.current;
   bool _connectivityServiceActive = false;
@@ -409,6 +413,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
       _startWeatherTimer();
       _syncMediaServiceState();
       _syncConnectivityService();
+      _discordSub = DiscordIpcService.instance.stream.listen((_) {
+        if (mounted) setState(() {});
+      });
+      _steamSub = SteamMonitorService.instance.stream.listen((_) {
+        if (mounted) setState(() {});
+      });
       _syncNeonAnimation();
       _resetInactivityTimer();
       unawaited(SystemOptimizerService.instance.optimizeMemory());
@@ -468,6 +478,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
         final prevEditorMode = _settings.editorMode;
         try {
+          final isTaskbar = updated.widgetTemplate.startsWith('taskbar_');
+          await windowManager.setMinimumSize(
+            isTaskbar ? const Size(120, 36) : const Size(180, 60),
+          );
           final currentSize = await windowManager.getSize();
           final widthDelta = (updated.width - currentSize.width).abs();
           final heightDelta = (updated.height - currentSize.height).abs();
@@ -573,6 +587,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
     _weatherQueryController.dispose();
     _mediaSubscription?.cancel();
     _connectivitySubscription?.cancel();
+    _discordSub?.cancel();
+    _steamSub?.cancel();
     _playbackPositionNotifier.dispose();
     MediaSessionService().stop(owner: 'overlay');
     SystemConnectivityService.instance.stop(owner: 'overlay');
@@ -738,6 +754,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
   // ── Background ────────────────────────────────────────────────────────────
 
   Widget _buildBackground(BuildContext context) {
+    if (_settings.widgetTemplate.startsWith('taskbar_')) {
+      return const SizedBox.shrink();
+    }
     final br = BorderRadius.circular(24);
 
     if (_settings.backgroundType == 'animated' &&
@@ -3100,6 +3119,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   Widget _buildTaskbarSteamLayout() {
+    final steam = SteamMonitorService.instance.current;
+    final isDownloading = steam.isDownloading;
+    final title = isDownloading
+        ? '${steam.gameTitle} Update'
+        : (steam.activePlayingGame != null
+            ? 'Playing ${steam.activePlayingGame}'
+            : (steam.isSteamRunning ? 'Steam Ready · Up to date' : 'Steam Offline'));
+    final speed = isDownloading
+        ? '${steam.downloadSpeedMBs.toStringAsFixed(1)} MB/s'
+        : (steam.isSteamRunning ? 'Synced' : 'Offline');
+    final progress = isDownloading ? steam.progressPercent : (steam.isSteamRunning ? 1.0 : 0.0);
+
     return _buildTaskbarGlassContainer(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -3130,23 +3161,26 @@ class _DesktopWidgetState extends State<DesktopWidget>
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Cyberpunk 2077 Update',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'Segoe UI',
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Segoe UI',
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 6),
                     Text(
-                      '42.8 MB/s',
-                      style: TextStyle(
+                      speed,
+                      style: const TextStyle(
                         color: Color(0xFF66C0F4),
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
@@ -3165,9 +3199,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: FractionallySizedBox(
-                        widthFactor: 0.77,
+                        widthFactor: progress.clamp(0.04, 1.0),
                         child: Container(
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             gradient: LinearGradient(
                               colors: [Color(0xFF2A475E), Color(0xFF66C0F4)],
                             ),
@@ -3189,7 +3223,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
               color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Icon(Icons.pause_rounded, size: 14, color: Colors.white70),
+            child: Icon(
+              isDownloading ? Icons.pause_rounded : Icons.check_circle_outline_rounded,
+              size: 14,
+              color: isDownloading ? Colors.white70 : const Color(0xFF66C0F4),
+            ),
           ),
         ],
       ),
@@ -3197,6 +3235,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   Widget _buildTaskbarDiscordLayout() {
+    final discord = DiscordIpcService.instance.current;
+    final isConnected = discord.isConnectedToVoice;
+    final isMuted = discord.isMuted;
+    final isSpeaking = discord.isSpeaking;
+    final haloColor = isSpeaking
+        ? const Color(0xFF23A55A)
+        : (isMuted ? Colors.redAccent : const Color(0xFF5865F2));
+
     return _buildTaskbarGlassContainer(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -3212,15 +3258,17 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: const Color(0xFF23A55A),
+                    color: haloColor,
                     width: 2.0,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF23A55A).withValues(alpha: 0.6),
-                      blurRadius: 6,
-                    ),
-                  ],
+                  boxShadow: isSpeaking
+                      ? [
+                          BoxShadow(
+                            color: haloColor.withValues(alpha: 0.6),
+                            blurRadius: 6,
+                          ),
+                        ]
+                      : null,
                 ),
               ),
               Container(
@@ -3246,11 +3294,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '🔊 #General Voice',
+                Text(
+                  isConnected
+                      ? '🔊 ${discord.channelName}'
+                      : (discord.isRunning ? 'Discord Online' : 'Discord Offline'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 10.5,
                     fontWeight: FontWeight.w700,
@@ -3262,14 +3312,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
                     Container(
                       width: 5,
                       height: 5,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF23A55A),
+                      decoration: BoxDecoration(
+                        color: isConnected ? const Color(0xFF23A55A) : Colors.white30,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Voice Connected · 18ms',
+                      isConnected
+                          ? 'Voice Connected · ${discord.pingMs}ms'
+                          : (discord.isRunning ? 'Not connected to voice' : 'Launch Discord to connect'),
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.55),
                         fontSize: 8.5,
@@ -3287,9 +3339,23 @@ class _DesktopWidgetState extends State<DesktopWidget>
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.mic_rounded, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+              GestureDetector(
+                onTap: () {
+                  DiscordIpcService.instance.toggleMute();
+                  setState(() {});
+                },
+                child: Icon(
+                  isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                  size: 14,
+                  color: isMuted ? Colors.redAccent : Colors.white.withValues(alpha: 0.8),
+                ),
+              ),
               const SizedBox(width: 6),
-              Icon(Icons.headphones_rounded, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+              Icon(
+                discord.isDeafened ? Icons.headset_off_rounded : Icons.headphones_rounded,
+                size: 14,
+                color: discord.isDeafened ? Colors.redAccent : Colors.white.withValues(alpha: 0.8),
+              ),
             ],
           ),
         ],
@@ -3489,8 +3555,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
   // ── Main build ────────────────────────────────────────────────────────────
 
   List<Widget> _buildResizeHandles(BuildContext context) {
-    final handleSize = 8.0;
-    final cornerSize = 16.0;
+    final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
+    final handleSize = isTaskbar ? 4.0 : 8.0;
+    final cornerSize = isTaskbar ? 8.0 : 16.0;
 
     return [
       // Top edge
@@ -4723,6 +4790,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     }
 
     final isSleepWeather = _settings.widgetTemplate == 'sleep_weather';
+    final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
     final defaults =
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
@@ -4786,6 +4854,33 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 ),
               ),
           ],
+        ),
+      );
+    } else if (isTaskbar) {
+      final effectiveWidth = math.max(baseWidth, _settings.width);
+      mainWidget = GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onPanStart: (d) {
+          _handleInteraction();
+          if (!_settings.isLocked) {
+            _startUserWindowInteraction();
+            windowManager.startDragging();
+          }
+        },
+        onPanEnd: (_) => _endUserWindowInteraction(),
+        onPanCancel: () => _endUserWindowInteraction(),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SizedBox(
+              width: effectiveWidth,
+              height: baseHeight,
+              child: Transform.scale(
+                scale: _settings.sizeFactor,
+                child: _buildLayout(),
+              ),
+            ),
+          ),
         ),
       );
     } else {
@@ -4868,26 +4963,26 @@ class _DesktopWidgetState extends State<DesktopWidget>
                                 color: const Color(
                                   0xFF00E5FF,
                                 ).withValues(alpha: 0.6),
-                                width: 2.0,
+                                width: isTaskbar ? 1.5 : 2.0,
                                 style: BorderStyle.solid,
                               ),
-                              borderRadius: BorderRadius.circular(24),
+                              borderRadius: BorderRadius.circular(isTaskbar ? 10 : 24),
                             ),
                           ),
                   ),
                 ),
                 // Editor Mode drag handle label
                 Positioned(
-                  top: isSleepWeather ? 42 : 6,
-                  left: 12,
+                  top: isSleepWeather ? 42 : (isTaskbar ? 2 : 6),
+                  left: isTaskbar ? 6 : 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTaskbar ? 4 : 6,
+                      vertical: isTaskbar ? 1 : 2,
                     ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF00E5FF),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(3),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.2),
@@ -4895,11 +4990,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
                         ),
                       ],
                     ),
-                    child: const Text(
-                      'EDITOR MODE - DRAG EDGES TO RESIZE',
+                    child: Text(
+                      isTaskbar ? 'EDITOR MODE' : 'EDITOR MODE - DRAG EDGES TO RESIZE',
                       style: TextStyle(
-                        color: Color(0xFF060609),
-                        fontSize: 9,
+                        color: const Color(0xFF060609),
+                        fontSize: isTaskbar ? 7.5 : 9,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
                       ),

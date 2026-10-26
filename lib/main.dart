@@ -620,10 +620,11 @@ void main(List<String> args) async {
     );
 
     // Configure the transparent, frameless, always-on-top overlay window
+    final isTaskbar = cleanSettings.widgetTemplate.startsWith('taskbar_');
     final WindowOptions windowOptions = WindowOptions(
       size: Size(cleanSettings.width, cleanSettings.height),
-      minimumSize: const Size(200, 100),
-      maximumSize: const Size(800, 600),
+      minimumSize: isTaskbar ? const Size(120, 36) : const Size(180, 60),
+      maximumSize: const Size(1920, 1080),
       center: cleanSettings.posX == null,
       backgroundColor: Colors.transparent,
       skipTaskbar: true, // Hidden from taskbar — behaves like a desktop widget
