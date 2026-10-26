@@ -20248,6 +20248,35 @@ class _DashboardViewState extends State<DashboardView>
                       color: Colors.white,
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFA855F7).withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Text(
+                      'PRO',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -20392,6 +20421,11 @@ class _DashboardViewState extends State<DashboardView>
       'name': _nameCtrl.text.trim(),
       'title': _titleCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
+      'badge': 'PRO',
+      'appType': 'Pro',
+      'userType': 'Pro',
+      'isPro': true,
+      'appVersion': 'WallSync Pro',
     };
 
     final success = await _firebaseService.submitBugReport(data);

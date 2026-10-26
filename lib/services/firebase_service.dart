@@ -1646,40 +1646,50 @@ class FirebaseService {
   Future<bool> submitBugReport(Map<String, dynamic> reportData) async {
     debugPrint('[FirebaseService] ENTER submitBugReport()');
     try {
-      final jsonBody = jsonEncode(reportData);
+      final payload = Map<String, dynamic>.from(reportData);
+      payload['badge'] = 'PRO';
+      payload['appType'] = 'Pro';
+      payload['userType'] = 'Pro';
+      payload['isPro'] = true;
+      payload['edition'] = 'WallSync Pro';
+      final jsonBody = jsonEncode(payload);
       final random = Random.secure();
       final reportId =
           '${DateTime.now().microsecondsSinceEpoch}_${List.generate(12, (_) => random.nextInt(36).toRadixString(36)).join()}';
-      final request = await _openRequestRobustly(
-        'PUT',
-        Uri.parse('$databaseUrl/reports/$reportId.json'),
-      ).timeout(const Duration(seconds: 15));
-      request.headers.set(
-        HttpHeaders.contentTypeHeader,
-        'application/json; charset=utf-8',
-      );
-      request.add(utf8.encode(jsonBody));
-      final response = await _closeRequestWithTimeout(
-        request,
-        const Duration(seconds: 15),
-      );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        await response.drain();
-        debugPrint('[FirebaseService] EXIT submitBugReport() - SUCCESS');
-        return true;
-      } else {
-        await response.drain();
-        logError(
-          'FirebaseService',
-          'Bug report submission failed with status code: ${response.statusCode}.',
-        );
-        debugPrint(
-          '[FirebaseService] ERROR: Bug report HTTP ${response.statusCode}',
-        );
-        debugPrint('[FirebaseService] EXIT submitBugReport() - FAIL');
-        return false;
+      for (final path in ['reports_pro', 'reports']) {
+        try {
+          final request = await _openRequestRobustly(
+            'PUT',
+            Uri.parse('$databaseUrl/$path/$reportId.json'),
+          ).timeout(const Duration(seconds: 15));
+          request.headers.set(
+            HttpHeaders.contentTypeHeader,
+            'application/json; charset=utf-8',
+          );
+          request.add(utf8.encode(jsonBody));
+          final response = await _closeRequestWithTimeout(
+            request,
+            const Duration(seconds: 15),
+          );
+
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            await response.drain();
+            debugPrint('[FirebaseService] EXIT submitBugReport() - SUCCESS ($path)');
+            return true;
+          }
+          await response.drain();
+        } catch (subError) {
+          if (path == 'reports') {
+            rethrow;
+          }
+        }
       }
+      logError(
+        'FirebaseService',
+        'Bug report submission failed for both reports_pro and reports.',
+      );
+      return false;
     } catch (e, st) {
       logError('FirebaseService', 'Failed to submit bug report', e, st);
       debugPrint(

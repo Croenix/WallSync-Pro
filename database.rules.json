@@ -40,6 +40,12 @@
         ".write": "(auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1') || (!data.exists() && newData.exists())"
       }
     },
+    "reports_pro": {
+      ".read": "auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1'",
+      "$reportId": {
+        ".write": "(auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1') || (!data.exists() && newData.exists())"
+      }
+    },
     "wallpaperReports": {
       ".read": "auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1'",
       "$reportId": {

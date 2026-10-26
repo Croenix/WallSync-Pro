@@ -257,11 +257,13 @@ exports.adminApi = onRequest(
         res.json(await migrateWallpaperIds());
         return;
       }
-      if ((req.path === "/wallpaper-reports" || req.path === "/wallpaper_reports_pro" || req.path === "/wallpaper-reports-pro") && req.method === "GET") {
-        const rootPath = (req.path === "/wallpaper_reports_pro" || req.path === "/wallpaper-reports-pro")
-          ? "wallpaper_reports_pro"
-          : "wallpaperReports";
-        const snapshot = await getDatabase().ref(rootPath).once("value");
+      if (req.path === "/wallpaper-reports" && req.method === "GET") {
+        const snapshot = await getDatabase().ref("wallpaperReports").once("value");
+        res.json(snapshot.val() || {});
+        return;
+      }
+      if ((req.path === "/wallpaper_reports_pro" || req.path === "/wallpaper-reports-pro") && req.method === "GET") {
+        const snapshot = await getDatabase().ref("wallpaper_reports_pro").once("value");
         res.json(snapshot.val() || {});
         return;
       }

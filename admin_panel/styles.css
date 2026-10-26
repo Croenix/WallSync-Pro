@@ -393,6 +393,34 @@ body::before {
     font-weight: 700;
 }
 
+.report-badge-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    line-height: 1.2;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.report-badge-pill.pro {
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(168, 85, 247, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.report-badge-pill.free {
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .report-conversation {
     display: flex;
     width: 100%;

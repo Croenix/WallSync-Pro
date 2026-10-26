@@ -522,7 +522,7 @@ function subscribeToReports() {
         return;
     }
 
-    for (const path of ['reports', 'bugs', 'wallpaperReports']) {
+    for (const path of ['reports', 'reports_pro', 'bugs', 'wallpaperReports', 'wallpaper_reports_pro']) {
         const reference = state.database.ref(path);
         const listener = (snapshot) => {
             state.reportData[path] = snapshot.val();
@@ -537,6 +537,25 @@ function subscribeToReports() {
             showToast(`Unable to load ${path}: ${error.message}`, 'error');
         });
     }
+}
+
+function isProReport(report, path) {
+    if (path === 'reports_pro' || path === 'wallpaper_reports_pro') return true;
+    if (!report || typeof report !== 'object') return false;
+    if (String(report.badge || '').trim().toUpperCase() === 'PRO') return true;
+    if (String(report.appType || '').trim().toLowerCase() === 'pro') return true;
+    if (String(report.userType || '').trim().toLowerCase() === 'pro') return true;
+    if (String(report.plan || '').trim().toLowerCase() === 'pro') return true;
+    if (String(report.appVersion || '').toLowerCase().includes('pro')) return true;
+    if (report.isPro === true) return true;
+    return false;
+}
+
+function createReportBadge(isPro) {
+    const badge = document.createElement('span');
+    badge.className = `report-badge-pill ${isPro ? 'pro' : 'free'}`;
+    badge.textContent = isPro ? 'PRO' : 'FREE';
+    return badge;
 }
 
 function reportTimestampValue(value) {
@@ -573,7 +592,7 @@ function renderReports(reportsByPath) {
     renderWallpaperReports();
     const list = document.getElementById('reports-list');
     const entries = Object.entries(reportsByPath).flatMap(([path, reports]) =>
-        path !== 'wallpaperReports' && reports && typeof reports === 'object'
+        path !== 'wallpaperReports' && path !== 'wallpaper_reports_pro' && reports && typeof reports === 'object'
             ? Object.entries(reports)
                 .filter(([, report]) => report && typeof report === 'object')
                 .map(([id, report]) => ({ id, path, report }))
@@ -639,6 +658,8 @@ function renderReports(reportsByPath) {
         const sender = document.createElement('span');
         sender.className = 'report-conversation-sender';
         sender.textContent = email;
+        const userIsPro = userReports.some(r => isProReport(r.report, r.path));
+        sender.appendChild(createReportBadge(userIsPro));
         const preview = document.createElement('span');
         preview.className = 'report-conversation-preview';
         preview.textContent = reportPreview(latest);
@@ -670,6 +691,8 @@ function renderReports(reportsByPath) {
     identity.className = 'report-thread-identity';
     const threadEmail = document.createElement('h3');
     threadEmail.textContent = state.selectedReportEmail;
+    const selectedIsPro = selectedReports.some(r => isProReport(r.report, r.path));
+    threadEmail.appendChild(createReportBadge(selectedIsPro));
     const threadInfo = document.createElement('span');
     threadInfo.textContent = `${selectedReports.length} ${selectedReports.length === 1 ? 'report' : 'reports'}`;
     identity.append(threadEmail, threadInfo);
@@ -691,6 +714,7 @@ function renderReports(reportsByPath) {
         messageHeader.className = 'report-message-heading';
         const title = document.createElement('h4');
         title.textContent = String(report.title || report.subject || 'Bug report');
+        title.appendChild(createReportBadge(isProReport(report, path)));
         const time = document.createElement('time');
         const timestamp = reportTimestampValue(report.timestamp || report.createdAt);
         if (timestamp) time.dateTime = new Date(timestamp).toISOString();
@@ -752,8 +776,13 @@ function renderReports(reportsByPath) {
 function renderWallpaperReports() {
     const list = document.getElementById('wallpaper-reports-list');
     const reports = [
+        ...Object.entries(state.reportData.wallpaper_reports_pro || {})
+            .map(([id, report]) => ({ id, report, path: 'wallpaper_reports_pro' })),
         ...Object.entries(state.reportData.wallpaperReports || {})
             .map(([id, report]) => ({ id, report, path: 'wallpaperReports' })),
+        ...Object.entries(state.reportData.reports_pro || {})
+            .filter(([, report]) => report && typeof report === 'object' && report.wallpaperId)
+            .map(([id, report]) => ({ id, report, path: 'reports_pro' })),
         ...Object.entries(state.reportData.reports || {})
             .filter(([, report]) => report && typeof report === 'object' && report.wallpaperId)
             .map(([id, report]) => ({ id, report, path: 'reports' })),
@@ -827,7 +856,9 @@ function renderWallpaperReports() {
         wallpaperCell.append(wallpaperName, wallpaperId, wallpaperSpecs, locateButton);
 
         const reporterCell = document.createElement('td');
-        reporterCell.textContent = String(report.userEmail || report.email || 'Unknown email');
+        const reporterText = document.createElement('span');
+        reporterText.textContent = String(report.userEmail || report.email || 'Unknown email');
+        reporterCell.append(reporterText, createReportBadge(isProReport(report, path)));
         const descriptionCell = document.createElement('td');
         descriptionCell.className = 'wallpaper-report-description';
         descriptionCell.textContent = String(report.description || '');
