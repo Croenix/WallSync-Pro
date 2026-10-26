@@ -36,6 +36,7 @@ const WALLPAPERS_FILE = path.join(DATA_DIR, 'wallpapers.json');
 const CLOUDINARY_FILE = path.join(DATA_DIR, 'cloudinary.json');
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json');
 const POPUP_FILE = path.join(DATA_DIR, 'popup.json');
+const POPUP_PRO_FILE = path.join(DATA_DIR, 'popup_pro.json');
 
 function getCloudinaryConfig() {
     let fileConfig = {};
@@ -156,12 +157,12 @@ function savePopupConfig() {
     }
 }
 
-async function syncPopupToFirebase(popup, force = false) {
+async function syncPopupToFirebase(popup, force = false, key = 'popup') {
     if (!force && (process.env.NODE_ENV === 'test' || PORT === 3099)) {
         return true;
     }
     try {
-        const rtdbUrl = `${FIREBASE_RTDB_BASE_URL}/popup.json`;
+        const rtdbUrl = `${FIREBASE_RTDB_BASE_URL}/${key}.json`;
         await fetch(rtdbUrl, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -170,8 +171,45 @@ async function syncPopupToFirebase(popup, force = false) {
         });
         return true;
     } catch (e) {
-        console.warn(`[WallSync Server] Notice: Could not sync popup to Firebase RTDB (${e.message})`);
+        console.warn(`[WallSync Server] Notice: Could not sync ${key} to Firebase RTDB (${e.message})`);
         return false;
+    }
+}
+
+// Load persisted promotional launch popup pro configuration
+let popupProConfig = {
+    enabled: false,
+    imageUrl: '',
+    actionText: 'Continue',
+    actionUrl: '',
+    id: 'popup_pro_default',
+    updatedAt: 0,
+};
+
+try {
+    if (fs.existsSync(POPUP_PRO_FILE)) {
+        const raw = fs.readFileSync(POPUP_PRO_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+            popupProConfig = {
+                enabled: Boolean(parsed.enabled),
+                imageUrl: (parsed.imageUrl || '').trim(),
+                actionText: (parsed.actionText || 'Continue').trim(),
+                actionUrl: (parsed.actionUrl || '').trim(),
+                id: parsed.id || ('popup_pro_' + Date.now()),
+                updatedAt: parsed.updatedAt || 0,
+            };
+        }
+    }
+} catch (err) {
+    console.warn('[WallSync Server] Warning: Could not load popup_pro.json:', err.message);
+}
+
+function savePopupProConfig() {
+    try {
+        fs.writeFileSync(POPUP_PRO_FILE, JSON.stringify(popupProConfig, null, 2), 'utf8');
+    } catch (err) {
+        console.error('[WallSync Server] Failed to save popup_pro.json:', err.message);
     }
 }
 
@@ -639,6 +677,14 @@ const server = http.createServer(async (req, res) => {
         });
     }
 
+    // GET /api/popup_pro - Fetch launch popup pro configuration
+    if (pathname === '/api/popup_pro' && req.method === 'GET') {
+        return sendJson(res, 200, {
+            success: true,
+            popup: popupProConfig,
+        });
+    }
+
     // POST /api/popup (and alias /api/popup/config) - Update launch popup configuration
     if ((pathname === '/api/popup' || pathname === '/api/popup/config') && req.method === 'POST') {
         try {
@@ -665,6 +711,38 @@ const server = http.createServer(async (req, res) => {
                 success: true,
                 message: 'Popup configuration saved successfully.',
                 popup: popupConfig,
+            });
+        } catch (err) {
+            return sendJson(res, 400, { error: err.message });
+        }
+    }
+
+    // POST /api/popup_pro - Update launch popup pro configuration
+    if (pathname === '/api/popup_pro' && req.method === 'POST') {
+        try {
+            const body = await parseJsonBody(req);
+            const enabled = Boolean(body.enabled);
+            const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : (popupProConfig.imageUrl || '');
+            const actionText = typeof body.actionText === 'string' && body.actionText.trim() ? body.actionText.trim() : 'Continue';
+            const actionUrl = typeof body.actionUrl === 'string' ? body.actionUrl.trim() : (popupProConfig.actionUrl || '');
+
+            popupProConfig = {
+                enabled,
+                imageUrl,
+                actionText,
+                actionUrl,
+                id: body.id || ('popup_pro_' + Date.now()),
+                updatedAt: Date.now(),
+            };
+
+            savePopupProConfig();
+            syncPopupToFirebase(popupProConfig, false, 'popup_pro').catch(() => {});
+            broadcastEvent('popup_pro_update', popupProConfig);
+
+            return sendJson(res, 200, {
+                success: true,
+                message: 'Popup Pro configuration saved successfully.',
+                popup: popupProConfig,
             });
         } catch (err) {
             return sendJson(res, 400, { error: err.message });
@@ -989,9 +1067,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     // GET /api/wallpaper-reports & GET /api/reports - Fetch reports fallback from Firebase Realtime Database
-    if ((pathname === '/api/wallpaper-reports' || pathname === '/api/reports') && req.method === 'GET') {
+    if ((pathname === '/api/wallpaper-reports' || pathname === '/api/reports' || pathname === '/api/wallpaper_reports_pro' || pathname === '/api/wallpaper-reports-pro') && req.method === 'GET') {
         try {
-            const rootKey = pathname === '/api/reports' ? 'reports' : 'wallpaperReports';
+            const rootKey = (pathname === '/api/wallpaper_reports_pro' || pathname === '/api/wallpaper-reports-pro')
+                ? 'wallpaper_reports_pro'
+                : (pathname === '/api/reports' ? 'reports' : 'wallpaperReports');
             const rtdbRes = await fetch(`${FIREBASE_RTDB_BASE_URL}/${rootKey}.json`, {
                 signal: AbortSignal.timeout(5000),
             });
@@ -1006,10 +1086,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     // PATCH /api/wallpaper-reports/:id & PATCH /api/reports/:id - Update report status/notes in Firebase RTDB
-    const reportPathMatch = /^\/api\/(wallpaper-reports|reports)\/([A-Za-z0-9_-]{1,128})$/.exec(pathname);
+    const reportPathMatch = /^\/api\/(wallpaper-reports|reports|wallpaper_reports_pro|wallpaper-reports-pro)\/([A-Za-z0-9_-]{1,128})$/.exec(pathname);
     if (reportPathMatch && req.method === 'PATCH') {
         try {
-            const rootKey = reportPathMatch[1] === 'reports' ? 'reports' : 'wallpaperReports';
+            const rootKey = (reportPathMatch[1] === 'wallpaper_reports_pro' || reportPathMatch[1] === 'wallpaper-reports-pro')
+                ? 'wallpaper_reports_pro'
+                : (reportPathMatch[1] === 'reports' ? 'reports' : 'wallpaperReports');
             const reportId = reportPathMatch[2];
             const body = await parseJsonBody(req);
             const updatePayload = {

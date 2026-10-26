@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const dataDir = path.join(__dirname, '..', 'data');
-const preservedDataFiles = ['cloudinary.json', 'popup.json', 'wallpapers.json'].map((name) => {
+const preservedDataFiles = ['cloudinary.json', 'popup.json', 'popup_pro.json', 'wallpapers.json'].map((name) => {
     const filePath = path.join(dataDir, name);
     return {
         filePath,
@@ -502,6 +502,43 @@ test('POST /api/wallpapers/migrate normalizes IDs and returns migration count', 
 
 test('GET /api/wallpaper-reports returns report records or empty object', async () => {
     const res = await request({ path: '/api/wallpaper-reports', method: 'GET' });
+    assert.equal(res.statusCode, 200);
+    assert.equal(typeof res.json, 'object');
+});
+
+test('GET and POST /api/popup_pro manages launch popup pro configuration', async () => {
+    const initialGet = await request({ path: '/api/popup_pro', method: 'GET' });
+    assert.equal(initialGet.statusCode, 200);
+    assert.equal(initialGet.json.success, true);
+    assert.ok(initialGet.json.popup);
+
+    const updateRes = await request(
+        { path: '/api/popup_pro', method: 'POST' },
+        {
+            enabled: true,
+            imageUrl: 'https://example.com/pro-poster.jpg',
+            actionText: 'Upgrade Pro',
+            actionUrl: 'https://example.com/pro',
+        },
+    );
+    assert.equal(updateRes.statusCode, 200);
+    assert.equal(updateRes.json.success, true);
+    assert.equal(updateRes.json.popup.enabled, true);
+    assert.equal(updateRes.json.popup.imageUrl, 'https://example.com/pro-poster.jpg');
+
+    const verifyGet = await request({ path: '/api/popup_pro', method: 'GET' });
+    assert.equal(verifyGet.statusCode, 200);
+    assert.equal(verifyGet.json.popup.enabled, true);
+    assert.equal(verifyGet.json.popup.imageUrl, 'https://example.com/pro-poster.jpg');
+
+    await request(
+        { path: '/api/popup_pro', method: 'POST' },
+        { enabled: false, imageUrl: '', actionText: 'Continue', actionUrl: '' },
+    );
+});
+
+test('GET /api/wallpaper_reports_pro returns report records or empty object', async () => {
+    const res = await request({ path: '/api/wallpaper_reports_pro', method: 'GET' });
     assert.equal(res.statusCode, 200);
     assert.equal(typeof res.json, 'object');
 });

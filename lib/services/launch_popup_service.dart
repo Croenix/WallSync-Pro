@@ -92,9 +92,9 @@ class LaunchPopupService {
       return configFromApi;
     }
 
-    // 2. Secondary Fallback: Query Firebase Realtime Database /popup.json
+    // 2. Secondary Fallback: Query Firebase Realtime Database /popup_pro.json
     final rtdbPopupUrl =
-        '${ApiConfig.defaultRtdbUrl}/popup.json';
+        '${ApiConfig.defaultRtdbUrl}/popup_pro.json';
     final configFromRtdb = await _fetchFromEndpoint(
       rtdbPopupUrl,
       customClient: customClient,

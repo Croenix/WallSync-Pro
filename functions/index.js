@@ -257,17 +257,22 @@ exports.adminApi = onRequest(
         res.json(await migrateWallpaperIds());
         return;
       }
-      if (req.path === "/wallpaper-reports" && req.method === "GET") {
-        const snapshot = await getDatabase().ref("wallpaperReports").once("value");
+      if ((req.path === "/wallpaper-reports" || req.path === "/wallpaper_reports_pro" || req.path === "/wallpaper-reports-pro") && req.method === "GET") {
+        const rootPath = (req.path === "/wallpaper_reports_pro" || req.path === "/wallpaper-reports-pro")
+          ? "wallpaper_reports_pro"
+          : "wallpaperReports";
+        const snapshot = await getDatabase().ref(rootPath).once("value");
         res.json(snapshot.val() || {});
         return;
       }
       const reportMatch =
-        /^\/(wallpaper-reports|reports)\/([A-Za-z0-9_-]{1,128})$/.exec(req.path);
+        /^\/(wallpaper-reports|reports|wallpaper_reports_pro|wallpaper-reports-pro)\/([A-Za-z0-9_-]{1,128})$/.exec(req.path);
       if (reportMatch && req.method === "PATCH") {
         const reportPath = reportMatch[1] === "reports"
           ? "reports"
-          : "wallpaperReports";
+          : (reportMatch[1] === "wallpaper_reports_pro" || reportMatch[1] === "wallpaper-reports-pro")
+            ? "wallpaper_reports_pro"
+            : "wallpaperReports";
         const reportRef = getDatabase().ref(`${reportPath}/${reportMatch[2]}`);
         const existing = await reportRef.once("value");
         if (!existing.exists()) {

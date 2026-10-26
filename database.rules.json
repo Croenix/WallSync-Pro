@@ -9,6 +9,9 @@
     "update": {
       ".read": true
     },
+    "update_pro": {
+      ".read": true
+    },
     "server": {
       ".read": true,
       ".write": false
@@ -18,6 +21,10 @@
       ".write": false
     },
     "popup": {
+      ".read": true,
+      ".write": true
+    },
+    "popup_pro": {
       ".read": true,
       ".write": true
     },
@@ -34,6 +41,48 @@
       }
     },
     "wallpaperReports": {
+      ".read": "auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1'",
+      "$reportId": {
+        ".write": "(!data.exists() && newData.exists() && newData.hasChildren(['reportId', 'wallpaperId', 'wallpaperTitle', 'wallpaperType', 'wallpaperResolution', 'userEmail', 'description', 'status', 'createdAt', 'updatedAt']) && newData.child('reportId').val() === $reportId && newData.child('status').val() === 'pending' && !newData.child('adminNotes').exists()) || (auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1' && data.exists() && newData.exists() && newData.child('reportId').val() === data.child('reportId').val() && newData.child('wallpaperId').val() === data.child('wallpaperId').val() && newData.child('wallpaperTitle').val() === data.child('wallpaperTitle').val() && newData.child('wallpaperType').val() === data.child('wallpaperType').val() && newData.child('wallpaperResolution').val() === data.child('wallpaperResolution').val() && newData.child('userEmail').val() === data.child('userEmail').val() && newData.child('description').val() === data.child('description').val() && newData.child('createdAt').val() === data.child('createdAt').val())",
+        ".validate": "newData.hasChildren(['reportId', 'wallpaperId', 'wallpaperTitle', 'wallpaperType', 'wallpaperResolution', 'userEmail', 'description', 'status', 'createdAt', 'updatedAt']) && newData.child('reportId').isString() && newData.child('reportId').val() === $reportId && newData.child('reportId').val().length === 32 && newData.child('wallpaperId').isString() && newData.child('wallpaperId').val().length > 0 && newData.child('wallpaperId').val().length <= 128 && newData.child('wallpaperTitle').isString() && newData.child('wallpaperTitle').val().length <= 160 && newData.child('wallpaperType').isString() && (newData.child('wallpaperType').val() === 'static' || newData.child('wallpaperType').val() === 'video') && newData.child('wallpaperResolution').isString() && newData.child('wallpaperResolution').val().length <= 80 && newData.child('userEmail').isString() && newData.child('userEmail').val().length <= 254 && newData.child('userEmail').val().contains('@') && newData.child('userEmail').val().contains('.') && !newData.child('userEmail').val().contains(' ') && newData.child('description').isString() && newData.child('description').val().length > 0 && newData.child('description').val().length <= 1000 && newData.child('status').isString() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'reviewing' || newData.child('status').val() === 'resolved' || newData.child('status').val() === 'rejected') && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber() && (!newData.child('adminNotes').exists() || (newData.child('adminNotes').isString() && newData.child('adminNotes').val().length <= 2000))",
+        "reportId": { ".validate": true },
+        "wallpaperId": { ".validate": true },
+        "wallpaperTitle": { ".validate": true },
+        "wallpaperType": { ".validate": true },
+        "wallpaperResolution": { ".validate": true },
+        "userEmail": { ".validate": true },
+        "description": { ".validate": true },
+        "status": { ".validate": true },
+        "createdAt": { ".validate": true },
+        "updatedAt": { ".validate": true },
+        "adminNotes": {
+          ".validate": "newData.isString() && newData.val().length <= 2000"
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "wallpaper_reports_pro": {
+      ".read": "auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1'",
+      "$reportId": {
+        ".write": "(!data.exists() && newData.exists() && newData.hasChildren(['reportId', 'wallpaperId', 'wallpaperTitle', 'wallpaperType', 'wallpaperResolution', 'userEmail', 'description', 'status', 'createdAt', 'updatedAt']) && newData.child('reportId').val() === $reportId && newData.child('status').val() === 'pending' && !newData.child('adminNotes').exists()) || (auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1' && data.exists() && newData.exists() && newData.child('reportId').val() === data.child('reportId').val() && newData.child('wallpaperId').val() === data.child('wallpaperId').val() && newData.child('wallpaperTitle').val() === data.child('wallpaperTitle').val() && newData.child('wallpaperType').val() === data.child('wallpaperType').val() && newData.child('wallpaperResolution').val() === data.child('wallpaperResolution').val() && newData.child('userEmail').val() === data.child('userEmail').val() && newData.child('description').val() === data.child('description').val() && newData.child('createdAt').val() === data.child('createdAt').val())",
+        ".validate": "newData.hasChildren(['reportId', 'wallpaperId', 'wallpaperTitle', 'wallpaperType', 'wallpaperResolution', 'userEmail', 'description', 'status', 'createdAt', 'updatedAt']) && newData.child('reportId').isString() && newData.child('reportId').val() === $reportId && newData.child('reportId').val().length === 32 && newData.child('wallpaperId').isString() && newData.child('wallpaperId').val().length > 0 && newData.child('wallpaperId').val().length <= 128 && newData.child('wallpaperTitle').isString() && newData.child('wallpaperTitle').val().length <= 160 && newData.child('wallpaperType').isString() && (newData.child('wallpaperType').val() === 'static' || newData.child('wallpaperType').val() === 'video') && newData.child('wallpaperResolution').isString() && newData.child('wallpaperResolution').val().length <= 80 && newData.child('userEmail').isString() && newData.child('userEmail').val().length <= 254 && newData.child('userEmail').val().contains('@') && newData.child('userEmail').val().contains('.') && !newData.child('userEmail').val().contains(' ') && newData.child('description').isString() && newData.child('description').val().length > 0 && newData.child('description').val().length <= 1000 && newData.child('status').isString() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'reviewing' || newData.child('status').val() === 'resolved' || newData.child('status').val() === 'rejected') && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber() && (!newData.child('adminNotes').exists() || (newData.child('adminNotes').isString() && newData.child('adminNotes').val().length <= 2000))",
+        "reportId": { ".validate": true },
+        "wallpaperId": { ".validate": true },
+        "wallpaperTitle": { ".validate": true },
+        "wallpaperType": { ".validate": true },
+        "wallpaperResolution": { ".validate": true },
+        "userEmail": { ".validate": true },
+        "description": { ".validate": true },
+        "status": { ".validate": true },
+        "createdAt": { ".validate": true },
+        "updatedAt": { ".validate": true },
+        "adminNotes": {
+          ".validate": "newData.isString() && newData.val().length <= 2000"
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "wallpaperReports_pro": {
       ".read": "auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1'",
       "$reportId": {
         ".write": "(!data.exists() && newData.exists() && newData.hasChildren(['reportId', 'wallpaperId', 'wallpaperTitle', 'wallpaperType', 'wallpaperResolution', 'userEmail', 'description', 'status', 'createdAt', 'updatedAt']) && newData.child('reportId').val() === $reportId && newData.child('status').val() === 'pending' && !newData.child('adminNotes').exists()) || (auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1' && data.exists() && newData.exists() && newData.child('reportId').val() === data.child('reportId').val() && newData.child('wallpaperId').val() === data.child('wallpaperId').val() && newData.child('wallpaperTitle').val() === data.child('wallpaperTitle').val() && newData.child('wallpaperType').val() === data.child('wallpaperType').val() && newData.child('wallpaperResolution').val() === data.child('wallpaperResolution').val() && newData.child('userEmail').val() === data.child('userEmail').val() && newData.child('description').val() === data.child('description').val() && newData.child('createdAt').val() === data.child('createdAt').val())",

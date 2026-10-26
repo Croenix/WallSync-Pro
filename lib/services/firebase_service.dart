@@ -1757,7 +1757,7 @@ class FirebaseService {
       'createdAt': {'.sv': 'timestamp'},
       'updatedAt': {'.sv': 'timestamp'},
     };
-    await _writeWallpaperReport('wallpaperReports', reportId, report);
+    await _writeWallpaperReport('wallpaper_reports_pro', reportId, report);
     return reportId;
   }
 
@@ -1829,7 +1829,7 @@ class FirebaseService {
       try {
         final request = await _openRequestRobustly(
           'GET',
-          Uri.parse('$databaseUrl/update.json'),
+          Uri.parse('$databaseUrl/update_pro.json'),
         ).timeout(const Duration(seconds: 5));
         final response = await _closeRequestWithTimeout(
           request,

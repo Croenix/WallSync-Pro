@@ -63,7 +63,7 @@ void main() {
       expect(reportId, matches(RegExp(r'^[a-f0-9]{32}$')));
       expect(requests, hasLength(1));
       expect(requests.single.method, 'PUT');
-      expect(requests.single.path, '/wallpaperReports/$reportId.json');
+      expect(requests.single.path, '/wallpaper_reports_pro/$reportId.json');
       expect(requests.single.body, containsPair('reportId', reportId));
       expect(
         requests.single.body,
@@ -107,7 +107,7 @@ void main() {
         ),
       );
       expect(requests, hasLength(1));
-      expect(requests.single.path, startsWith('/wallpaperReports/'));
+      expect(requests.single.path, startsWith('/wallpaper_reports_pro/'));
     },
   );
 

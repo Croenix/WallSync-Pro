@@ -29,6 +29,8 @@ class ApiConfig {
 
   /// Priority Realtime Database endpoints to probe for the dynamic server URL or IP.
   static const List<String> rtdbCandidatePaths = [
+    'update_pro/serverUrl.json',
+    'update_pro.json',
     'serverUrl.json',
     'server.json',
     'server_config.json',
@@ -51,7 +53,8 @@ class ApiConfig {
   static String get latestNotificationEndpoint =>
       '$_serverUrl/api/notifications/latest';
   static String get wallpapersEndpoint => '$_serverUrl/api/wallpapers';
-  static String get popupEndpoint => '$_serverUrl/api/popup';
+  static String get popupEndpoint => '$_serverUrl/api/popup_pro';
+  static String get popupLegacyEndpoint => '$_serverUrl/api/popup';
 
   /// Heartbeat frequency for reporting live user presence.
   static const Duration heartbeatInterval = Duration(seconds: 15);
