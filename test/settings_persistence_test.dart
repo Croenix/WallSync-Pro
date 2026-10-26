@@ -169,6 +169,31 @@ void main() {
     expect(restored.widgetTemplate, 'atomic_clock');
   });
 
+  test('taskbar widget templates defaults and Segoe UI font resolution', () {
+    const taskbarTemplates = [
+      'taskbar_dock',
+      'taskbar_media',
+      'taskbar_system',
+      'taskbar_steam',
+      'taskbar_discord',
+      'taskbar_weather',
+      'taskbar_parking_lot',
+    ];
+
+    for (final template in taskbarTemplates) {
+      final defaults = WidgetSettings.templateDefaults[template];
+      expect(defaults, isNotNull);
+      expect(defaults!['height'], anyOf(equals(44.0), equals(48.0)));
+
+      final settings = WidgetSettings(widgetTemplate: template);
+      expect(settings.fontFor(ElementKey.hours), 'Segoe UI');
+
+      final json = settings.toJson();
+      final restored = WidgetSettings.fromJson(json);
+      expect(restored.widgetTemplate, template);
+    }
+  });
+
   test(
     'element and global gradient settings serialize, deserialize, and resolve correctly',
     () {

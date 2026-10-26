@@ -829,6 +829,14 @@ class WidgetSettings {
     'robik': {'width': 430.0, 'height': 220.0, 'sizeFactor': 1.0},
     'atomic_clock': {'width': 440.0, 'height': 220.0, 'sizeFactor': 1.0},
     'custom': {'width': 480.0, 'height': 260.0, 'sizeFactor': 1.0},
+    // TaskbarWidgets Add-on Templates (pfcdev/TaskbarWidgets)
+    'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
+    'taskbar_media': {'width': 340.0, 'height': 44.0, 'sizeFactor': 1.0},
+    'taskbar_system': {'width': 260.0, 'height': 44.0, 'sizeFactor': 1.0},
+    'taskbar_steam': {'width': 280.0, 'height': 44.0, 'sizeFactor': 1.0},
+    'taskbar_discord': {'width': 240.0, 'height': 44.0, 'sizeFactor': 1.0},
+    'taskbar_weather': {'width': 220.0, 'height': 44.0, 'sizeFactor': 1.0},
+    'taskbar_parking_lot': {'width': 240.0, 'height': 44.0, 'sizeFactor': 1.0},
   };
 
   WidgetSettings({
@@ -1104,6 +1112,14 @@ class WidgetSettings {
         return 'Product Sans';
       case 'atomic_clock':
         return 'Anurati';
+      case 'taskbar_dock':
+      case 'taskbar_media':
+      case 'taskbar_system':
+      case 'taskbar_steam':
+      case 'taskbar_discord':
+      case 'taskbar_weather':
+      case 'taskbar_parking_lot':
+        return 'Segoe UI';
       case 'classic':
       default:
         return 'Georgia';

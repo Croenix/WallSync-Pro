@@ -157,7 +157,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
     switch (_settings.widgetTemplate) {
       case 'neon':
       case 'robik':
-        return _settings.showCpu || _settings.showRam;
+      case 'taskbar_dock':
+      case 'taskbar_system':
+        return true;
       case 'custom':
         return _settings.customElements.any(
           (element) => element.type == 'cpu_bar' || element.type == 'ram_bar',
@@ -168,11 +170,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   bool _settingsNeedSystemMetrics(WidgetSettings settings) =>
-      settings.widgetTemplate == 'custom' &&
-      settings.customElements.any(
-        (element) =>
-            element.type == 'space_bar' || element.type == 'battery_bar',
-      );
+      (settings.widgetTemplate == 'custom' &&
+          settings.customElements.any(
+            (element) =>
+                element.type == 'space_bar' || element.type == 'battery_bar',
+          )) ||
+      settings.widgetTemplate == 'taskbar_dock' ||
+      settings.widgetTemplate == 'taskbar_system';
 
   Future<SystemMetricsSnapshot?> _readSystemMetrics(
     WidgetSettings settings,
@@ -544,8 +548,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   bool get _needsMediaSession {
-    if (_settings.widgetTemplate == 'sleep_weather') {
-      return _settings.showMediaControl;
+    if (_settings.widgetTemplate == 'sleep_weather' ||
+        _settings.widgetTemplate == 'taskbar_dock' ||
+        _settings.widgetTemplate == 'taskbar_media') {
+      return true;
     }
     return _settings.widgetTemplate == 'custom' &&
         (_settings.showMediaControl ||
@@ -2607,6 +2613,839 @@ class _DesktopWidgetState extends State<DesktopWidget>
     );
   }
 
+  // ── Taskbar Widgets (Inspired by pfcdev/TaskbarWidgets) ──────────────────────
+
+  Widget _buildTaskbarGlassContainer({
+    required Widget child,
+    double? width,
+    double? height,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xDD16181F),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.12),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildTaskbarDivider() {
+    return Container(
+      width: 1.0,
+      height: 24,
+      margin: const EdgeInsets.symmetric(horizontal: 10),
+      color: Colors.white.withValues(alpha: 0.12),
+    );
+  }
+
+  Widget _buildTaskbarEqualizer({int barCount = 5, Color? color, double maxHeight = 16}) {
+    final barColor = color ?? const Color(0xFF38BDF8);
+    final sec = _dateTime.second + _dateTime.millisecond / 1000.0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(barCount, (i) {
+        final phase = (i * 1.3) + sec * 3.5;
+        final factor = 0.25 + 0.75 * ((math.sin(phase) + 1.0) / 2.0);
+        final height = (maxHeight * factor).clamp(3.0, maxHeight);
+        return Container(
+          width: 2.5,
+          height: height,
+          margin: const EdgeInsets.symmetric(horizontal: 1.2),
+          decoration: BoxDecoration(
+            color: barColor,
+            borderRadius: BorderRadius.circular(1.5),
+            boxShadow: [
+              BoxShadow(
+                color: barColor.withValues(alpha: 0.4),
+                blurRadius: 3,
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildTaskbarDockLayout() {
+    final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
+    final locStr = _settings.weatherLocation.isNotEmpty ? _settings.weatherLocation : 'Local';
+    final hasMedia = _mediaInfo.title.isNotEmpty || _mediaInfo.isPlaying;
+
+    return _buildTaskbarGlassContainer(
+      height: 48,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 1. Time & Date Pill
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF38BDF8)),
+              const SizedBox(width: 6),
+              Text(
+                '$_hours:$_minutes',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                DateFormat('E d').format(_dateTime).toUpperCase(),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+            ],
+          ),
+
+          _buildTaskbarDivider(),
+
+          // 2. Weather Pill
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wb_sunny_rounded, size: 14, color: Color(0xFFFBBF24)),
+              const SizedBox(width: 5),
+              Text(
+                tempStr,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                locStr,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 9.5,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+            ],
+          ),
+
+          _buildTaskbarDivider(),
+
+          // 3. Mini Media Visualizer
+          Expanded(
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    if (_mediaInfo.isPlaying) {
+                      MediaSessionService().pause();
+                    } else {
+                      MediaSessionService().play();
+                    }
+                  },
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _mediaInfo.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      size: 15,
+                      color: const Color(0xFF38BDF8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hasMedia ? _mediaInfo.title : 'TaskbarWidgets Audio',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                      Text(
+                        hasMedia ? _mediaInfo.artist : 'WASAPI Spectrum Sync',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 9,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _buildTaskbarEqualizer(barCount: 5, color: const Color(0xFF38BDF8), maxHeight: 15),
+              ],
+            ),
+          ),
+
+          _buildTaskbarDivider(),
+
+          // 4. Hardware Telemetry Chips
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // CPU
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00FFCC).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: const Color(0xFF00FFCC).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.memory_rounded, size: 11, color: Color(0xFF00FFCC)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_cpuUsage.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Color(0xFF00FFCC),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              // RAM
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA855F7).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: const Color(0xFFA855F7).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.developer_board_rounded, size: 11, color: Color(0xFFA855F7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_ramUsage.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Color(0xFFA855F7),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskbarMediaLayout() {
+    final title = _mediaInfo.title.isNotEmpty ? _mediaInfo.title : 'Taskbar Media Player';
+    final artist = _mediaInfo.artist.isNotEmpty ? _mediaInfo.artist : 'WASAPI Real-time FFT';
+
+    return _buildTaskbarGlassContainer(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Row(
+        children: [
+          // Album thumbnail / music icon
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _thumbnailBytes != null
+                ? Image.memory(_thumbnailBytes!, fit: BoxFit.cover)
+                : const Icon(Icons.music_note_rounded, size: 18, color: Color(0xFF38BDF8)),
+          ),
+          const SizedBox(width: 10),
+
+          // Track & Artist Info
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+                Text(
+                  artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    fontSize: 9,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Equalizer Spectrum
+          _buildTaskbarEqualizer(barCount: 7, color: const Color(0xFFEC4899), maxHeight: 18),
+          const SizedBox(width: 10),
+
+          // Transport controls
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () => MediaSessionService().previous(),
+                child: Icon(
+                  Icons.skip_previous_rounded,
+                  size: 16,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () {
+                  if (_mediaInfo.isPlaying) {
+                    MediaSessionService().pause();
+                  } else {
+                    MediaSessionService().play();
+                  }
+                },
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEC4899).withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFEC4899).withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Icon(
+                    _mediaInfo.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => MediaSessionService().next(),
+                child: Icon(
+                  Icons.skip_next_rounded,
+                  size: 16,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskbarSystemLayout() {
+    final diskUsage = _systemMetrics.disk?.usedPercentage ?? 45.0;
+
+    Widget buildStatCell({
+      required IconData icon,
+      required String label,
+      required double percent,
+      required Color color,
+    }) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 10, color: color),
+                      const SizedBox(width: 3),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${percent.toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Segoe UI',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(1.5),
+                child: Container(
+                  height: 3,
+                  color: Colors.white12,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: (percent / 100.0).clamp(0.04, 1.0),
+                      child: Container(color: color),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _buildTaskbarGlassContainer(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      child: Row(
+        children: [
+          buildStatCell(
+            icon: Icons.memory_rounded,
+            label: 'CPU',
+            percent: _cpuUsage,
+            color: const Color(0xFF00FFCC),
+          ),
+          const SizedBox(width: 6),
+          buildStatCell(
+            icon: Icons.developer_board_rounded,
+            label: 'RAM',
+            percent: _ramUsage,
+            color: const Color(0xFFA855F7),
+          ),
+          const SizedBox(width: 6),
+          buildStatCell(
+            icon: Icons.storage_rounded,
+            label: 'SSD',
+            percent: diskUsage,
+            color: const Color(0xFF38BDF8),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskbarSteamLayout() {
+    return _buildTaskbarGlassContainer(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Row(
+        children: [
+          // Steam Icon
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF171A21), Color(0xFF1B2838)],
+              ),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF66C0F4).withValues(alpha: 0.5)),
+            ),
+            child: const Icon(
+              Icons.sports_esports_rounded,
+              size: 15,
+              color: Color(0xFF66C0F4),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Download Status Info
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Cyberpunk 2077 Update',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                    Text(
+                      '42.8 MB/s',
+                      style: TextStyle(
+                        color: Color(0xFF66C0F4),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                // Progress Bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: Container(
+                    height: 4,
+                    color: Colors.white12,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: 0.77,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFF2A475E), Color(0xFF66C0F4)],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Action Icon
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Icon(Icons.pause_rounded, size: 14, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskbarDiscordLayout() {
+    return _buildTaskbarGlassContainer(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Row(
+        children: [
+          // Voice avatar with glowing green halo ring
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF23A55A),
+                    width: 2.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF23A55A).withValues(alpha: 0.6),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF5865F2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.headset_mic_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+
+          // Channel & Latency Info
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '🔊 #General Voice',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF23A55A),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Voice Connected · 18ms',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 8.5,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Mute / Deafen Toggles
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.mic_rounded, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+              const SizedBox(width: 6),
+              Icon(Icons.headphones_rounded, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskbarWeatherLayout() {
+    final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
+    final condStr = _settings.weatherStatus.isNotEmpty ? _settings.weatherStatus : 'Partly Cloudy';
+    final locStr = _settings.weatherLocation.isNotEmpty ? _settings.weatherLocation : 'Local City';
+
+    return _buildTaskbarGlassContainer(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_queue_rounded, size: 18, color: Color(0xFF38BDF8)),
+          const SizedBox(width: 8),
+          Text(
+            tempStr,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Segoe UI',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  condStr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+                Text(
+                  locStr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 8.5,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              '💧 64%',
+              style: TextStyle(
+                color: Color(0xFF38BDF8),
+                fontSize: 8.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskbarParkingLotLayout() {
+    return _buildTaskbarGlassContainer(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Icon(
+              Icons.inventory_2_outlined,
+              size: 15,
+              color: Color(0xFFF59E0B),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Text(
+                      'Parking Lot Stash',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Segoe UI',
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      '· 3 items',
+                      style: TextStyle(
+                        color: Color(0xFFF59E0B),
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Quick Drop: files, snippets & URLs',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 8.5,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: const Icon(
+              Icons.add_rounded,
+              size: 12,
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLayout() {
     switch (_settings.widgetTemplate) {
       case 'custom':
@@ -2627,6 +3466,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
         return _buildRobikLayout();
       case 'atomic_clock':
         return _buildAtomicClockLayout();
+      case 'taskbar_dock':
+        return _buildTaskbarDockLayout();
+      case 'taskbar_media':
+        return _buildTaskbarMediaLayout();
+      case 'taskbar_system':
+        return _buildTaskbarSystemLayout();
+      case 'taskbar_steam':
+        return _buildTaskbarSteamLayout();
+      case 'taskbar_discord':
+        return _buildTaskbarDiscordLayout();
+      case 'taskbar_weather':
+        return _buildTaskbarWeatherLayout();
+      case 'taskbar_parking_lot':
+        return _buildTaskbarParkingLotLayout();
       case 'classic':
       default:
         return _buildClassicLayout();
