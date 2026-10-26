@@ -876,6 +876,8 @@ class _DashboardViewState extends State<DashboardView>
   String _selectedCategory = 'All';
   String _wallpaperSubTab = 'static'; // 'recent' | 'static' | 'live'
   String _selectedRecentFilter = 'All'; // 'All' | 'static' | 'video'
+  String _wallpaperSearchQuery = '';
+  final TextEditingController _wallpaperSearchCtrl = TextEditingController();
   int _videoElapsedSeconds = 0;
 
   // Animation controller for the mesh background
@@ -1526,6 +1528,7 @@ class _DashboardViewState extends State<DashboardView>
     _curatedWpScrollCtrl.dispose();
     _videoUrlController.dispose();
     _wallpaperBetaEmailCtrl.dispose();
+    _wallpaperSearchCtrl.dispose();
     _weatherSearchCtrl.dispose();
     _mediaSubscription?.cancel();
     _connectivitySubscription?.cancel();
@@ -3545,7 +3548,11 @@ class _DashboardViewState extends State<DashboardView>
       color: Colors.transparent,
       child: Column(
         children: [
-          // ── Top Sub-Navigation Header: Recent vs Static vs Live Video ──
+          // ── Hero Spotlight Showcase (Hidden when searching to maximize results) ──
+          if (_wallpaperSearchQuery.trim().isEmpty)
+            _buildWallpaperHeroShowcase(),
+
+          // ── Top Sub-Navigation Header: Cyber-Deck Floating Dock with Instant Search ──
           _buildWallpaperSubTabSelector(),
 
           // ── Sub-Tab Content ──
@@ -3561,80 +3568,742 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
+  Widget _buildWallpaperHeroShowcase() {
+    FirebaseWallpaper? heroWp;
+    bool isActive = false;
+    final localPath = _settings.activeWallpaperPath;
+    final activeType = _settings.activeWallpaperType;
+
+    if (activeType.isNotEmpty && localPath != null) {
+      isActive = true;
+      for (final w in _wallpapers) {
+        if ((activeType == 'video' &&
+                w.isVideo &&
+                (w.url == localPath ||
+                    localPath.endsWith(w.filename) ||
+                    localPath.endsWith(w.legacyFilename))) ||
+            (activeType == 'static' &&
+                !w.isVideo &&
+                (localPath.endsWith(w.filename) ||
+                    localPath.endsWith(w.legacyFilename)))) {
+          heroWp = w;
+          break;
+        }
+      }
+    }
+
+    if (heroWp == null) {
+      if (_cachedLiveWallpapers.isNotEmpty) {
+        heroWp = _cachedLiveWallpapers.first;
+      } else if (_cachedStaticWallpapers.isNotEmpty) {
+        heroWp = _cachedStaticWallpapers.first;
+      }
+    }
+
+    if (heroWp == null && localPath == null) {
+      return const SizedBox.shrink();
+    }
+
+    final isHeroVideo = heroWp?.isVideo ?? (activeType == 'video');
+    final heroName = heroWp?.name ??
+        (localPath != null
+            ? localPath.split(RegExp(r'[/\\]')).last
+            : 'Custom Wallpaper');
+    final heroCategory =
+        heroWp?.category ?? (isHeroVideo ? 'Live Video' : 'Custom Image');
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 6),
+      height: 168,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D101C),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isActive
+              ? const Color(0xFF38BDF8).withValues(alpha: 0.5)
+              : const Color(0xFF818CF8).withValues(alpha: 0.25),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isActive ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
+                .withValues(alpha: 0.16),
+            blurRadius: 24,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(21),
+        child: Stack(
+          children: [
+            // Ambient Backdrop Artwork
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.38,
+                child: heroWp != null
+                    ? (heroWp.url.startsWith('asset://')
+                        ? Image.asset(
+                            heroWp.url.replaceFirst('asset://', ''),
+                            fit: BoxFit.cover,
+                          )
+                        : (heroWp.isVideo)
+                            ? VideoThumbnailWidget(
+                                wallpaper: heroWp,
+                                fit: BoxFit.cover,
+                              )
+                            : SafeNetworkImage(
+                                url: _thumbnailUrlFor(
+                                  heroWp.thumbnailUrl ?? heroWp.url,
+                                ),
+                                fallbackUrl: heroWp.thumbnailUrl ?? heroWp.url,
+                                fit: BoxFit.cover,
+                              ))
+                    : (localPath != null && File(localPath).existsSync()
+                        ? Image.file(File(localPath), fit: BoxFit.cover)
+                        : const SizedBox.shrink()),
+              ),
+            ),
+            // Obsidian Multi-Stop Gradient Filter
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF07080E).withValues(alpha: 0.96),
+                      const Color(0xFF0A0D18).withValues(alpha: 0.85),
+                      const Color(0xFF0F1222).withValues(alpha: 0.50),
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Live Status Pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? const Color(0xFF10B981).withValues(alpha: 0.18)
+                                : const Color(0xFF38BDF8).withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isActive
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.45)
+                                  : const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: isActive
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFF38BDF8),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (isActive
+                                              ? const Color(0xFF10B981)
+                                              : const Color(0xFF38BDF8))
+                                          .withValues(alpha: 0.8),
+                                      blurRadius: 6,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isActive
+                                    ? 'STREAMING LIVE ON DESKTOP'
+                                    : 'FEATURED SPOTLIGHT • CINEMATIC ENGINE',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
+                                  color: isActive
+                                      ? const Color(0xFF34D399)
+                                      : const Color(0xFF38BDF8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          heroName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                heroCategory.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF38BDF8),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isHeroVideo ? '60 FPS MOTION' : '4K ULTRA HD',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white70,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'ZERO-CPU RUNTIME',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF10B981),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        // Quick Action Buttons
+                        Row(
+                          children: [
+                            if (heroWp != null && heroWp.isVideo) ...[
+                              ElevatedButton.icon(
+                                onPressed: () => showLiveVideoPreviewDialog(
+                                  context: context,
+                                  wallpaper: heroWp!,
+                                  isActive: isActive,
+                                  onApplyWallpaper: _applyVideoWallpaper,
+                                  onReportWallpaper: _showWallpaperReportDialog,
+                                ),
+                                icon: const Icon(
+                                  Icons.visibility_rounded,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'Live Preview',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF38BDF8),
+                                  foregroundColor: const Color(0xFF0A0C14),
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 7,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                            ],
+                            if (!isActive && heroWp != null) ...[
+                              OutlinedButton.icon(
+                                onPressed: heroWp.isVideo
+                                    ? () => _applyVideoWallpaper(heroWp!.url)
+                                    : () => _applyWallpaper(heroWp!),
+                                icon: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'Apply to Desktop',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.3),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 7,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                            ],
+                            OutlinedButton.icon(
+                              onPressed: _showCustomImportModal,
+                              icon: const Icon(Icons.add_rounded, size: 14),
+                              label: const Text(
+                                'Import Custom',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFFEC4899),
+                                side: BorderSide(
+                                  color: const Color(
+                                    0xFFEC4899,
+                                  ).withValues(alpha: 0.4),
+                                ),
+                                backgroundColor: const Color(
+                                  0xFFEC4899,
+                                ).withValues(alpha: 0.08),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 7,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Monitor bezel mockup preview on right
+                  Container(
+                    width: 180,
+                    height: 114,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F121E),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (heroWp != null)
+                            (heroWp.url.startsWith('asset://')
+                                ? Image.asset(
+                                    heroWp.url.replaceFirst('asset://', ''),
+                                    fit: BoxFit.cover,
+                                  )
+                                : (heroWp.isVideo)
+                                    ? VideoThumbnailWidget(
+                                        wallpaper: heroWp,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : SafeNetworkImage(
+                                        url: _thumbnailUrlFor(
+                                          heroWp.thumbnailUrl ?? heroWp.url,
+                                        ),
+                                        fallbackUrl:
+                                            heroWp.thumbnailUrl ?? heroWp.url,
+                                        fit: BoxFit.cover,
+                                      ))
+                          else if (localPath != null &&
+                              File(localPath).existsSync())
+                            Image.file(File(localPath), fit: BoxFit.cover)
+                          else
+                            const Center(
+                              child: Icon(
+                                Icons.wallpaper_rounded,
+                                color: Colors.white30,
+                                size: 32,
+                              ),
+                            ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.10),
+                                  Colors.transparent,
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 6,
+                            left: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.72),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'DESKTOP MONITOR 1',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 7.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCustomImportModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F111A),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.add_photo_alternate_rounded,
+                  color: Color(0xFF38BDF8),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Import Custom Wallpaper',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white60),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _browseAndApplyCustomImage();
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.image_rounded,
+                            size: 32,
+                            color: Color(0xFFEC4899),
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Static Image',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'PNG, JPG, WebP 4K',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _browseAndApplyCustomVideo();
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.video_library_rounded,
+                            size: 32,
+                            color: Color(0xFF38BDF8),
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Live Video',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'MP4, WebM, MKV 60FPS',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWallpaperSubTabSelector() {
     final liveCount = _cachedLiveWallpapers.length;
     final staticCount = _cachedStaticWallpapers.length;
     final recentCount = _settings.recentWallpapers.length;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 10),
-      child: Row(
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 3,
-                height: 16,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'WALLPAPERS GALLERY',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F111A).withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1.0,
           ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 14,
+              offset: const Offset(0, 3),
             ),
-            child: Row(
+          ],
+        ),
+        child: Row(
+          children: [
+            // Left Sub-navigation Pills
+            Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildWallpaperSubTabChip(
-                  id: 'recent',
-                  label: 'Recent',
-                  icon: Icons.history_rounded,
-                  activeColor: const Color(0xFFEC4899),
-                  count: recentCount > 0 ? recentCount : null,
-                ),
-                const SizedBox(width: 3),
-                _buildWallpaperSubTabChip(
-                  id: 'static',
-                  label: 'Static Wallpapers',
-                  icon: Icons.photo_library_rounded,
-                  activeColor: const Color(0xFF38BDF8),
-                  count: staticCount > 0 ? staticCount : null,
-                ),
-                const SizedBox(width: 3),
-                _buildWallpaperSubTabChip(
                   id: 'live',
-                  label: 'Live Video',
+                  label: 'Live Video Engine',
                   icon: Icons.videocam_rounded,
                   activeColor: const Color(0xFF818CF8),
                   count: liveCount > 0 ? liveCount : null,
                 ),
+                const SizedBox(width: 6),
+                _buildWallpaperSubTabChip(
+                  id: 'static',
+                  label: 'Static 4K Gallery',
+                  icon: Icons.photo_library_rounded,
+                  activeColor: const Color(0xFF38BDF8),
+                  count: staticCount > 0 ? staticCount : null,
+                ),
+                const SizedBox(width: 6),
+                _buildWallpaperSubTabChip(
+                  id: 'recent',
+                  label: 'Recent History',
+                  icon: Icons.history_rounded,
+                  activeColor: const Color(0xFFEC4899),
+                  count: recentCount > 0 ? recentCount : null,
+                ),
               ],
             ),
-          ),
-        ],
+            const Spacer(),
+            // Instant Search Input Box
+            Container(
+              width: 220,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _wallpaperSearchQuery.isNotEmpty
+                      ? const Color(0xFF38BDF8).withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: 0.1),
+                ),
+              ),
+              child: TextField(
+                controller: _wallpaperSearchCtrl,
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Search wallpapers...',
+                  hintStyle: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.4),
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    size: 16,
+                    color: Color(0xFF38BDF8),
+                  ),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 32),
+                  suffixIcon: _wallpaperSearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            size: 14,
+                            color: Colors.white60,
+                          ),
+                          padding: EdgeInsets.zero,
+                          onPressed: () {
+                            setState(() {
+                              _wallpaperSearchCtrl.clear();
+                              _wallpaperSearchQuery = '';
+                            });
+                          },
+                        )
+                      : null,
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                ),
+                onChanged: (val) {
+                  setState(() => _wallpaperSearchQuery = val);
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Custom Import Action
+            ElevatedButton.icon(
+              onPressed: _showCustomImportModal,
+              icon: const Icon(Icons.add_rounded, size: 15),
+              label: const Text(
+                '+ Custom',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                foregroundColor: const Color(0xFF38BDF8),
+                side: BorderSide(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                ),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3649,20 +4318,28 @@ class _DashboardViewState extends State<DashboardView>
     final isSelected = _wallpaperSubTab == id;
     return InkWell(
       onTap: () => setState(() => _wallpaperSubTab = id),
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(10),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
               ? activeColor.withValues(alpha: 0.22)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? activeColor.withValues(alpha: 0.5)
+                ? activeColor.withValues(alpha: 0.55)
                 : Colors.transparent,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -3676,15 +4353,15 @@ class _DashboardViewState extends State<DashboardView>
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                 color: isSelected ? Colors.white : Colors.white70,
               ),
             ),
             if (count != null && count > 0) ...[
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? activeColor.withValues(alpha: 0.35)
@@ -3695,7 +4372,7 @@ class _DashboardViewState extends State<DashboardView>
                   '$count',
                   style: TextStyle(
                     fontSize: 9,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w900,
                     color: isSelected ? activeColor : Colors.white70,
                   ),
                 ),
@@ -4377,15 +5054,23 @@ class _DashboardViewState extends State<DashboardView>
         onTap: () => _applyRecentWallpaper(item),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E2A).withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(16),
+            color: const Color(0xFF111420),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isActive ? themeColor : themeColor.withValues(alpha: 0.25),
-              width: isActive ? 1.5 : 1.0,
+              color: isActive ? themeColor : themeColor.withValues(alpha: 0.22),
+              width: isActive ? 2.0 : 1.0,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: (isActive ? themeColor : Colors.black)
+                    .withValues(alpha: isActive ? 0.35 : 0.45),
+                blurRadius: isActive ? 20 : 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(isActive ? 14 : 15),
+            borderRadius: BorderRadius.circular(isActive ? 18 : 19),
             child: Stack(
               children: [
                 // 1. Thumbnail / Image Preview
@@ -4398,7 +5083,7 @@ class _DashboardViewState extends State<DashboardView>
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.82),
+                          Colors.black.withValues(alpha: 0.85),
                         ],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -4409,26 +5094,32 @@ class _DashboardViewState extends State<DashboardView>
 
                 // 3. Top-left Badge: Live Video vs Static Image
                 Positioned(
-                  top: 8,
-                  left: 8,
+                  top: 9,
+                  left: 9,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
+                      horizontal: 8,
                       vertical: 3.5,
                     ),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: item.isVideo
-                            ? [const Color(0xFF0284C7), const Color(0xFF6366F1)]
-                            : [
-                                const Color(0xFFEC4899),
-                                const Color(0xFF8B5CF6),
-                              ],
+                        colors: isActive
+                            ? [const Color(0xFF059669), const Color(0xFF10B981)]
+                            : (item.isVideo
+                                ? [
+                                    const Color(0xFF0284C7),
+                                    const Color(0xFF6366F1),
+                                  ]
+                                : [
+                                    const Color(0xFFEC4899),
+                                    const Color(0xFF8B5CF6),
+                                  ]),
                       ),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(7),
                       boxShadow: [
                         BoxShadow(
-                          color: themeColor.withValues(alpha: 0.4),
+                          color: (isActive ? const Color(0xFF10B981) : themeColor)
+                              .withValues(alpha: 0.45),
                           blurRadius: 6,
                           offset: const Offset(0, 2),
                         ),
@@ -4438,18 +5129,22 @@ class _DashboardViewState extends State<DashboardView>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          item.isVideo
-                              ? Icons.videocam_rounded
-                              : Icons.photo_library_rounded,
+                          isActive
+                              ? Icons.check_circle_rounded
+                              : (item.isVideo
+                                  ? Icons.videocam_rounded
+                                  : Icons.photo_library_rounded),
                           size: 11,
                           color: Colors.white,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 4.5),
                         Text(
-                          item.isVideo ? 'LIVE VIDEO' : 'STATIC IMAGE',
+                          isActive
+                              ? 'ACTIVE DESKTOP'
+                              : (item.isVideo ? 'LIVE VIDEO' : 'STATIC 4K'),
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 9,
+                            fontSize: 8.5,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 0.5,
                           ),
@@ -4461,21 +5156,21 @@ class _DashboardViewState extends State<DashboardView>
 
                 // 4. Top-right: Time ago + Remove button
                 Positioned(
-                  top: 8,
-                  right: 8,
+                  top: 9,
+                  right: 9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2.5,
+                          horizontal: 7,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(5),
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.12),
+                            color: Colors.white.withValues(alpha: 0.14),
                           ),
                         ),
                         child: Text(
@@ -4483,29 +5178,29 @@ class _DashboardViewState extends State<DashboardView>
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 9,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 5),
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: () => _removeRecentWallpaper(item),
-                          borderRadius: BorderRadius.circular(5),
+                          borderRadius: BorderRadius.circular(6),
                           child: Container(
-                            padding: const EdgeInsets.all(3),
+                            padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(5),
+                              color: Colors.black.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.12),
+                                color: Colors.white.withValues(alpha: 0.14),
                               ),
                             ),
                             child: const Icon(
                               Icons.close_rounded,
-                              size: 12,
-                              color: Colors.white60,
+                              size: 11,
+                              color: Colors.white70,
                             ),
                           ),
                         ),
@@ -4516,9 +5211,9 @@ class _DashboardViewState extends State<DashboardView>
 
                 // 5. Bottom Info + Apply Action
                 Positioned(
-                  bottom: 10,
-                  left: 12,
-                  right: 12,
+                  bottom: 12,
+                  left: 14,
+                  right: 14,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -4532,7 +5227,7 @@ class _DashboardViewState extends State<DashboardView>
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
@@ -4544,8 +5239,8 @@ class _DashboardViewState extends State<DashboardView>
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 10,
-                                color: themeColor.withValues(alpha: 0.9),
-                                fontWeight: FontWeight.w600,
+                                color: themeColor.withValues(alpha: 0.95),
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
@@ -4569,14 +5264,13 @@ class _DashboardViewState extends State<DashboardView>
                                     themeColor.withValues(alpha: 0.75),
                                   ],
                                 ),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(9),
                           boxShadow: [
                             BoxShadow(
-                              color:
-                                  (isActive
-                                          ? const Color(0xFF10B981)
-                                          : themeColor)
-                                      .withValues(alpha: 0.4),
+                              color: (isActive
+                                      ? const Color(0xFF10B981)
+                                      : themeColor)
+                                  .withValues(alpha: 0.4),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
@@ -4586,10 +5280,10 @@ class _DashboardViewState extends State<DashboardView>
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () => _applyRecentWallpaper(item),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(9),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
+                                horizontal: 11,
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -4808,6 +5502,7 @@ class _DashboardViewState extends State<DashboardView>
 
   Widget _buildStaticWallpapersView() {
     final staticWallpapers = _cachedStaticWallpapers;
+    final searchQuery = _wallpaperSearchQuery.trim().toLowerCase();
 
     final hasRecentStatic = _settings.recentWallpapers.any((w) => !w.isVideo);
     final categories = [
@@ -4821,7 +5516,7 @@ class _DashboardViewState extends State<DashboardView>
         .where((w) => !w.isVideo)
         .toList();
 
-    final filtered = _selectedCategory == 'All'
+    final categoryFiltered = _selectedCategory == 'All'
         ? staticWallpapers
         : (isRecentSelected
               ? const <FirebaseWallpaper>[]
@@ -4829,75 +5524,162 @@ class _DashboardViewState extends State<DashboardView>
                     .where((w) => w.category == _selectedCategory)
                     .toList());
 
+    final filtered = searchQuery.isEmpty
+        ? categoryFiltered
+        : staticWallpapers.where((w) {
+            return w.name.toLowerCase().contains(searchQuery) ||
+                w.category.toLowerCase().contains(searchQuery) ||
+                (w.description?.toLowerCase().contains(searchQuery) ?? false);
+          }).toList();
+
     return Column(
       children: [
         // ── Active Static Wallpaper Controls (ONLY if static wallpaper is active) ──
         if (_settings.activeWallpaperType == 'static')
           _buildActiveWallpaperControls(),
 
-        // ── Horizontal Categories & Actions ──
-        Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: categories.length,
-                  itemBuilder: (context, idx) {
-                    final cat = categories[idx];
-                    final isSelected = _selectedCategory == cat;
-                    return Padding(
-                      padding: const EdgeInsets.only(
-                        right: 12,
-                        top: 8,
-                        bottom: 8,
-                      ),
-                      child: _buildCategoryChip(cat, isSelected),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _browseAndApplyCustomImage,
-                icon: const Icon(Icons.add_photo_alternate_rounded, size: 14),
-                label: const Text(
-                  'Browse Image',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFEC4899),
-                  side: BorderSide(
-                    color: const Color(0xFFEC4899).withValues(alpha: 0.4),
-                  ),
-                  backgroundColor: const Color(
-                    0xFFEC4899,
-                  ).withValues(alpha: 0.08),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // ── Grid of Static Wallpapers ──
-        Expanded(
-          child: isRecentSelected
-              ? (recentStatic.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No recent static wallpapers found.',
-                          style: TextStyle(color: Colors.white60, fontSize: 13),
+        // ── Horizontal Categories & Actions (hidden during search for focus) ──
+        if (searchQuery.isEmpty)
+          Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categories.length,
+                    itemBuilder: (context, idx) {
+                      final cat = categories[idx];
+                      final isSelected = _selectedCategory == cat;
+                      return Padding(
+                        padding: const EdgeInsets.only(
+                          right: 12,
+                          top: 8,
+                          bottom: 8,
                         ),
-                      )
+                        child: _buildCategoryChip(cat, isSelected),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _browseAndApplyCustomImage,
+                  icon: const Icon(Icons.add_photo_alternate_rounded, size: 14),
+                  label: const Text(
+                    'Browse Image',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFEC4899),
+                    side: BorderSide(
+                      color: const Color(0xFFEC4899).withValues(alpha: 0.4),
+                    ),
+                    backgroundColor: const Color(
+                      0xFFEC4899,
+                    ).withValues(alpha: 0.08),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // ── Grid of Static Wallpapers / Search Results ──
+        Expanded(
+          child: searchQuery.isNotEmpty && filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.search_off_rounded,
+                          size: 38,
+                          color: Color(0xFF38BDF8),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'No wallpapers found matching "$_wallpaperSearchQuery"',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Try searching by tag, anime, nature, or 4k resolution.',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _wallpaperSearchCtrl.clear();
+                            _wallpaperSearchQuery = '';
+                          });
+                        },
+                        icon: const Icon(Icons.clear_rounded, size: 14),
+                        label: const Text('Clear Search Filter'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF38BDF8),
+                          side: BorderSide(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : (searchQuery.isEmpty && isRecentSelected
+                    ? (recentStatic.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No recent static wallpapers found.',
+                                style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            )
+                          : LayoutBuilder(
+                              builder: (context, constraints) {
+                                final crossAxisCount = (constraints.maxWidth / 280)
+                                    .floor()
+                                    .clamp(2, 5);
+                                return GridView.builder(
+                                  padding: const EdgeInsets.all(20),
+                                  cacheExtent: 250.0,
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: crossAxisCount,
+                                        crossAxisSpacing: 16,
+                                        mainAxisSpacing: 16,
+                                        childAspectRatio: 1.3,
+                                      ),
+                                  itemCount: recentStatic.length,
+                                  itemBuilder: (context, idx) {
+                                    return _buildRecentWallpaperCard(
+                                      recentStatic[idx],
+                                    );
+                                  },
+                                );
+                              },
+                            ))
                     : LayoutBuilder(
                         builder: (context, constraints) {
                           final crossAxisCount = (constraints.maxWidth / 280)
@@ -4913,50 +5695,88 @@ class _DashboardViewState extends State<DashboardView>
                                   mainAxisSpacing: 16,
                                   childAspectRatio: 1.3,
                                 ),
-                            itemCount: recentStatic.length,
+                            itemCount: filtered.length,
                             itemBuilder: (context, idx) {
-                              return _buildRecentWallpaperCard(
-                                recentStatic[idx],
-                              );
+                              final wp = filtered[idx];
+                              return _buildWallpaperCard(wp);
                             },
                           );
                         },
-                      ))
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final crossAxisCount = (constraints.maxWidth / 280)
-                        .floor()
-                        .clamp(2, 5);
-                    return GridView.builder(
-                      padding: const EdgeInsets.all(20),
-                      cacheExtent: 250.0,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 1.3,
-                      ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, idx) {
-                        final wp = filtered[idx];
-                        return _buildWallpaperCard(wp);
-                      },
-                    );
-                  },
-                ),
+                      )),
         ),
       ],
     );
   }
 
   Widget _buildLiveWallpapersView() {
-    final videoWallpapers = _cachedLiveWallpapers;
+    final searchQuery = _wallpaperSearchQuery.trim().toLowerCase();
+    final allVideos = _cachedLiveWallpapers;
+    final videoWallpapers = searchQuery.isEmpty
+        ? allVideos
+        : allVideos.where((w) {
+            return w.name.toLowerCase().contains(searchQuery) ||
+                w.category.toLowerCase().contains(searchQuery) ||
+                (w.description?.toLowerCase().contains(searchQuery) ?? false);
+          }).toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = (constraints.maxWidth / 280)
             .floor()
             .clamp(2, 5);
+
+        if (searchQuery.isNotEmpty && videoWallpapers.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF818CF8).withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.video_camera_back_rounded,
+                    size: 38,
+                    color: Color(0xFF818CF8),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'No live video wallpapers found matching "$_wallpaperSearchQuery"',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Try searching for cyberpunk, ambient, anime, or abstract motion.',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _wallpaperSearchCtrl.clear();
+                      _wallpaperSearchQuery = '';
+                    });
+                  },
+                  icon: const Icon(Icons.clear_rounded, size: 14),
+                  label: const Text('Clear Search Filter'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF818CF8),
+                    side: BorderSide(
+                      color: const Color(0xFF818CF8).withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
         return CustomScrollView(
           cacheExtent: 250.0,
@@ -4966,14 +5786,13 @@ class _DashboardViewState extends State<DashboardView>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── If Live Video Active: "NOW PLAYING" Header Deck with Live Preview & Controls ──
-                  // ── If NOT Active: Clean Invitation Banner (NO playback controls clutter) ──
-                  _buildLiveVideoControls(),
-
-                  const SizedBox(height: 12),
-
-                  // ── If recent video wallpapers exist: Horizontal shelf of Recent Live Wallpapers ──
-                  if (_settings.recentWallpapers.any((w) => w.isVideo))
-                    _buildRecentLiveVideosShelf(),
+                  if (searchQuery.isEmpty) ...[
+                    _buildLiveVideoControls(),
+                    const SizedBox(height: 12),
+                    // ── If recent video wallpapers exist: Horizontal shelf of Recent Live Wallpapers ──
+                    if (_settings.recentWallpapers.any((w) => w.isVideo))
+                      _buildRecentLiveVideosShelf(),
+                  ],
 
                   // ── Section Title: Live Video Catalog ──
                   Padding(
@@ -4986,9 +5805,11 @@ class _DashboardViewState extends State<DashboardView>
                           color: Color(0xFF38BDF8),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'CURATED LIVE WALLPAPERS',
-                          style: TextStyle(
+                        Text(
+                          searchQuery.isEmpty
+                              ? 'CURATED LIVE WALLPAPERS'
+                              : 'SEARCH RESULTS (${videoWallpapers.length})',
+                          style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: Colors.white70,
@@ -7273,26 +8094,27 @@ class _DashboardViewState extends State<DashboardView>
             scaleUp: 1.035,
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF131622),
-                borderRadius: BorderRadius.circular(18),
+                color: const Color(0xFF111420),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isActive
                       ? themeColor
                       : (isVideo
-                            ? const Color(0xFF38BDF8).withValues(alpha: 0.30)
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.28)
                             : Colors.white.withValues(alpha: 0.09)),
-                  width: isActive ? 1.8 : 1.0,
+                  width: isActive ? 2.0 : 1.0,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 12,
+                    color: (isActive ? themeColor : Colors.black)
+                        .withValues(alpha: isActive ? 0.38 : 0.45),
+                    blurRadius: isActive ? 22 : 12,
                     offset: const Offset(0, 4),
                   ),
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(isActive ? 16 : 17),
+                borderRadius: BorderRadius.circular(isActive ? 18 : 19),
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -7339,13 +8161,15 @@ class _DashboardViewState extends State<DashboardView>
                             ),
                     ),
 
+                    // Obsidian Bottom-Weighted Shadow
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
                               Colors.transparent,
-                              Colors.black.withValues(alpha: 0.8),
+                              Colors.black.withValues(alpha: 0.35),
+                              Colors.black.withValues(alpha: 0.88),
                             ],
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
@@ -7360,8 +8184,8 @@ class _DashboardViewState extends State<DashboardView>
                       child: ResolutionOverlayLabel(wallpaper: wp),
                     ),
                     Positioned(
-                      top: 2,
-                      right: 2,
+                      top: 3,
+                      right: 3,
                       child: PopupMenuButton<String>(
                         tooltip: 'Wallpaper actions',
                         onSelected: (action) {
@@ -7401,10 +8225,55 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                     ),
 
+                    // Active Desktop Beacon Badge
+                    if (isActive)
+                      Positioned(
+                        top: 9,
+                        left: 9,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3.5,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF059669), Color(0xFF10B981)],
+                            ),
+                            borderRadius: BorderRadius.circular(7),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 3,
+                                backgroundColor: Colors.white,
+                              ),
+                              SizedBox(width: 4.5),
+                              Text(
+                                'ACTIVE DESKTOP',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    // Pro Badge
                     if (wp.isPro)
                       Positioned(
                         top: 9,
-                        left: isVideo ? 116 : 9,
+                        left: (isActive || isVideo) ? 116 : 9,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 7.5,
@@ -7412,15 +8281,15 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFFFFB703), Color(0xFFFB8500)],
+                              colors: [Color(0xFFFFD700), Color(0xFFF59E0B)],
                             ),
                             borderRadius: BorderRadius.circular(7),
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(
-                                  0xFFFB8500,
+                                  0xFFF59E0B,
                                 ).withValues(alpha: 0.55),
-                                blurRadius: 10,
+                                blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
                             ],
@@ -7448,7 +8317,8 @@ class _DashboardViewState extends State<DashboardView>
                         ),
                       ),
 
-                    if (isVideo)
+                    // Live Video Motion Tag (when not already displaying active desktop)
+                    if (isVideo && !isActive)
                       Positioned(
                         top: 9,
                         left: 9,
@@ -7515,18 +8385,18 @@ class _DashboardViewState extends State<DashboardView>
                                     ),
                                   ],
                                 ),
-                                child: Row(
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.videocam_rounded,
                                       size: 11,
                                       color: Colors.white,
                                     ),
-                                    const SizedBox(width: 4),
+                                    SizedBox(width: 4),
                                     Text(
-                                      isActive ? 'ACTIVE VIDEO' : '60FPS LIVE',
-                                      style: const TextStyle(
+                                      '60FPS LIVE',
+                                      style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 8.5,
                                         fontWeight: FontWeight.w900,
@@ -7586,19 +8456,33 @@ class _DashboardViewState extends State<DashboardView>
                                 Text(
                                   wp.name,
                                   style: const TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 12.5,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                Text(
-                                  wp.category,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: themeColor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                const SizedBox(height: 1),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      decoration: BoxDecoration(
+                                        color: themeColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      wp.category,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: themeColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 if (wp.description != null &&
                                     wp.description!.isNotEmpty) ...[
@@ -19226,14 +20110,48 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
+  IconData _iconForCategory(String cat) {
+    switch (cat.toLowerCase().trim()) {
+      case 'all':
+        return Icons.auto_awesome_mosaic_rounded;
+      case 'recent':
+        return Icons.history_rounded;
+      case 'anime':
+        return Icons.animation_rounded;
+      case 'nature':
+        return Icons.landscape_rounded;
+      case 'cyberpunk':
+        return Icons.electric_bolt_rounded;
+      case 'abstract':
+        return Icons.bubble_chart_rounded;
+      case 'space':
+      case 'sci-fi':
+        return Icons.rocket_launch_rounded;
+      case 'cars':
+      case 'vehicles':
+        return Icons.directions_car_rounded;
+      case 'gaming':
+      case 'games':
+        return Icons.sports_esports_rounded;
+      case 'minimal':
+        return Icons.filter_vintage_rounded;
+      case '4k':
+      case 'uhd':
+        return Icons.hd_rounded;
+      default:
+        return Icons.palette_rounded;
+    }
+  }
+
   // Helper widget to build a category chip
   Widget _buildCategoryChip(String cat, bool isSelected) {
+    final icon = _iconForCategory(cat);
     return GestureDetector(
       onTap: () => setState(() => _selectedCategory = cat),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           gradient: isSelected
               ? const LinearGradient(
@@ -19245,7 +20163,7 @@ class _DashboardViewState extends State<DashboardView>
           border: Border.all(
             color: isSelected
                 ? Colors.transparent
-                : Colors.white.withValues(alpha: 0.09),
+                : Colors.white.withValues(alpha: 0.10),
             width: 1.0,
           ),
           boxShadow: isSelected
@@ -19258,14 +20176,25 @@ class _DashboardViewState extends State<DashboardView>
                 ]
               : null,
         ),
-        child: Text(
-          cat,
-          style: TextStyle(
-            fontSize: 12,
-            color: isSelected ? const Color(0xFF070913) : Colors.white70,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            letterSpacing: 0.3,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isSelected ? const Color(0xFF070913) : Colors.white60,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              cat,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: isSelected ? const Color(0xFF070913) : Colors.white70,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
         ),
       ),
     );
