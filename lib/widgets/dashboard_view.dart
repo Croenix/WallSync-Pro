@@ -156,6 +156,7 @@ class _DashboardViewState extends State<DashboardView>
   final _descCtrl = TextEditingController();
   final _videoUrlController = TextEditingController();
   final _weatherSearchCtrl = TextEditingController();
+  Timer? _weatherDebounceTimer;
   bool _isAutoDetectingWeather = false;
   String _weatherSearchError = '';
   StreamSubscription<MediaInfo>? _mediaSubscription;
@@ -1080,14 +1081,17 @@ class _DashboardViewState extends State<DashboardView>
     _syncMediaServiceState();
     _mediaInfo = MediaSessionService().current;
     if (_mediaInfo.thumbnail.isNotEmpty) {
-      try {
-        _thumbnailBytes = base64Decode(_mediaInfo.thumbnail);
-      } on FormatException catch (error, stackTrace) {
+      final initialThumb = _mediaInfo.thumbnail;
+      compute(base64Decode, initialThumb).then((bytes) {
+        if (mounted && _mediaInfo.thumbnail == initialThumb) {
+          setState(() => _thumbnailBytes = bytes);
+        }
+      }).catchError((error, stackTrace) {
         logWarning(
           'DashboardView',
           'Initial media artwork base64 decoding failed: $error\n$stackTrace',
         );
-      }
+      });
     }
     _updatePlaybackPosition(_mediaInfo);
     _mediaSubscription = MediaSessionService().mediaStream.listen((info) {
@@ -1115,17 +1119,22 @@ class _DashboardViewState extends State<DashboardView>
           );
         }
 
-        // Cache thumbnail bytes on change to prevent reloading flickering
+        // Cache thumbnail bytes on change to prevent reloading flickering off-thread
         if (thumbChanged) {
-          try {
-            _thumbnailBytes = base64Decode(info.thumbnail);
-          } on FormatException catch (error, stackTrace) {
-            _thumbnailBytes = null;
-            logWarning(
-              'DashboardView',
-              'Media artwork base64 decoding failed: $error\n$stackTrace',
-            );
-          }
+          final targetThumb = info.thumbnail;
+          compute(base64Decode, targetThumb).then((bytes) {
+            if (mounted && _mediaInfo.thumbnail == targetThumb) {
+              setState(() => _thumbnailBytes = bytes);
+            }
+          }).catchError((error, stackTrace) {
+            if (mounted) {
+              setState(() => _thumbnailBytes = null);
+              logWarning(
+                'DashboardView',
+                'Media artwork base64 decoding failed: $error\n$stackTrace',
+              );
+            }
+          });
         } else if (info.thumbnail.isEmpty) {
           _thumbnailBytes = null;
         }
@@ -1519,6 +1528,7 @@ class _DashboardViewState extends State<DashboardView>
     _overlayRecoveryStabilityTimer?.cancel();
     _statusTimer?.cancel();
     _hoverDebounceTimer?.cancel();
+    _weatherDebounceTimer?.cancel();
     if (_saveDebounce?.isActive ?? false) {
       _saveDebounce?.cancel();
       unawaited(_saveSettingsSafely(_settings));
@@ -1933,25 +1943,43 @@ class _DashboardViewState extends State<DashboardView>
   // Settings helpers ─────────────────────────────────────────────────────────────────────────────
 
   void _updateSettings(WidgetSettings s) {
+    final currentJson = jsonEncode(_settings.toJson());
+    final newJson = jsonEncode(s.toJson());
+    if (currentJson == newJson) {
+      return;
+    }
     final wpChanged =
         s.activeWallpaperType != _settings.activeWallpaperType ||
         s.videoWallpaperPaused != _settings.videoWallpaperPaused;
-    setState(() => _settings = s);
+    final templateChanged = s.widgetTemplate != _settings.widgetTemplate;
+    final customElementsChanged = s.widgetTemplate == 'custom' &&
+        s.customElements != _settings.customElements;
+    final shouldSaveImmediately = templateChanged || customElementsChanged;
+
+    setState(() {
+      _settings = s;
+      if (templateChanged) {
+        _activeTemplate = s.widgetTemplate;
+      }
+    });
     if (wpChanged) {
       _updateTrayMenu();
     }
     _syncMediaServiceState();
     _syncConnectivityService();
-    // Only write to settings file if the overlay is not running or if we are customizing the active template.
-    if (_isOverlayRunning && s.widgetTemplate != _activeTemplate) {
-      return;
-    }
-    // Debounce: only write to disk/registry after 300ms of inactivity.
-    // This prevents hammering the filesystem on every color-picker drag frame.
-    _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(milliseconds: 300), () {
+
+    if (shouldSaveImmediately) {
+      _saveDebounce?.cancel();
+      _saveDebounce = null;
       unawaited(_saveSettingsSafely(s));
-    });
+    } else {
+      // Debounce: only write to disk/registry after 300ms of inactivity.
+      // This prevents hammering the filesystem on every color-picker drag frame.
+      _saveDebounce?.cancel();
+      _saveDebounce = Timer(const Duration(milliseconds: 300), () {
+        unawaited(_saveSettingsSafely(s));
+      });
+    }
   }
 
   Future<void> _saveSettingsSafely(WidgetSettings settings) async {
@@ -2213,22 +2241,28 @@ class _DashboardViewState extends State<DashboardView>
             },
           );
           if (existingReady.isReady && mounted) {
+            _saveDebounce?.cancel();
+            _saveDebounce = null;
+            _settings = _settings.copyWith(exitOverlay: false);
+            await _saveSettingsSafely(_settings);
+            if (!mounted) return;
             setState(() {
               _isOverlayRunning = true;
               _activeTemplate = _settings.widgetTemplate;
             });
             _updateTrayMenu();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Desktop Widget Overlay is already running.'),
-                duration: Duration(seconds: 2),
+              SnackBar(
+                content: Text('Applied "${_getWidgetTitle(_settings.widgetTemplate)}" to Desktop!'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: const Color(0xFF10B981),
               ),
             );
             logInfo(
               'DashboardView',
               'Reconciled existing overlay PID ${existingRecord.pid} '
                   'as ready in ${existingReady.elapsed.inMilliseconds}ms; '
-                  'skipping duplicate launch.',
+                  'applied selected widget "${_settings.widgetTemplate}".',
             );
             return;
           }
@@ -2245,9 +2279,11 @@ class _DashboardViewState extends State<DashboardView>
         'DashboardView',
         'Preparing to launch Widget Overlay. Saving current settings.',
       );
-      _settings = await _settingsService.updateSettings(
-        (current) => current.copyWith(exitOverlay: false),
-      );
+      _saveDebounce?.cancel();
+      _saveDebounce = null;
+      _settings = _settings.copyWith(exitOverlay: false);
+      await _saveSettingsSafely(_settings);
+      _activeTemplate = _settings.widgetTemplate;
 
       final previousOverlay = await _overlayLifecycle.close();
       if (previousOverlay == OverlayCloseResult.processCouldNotBeVerified ||
@@ -2257,9 +2293,7 @@ class _DashboardViewState extends State<DashboardView>
           '($previousOverlay); refusing to start a duplicate.',
         );
       }
-      _settings = await _settingsService.updateSettings(
-        (current) => current.copyWith(exitOverlay: false),
-      );
+      await _saveSettingsSafely(_settings);
 
       // 2. Prepare shadow runtime copy so MSBuild never hits file locks on WebView2Loader.dll
       String appPath = Platform.resolvedExecutable;
@@ -2610,9 +2644,8 @@ class _DashboardViewState extends State<DashboardView>
           setState(() => _isOverlayRunning = false);
           _updateTrayMenu();
         }
-        _settings = await _settingsService.updateSettings(
-          (current) => current.copyWith(exitOverlay: false),
-        );
+        _settings = _settings.copyWith(exitOverlay: false);
+        await _saveSettingsSafely(_settings);
       }
       if (result == OverlayCloseResult.stoppedAfterForceTermination) {
         logWarning(
@@ -2797,8 +2830,8 @@ class _DashboardViewState extends State<DashboardView>
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 1100;
-          final ultraCompact = constraints.maxWidth < 820;
+          final compact = constraints.maxWidth < 1180;
+          final ultraCompact = constraints.maxWidth < 900;
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -2915,60 +2948,69 @@ class _DashboardViewState extends State<DashboardView>
                 ],
               ),
 
-              // Central sliding pill-tabs dock
-              Container(
-                padding: const EdgeInsets.all(3.5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.035),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
+              // Central sliding pill-tabs dock (wrapped in Flexible + FittedBox to eliminate right overflow)
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: Container(
+                      padding: const EdgeInsets.all(3.5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.035),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildMainTabButton(
+                            'Wallpapers',
+                            'wallpapers',
+                            Icons.wallpaper_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Widgets',
+                            'widgets',
+                            Icons.widgets_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Diagnostics',
+                            'diagnostics',
+                            Icons.analytics_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Bug Report',
+                            'bug_report',
+                            Icons.bug_report_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'About',
+                            'about',
+                            Icons.info_outline_rounded,
+                            compact: compact,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 10,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMainTabButton(
-                      'Wallpapers',
-                      'wallpapers',
-                      Icons.wallpaper_rounded,
-                      compact: compact,
-                    ),
-                    const SizedBox(width: 3),
-                    _buildMainTabButton(
-                      'Widgets',
-                      'widgets',
-                      Icons.widgets_rounded,
-                      compact: compact,
-                    ),
-                    const SizedBox(width: 3),
-                    _buildMainTabButton(
-                      'Diagnostics',
-                      'diagnostics',
-                      Icons.analytics_rounded,
-                      compact: compact,
-                    ),
-                    const SizedBox(width: 3),
-                    _buildMainTabButton(
-                      'Bug Report',
-                      'bug_report',
-                      Icons.bug_report_rounded,
-                      compact: compact,
-                    ),
-                    const SizedBox(width: 3),
-                    _buildMainTabButton(
-                      'About',
-                      'about',
-                      Icons.info_outline_rounded,
-                      compact: compact,
-                    ),
-                  ],
                 ),
               ),
 
@@ -3685,7 +3727,11 @@ class _DashboardViewState extends State<DashboardView>
                                 fit: BoxFit.cover,
                               ))
                     : (localPath != null && File(localPath).existsSync()
-                        ? Image.file(File(localPath), fit: BoxFit.cover)
+                        ? Image.file(
+                            File(localPath),
+                            fit: BoxFit.cover,
+                            cacheWidth: 800,
+                          )
                         : const SizedBox.shrink()),
               ),
             ),
@@ -3998,7 +4044,11 @@ class _DashboardViewState extends State<DashboardView>
                                       ))
                           else if (localPath != null &&
                               File(localPath).existsSync())
-                            Image.file(File(localPath), fit: BoxFit.cover)
+                            Image.file(
+                              File(localPath),
+                              fit: BoxFit.cover,
+                              cacheWidth: 400,
+                            )
                           else
                             const Center(
                               child: Icon(
@@ -10803,7 +10853,9 @@ class _DashboardViewState extends State<DashboardView>
               final boxColor = Color(_settings.colorFor(ElementKey.neonBox));
               final sepColor = Color(_settings.colorFor(ElementKey.separator));
               final dateColor = Color(_settings.colorFor(ElementKey.date));
-              final badgeColor = Color(_settings.colorFor(ElementKey.day));
+              final dayColor = Color(_settings.colorFor(ElementKey.day));
+              final badgeColor = Color(_settings.colorFor(ElementKey.neonBadge));
+              final dateStr = DateFormat('d MMM yyyy').format(now).toUpperCase();
 
               return _applyPreview3D(
                 ElementKey.neonBox,
@@ -10844,16 +10896,18 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 5),
+                            const SizedBox(width: 8),
                             _applyPreview3D(
                               ElementKey.date,
                               tappable(
                                 ElementKey.date,
                                 Text(
-                                  yearStr,
+                                  dateStr,
                                   style: TextStyle(
                                     color: dateColor,
                                     fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.8,
                                     fontFamily: _settings.fontFor(ElementKey.date),
                                   ),
                                 ),
@@ -10908,21 +10962,46 @@ class _DashboardViewState extends State<DashboardView>
                           ],
                         ),
                         const SizedBox(height: 10),
-                        _applyPreview3D(
-                          ElementKey.day,
-                          tappable(
-                            ElementKey.day,
-                            Text(
-                              'SYS_ACTIVE • 100%',
-                              style: TextStyle(
-                                color: badgeColor,
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.8,
-                                fontFamily: _settings.fontFor(ElementKey.day),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _applyPreview3D(
+                              ElementKey.day,
+                              tappable(
+                                ElementKey.day,
+                                Text(
+                                  DateFormat('EEEE').format(now).toUpperCase(),
+                                  style: TextStyle(
+                                    color: dayColor,
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.0,
+                                    fontFamily: _settings.fontFor(ElementKey.day),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 5),
+                              child: Text('•', style: TextStyle(color: dayColor.withValues(alpha: 0.6), fontSize: 8.5)),
+                            ),
+                            _applyPreview3D(
+                              ElementKey.neonBadge,
+                              tappable(
+                                ElementKey.neonBadge,
+                                Text(
+                                  'SYS_ACTIVE 100%',
+                                  style: TextStyle(
+                                    color: badgeColor,
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.8,
+                                    fontFamily: _settings.fontFor(ElementKey.neonBadge),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -10931,7 +11010,9 @@ class _DashboardViewState extends State<DashboardView>
               );
 
             case 'atomic_clean':
-              final subColor = Color(_settings.colorFor(ElementKey.day));
+              final dayColor = Color(_settings.colorFor(ElementKey.day));
+              final dateColor = Color(_settings.colorFor(ElementKey.date));
+              final dateStr = DateFormat('d MMM').format(now).toUpperCase();
 
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -10979,28 +11060,58 @@ class _DashboardViewState extends State<DashboardView>
                     ],
                   ),
                   const SizedBox(height: 6),
-                  _applyPreview3D(
-                    ElementKey.day,
-                    tappable(
-                      ElementKey.day,
-                      Text(
-                        'ATOMIC • ANURATI',
-                        style: TextStyle(
-                          color: subColor,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2.8,
-                          fontFamily: _settings.fontFor(ElementKey.day),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _applyPreview3D(
+                        ElementKey.day,
+                        tappable(
+                          ElementKey.day,
+                          Text(
+                            DateFormat('EEEE').format(now).toUpperCase(),
+                            style: TextStyle(
+                              color: dayColor,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2.5,
+                              fontFamily: _settings.fontFor(ElementKey.day),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        child: Text('•', style: TextStyle(color: dayColor.withValues(alpha: 0.6), fontSize: 9.5)),
+                      ),
+                      _applyPreview3D(
+                        ElementKey.date,
+                        tappable(
+                          ElementKey.date,
+                          Text(
+                            dateStr,
+                            style: TextStyle(
+                              color: dateColor,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.5,
+                              fontFamily: _settings.fontFor(ElementKey.date),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               );
 
             case 'arc_clock':
-              final arcStart = Color(_settings.colorFor(ElementKey.minutes));
-              final arcEnd = Color(_settings.colorFor(ElementKey.seconds));
+              final arcStart = Color(_settings.colorFor(ElementKey.glowOuter));
+              final arcEnd = Color(_settings.colorFor(ElementKey.glowInner));
+              final dialBg = Color(_settings.colorFor(ElementKey.innerBackground));
+              final ticksCol = Color(_settings.colorFor(ElementKey.separator));
+              final hrHandCol = Color(_settings.colorFor(ElementKey.hours));
+              final minHandCol = Color(_settings.colorFor(ElementKey.minutes));
+              final secHandCol = Color(_settings.colorFor(ElementKey.seconds));
               final digitalColor = Color(_settings.colorFor(ElementKey.minutes));
               final dateColor = Color(_settings.colorFor(ElementKey.day));
 
@@ -11019,9 +11130,11 @@ class _DashboardViewState extends State<DashboardView>
                             dateTime: now,
                             arcStartColor: arcStart,
                             arcEndColor: arcEnd,
-                            hourHandColor: const Color(0xFF555B66),
-                            minuteHandColor: arcStart,
-                            secondHandColor: arcEnd,
+                            dialBgColor: dialBg,
+                            tickColor: ticksCol,
+                            hourHandColor: hrHandCol,
+                            minuteHandColor: minHandCol,
+                            secondHandColor: secHandCol,
                           ),
                         ),
                       ),
@@ -11063,6 +11176,7 @@ class _DashboardViewState extends State<DashboardView>
 
             case 'flip_clock':
               final frameColor = Color(_settings.colorFor(ElementKey.neonBox));
+              final frameBg = Color(_settings.colorFor(ElementKey.innerBackground));
 
               return _applyPreview3D(
                 ElementKey.neonBox,
@@ -11071,7 +11185,7 @@ class _DashboardViewState extends State<DashboardView>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF13161C),
+                      color: frameBg.a == 0 ? Colors.transparent : frameBg,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: frameColor, width: 2.0),
                     ),
@@ -11149,9 +11263,27 @@ class _DashboardViewState extends State<DashboardView>
 
             case 'station_weather':
               final pillBg = Color(_settings.colorFor(ElementKey.neonBox));
+              final dialBg = Color(_settings.colorFor(ElementKey.innerBackground));
+              final rimCol = Color(_settings.colorFor(ElementKey.glowOuter));
+              final tickCol = Color(_settings.colorFor(ElementKey.separator));
               final handCol = Color(_settings.colorFor(ElementKey.hours));
+              final minCol = Color(_settings.colorFor(ElementKey.minutes));
               final secCol = Color(_settings.colorFor(ElementKey.seconds));
-              final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '12°C';
+              final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '--°C';
+              final currentIcon = WeatherService.getIconForStatus(_settings.weatherStatus);
+              List<Map<String, dynamic>> forecastList = [];
+              try {
+                if (_settings.weatherForecastJson.isNotEmpty) {
+                  final decoded = jsonDecode(_settings.weatherForecastJson);
+                  if (decoded is List) {
+                    forecastList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                  }
+                }
+              } catch (_) {}
+              final col2Temp = forecastList.isNotEmpty ? '${forecastList[0]['temp']}°C' : '';
+              final col2Icon = forecastList.isNotEmpty
+                  ? WeatherService.getIconForCode(forecastList[0]['code'] as int? ?? 0)
+                  : currentIcon;
 
               return _applyPreview3D(
                 ElementKey.neonBox,
@@ -11162,6 +11294,7 @@ class _DashboardViewState extends State<DashboardView>
                     decoration: BoxDecoration(
                       color: pillBg,
                       borderRadius: BorderRadius.circular(32),
+                      border: Border.all(color: rimCol.withValues(alpha: 0.3), width: 1.2),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -11173,17 +11306,20 @@ class _DashboardViewState extends State<DashboardView>
                             Container(
                               width: 80,
                               height: 80,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white,
+                                color: dialBg,
+                                border: Border.all(color: rimCol, width: 2.0),
                               ),
                               child: ClipOval(
                                 child: CustomPaint(
                                   painter: StationClockDialPainter(
                                     dateTime: now,
-                                    dialColor: Colors.white,
+                                    dialColor: dialBg,
                                     handColor: handCol,
+                                    minuteHandColor: minCol,
                                     secondColor: secCol,
+                                    tickColor: tickCol,
                                   ),
                                 ),
                               ),
@@ -11237,13 +11373,15 @@ class _DashboardViewState extends State<DashboardView>
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.thunderstorm_rounded, size: 12, color: Colors.white),
+                                    Icon(currentIcon, size: 12, color: Colors.white),
                                     const SizedBox(width: 3),
                                     Text(tempStr, style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.cloud_queue_rounded, size: 12, color: Colors.white),
-                                    const SizedBox(width: 3),
-                                    const Text('11°C', style: TextStyle(color: Colors.white, fontSize: 8.5)),
+                                    if (col2Temp.isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      Icon(col2Icon, size: 12, color: Colors.white70),
+                                      const SizedBox(width: 3),
+                                      Text(col2Temp, style: const TextStyle(color: Colors.white70, fontSize: 8.5)),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -11707,11 +11845,11 @@ class _DashboardViewState extends State<DashboardView>
 
   Widget _buildGlossy3DIcon(IconData icon, Color baseColor) {
     return Container(
-      width: 28,
-      height: 28,
-      margin: const EdgeInsets.only(bottom: 4),
+      width: 24,
+      height: 24,
+      margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(7),
         gradient: LinearGradient(
           colors: [
             baseColor.withValues(alpha: 0.85),
@@ -11723,8 +11861,8 @@ class _DashboardViewState extends State<DashboardView>
         boxShadow: [
           BoxShadow(
             color: baseColor.withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
           ),
           BoxShadow(
             color: Colors.white.withValues(alpha: 0.2),
@@ -11737,7 +11875,7 @@ class _DashboardViewState extends State<DashboardView>
           width: 0.8,
         ),
       ),
-      child: Center(child: Icon(icon, size: 14, color: Colors.white)),
+      child: Center(child: Icon(icon, size: 13, color: Colors.white)),
     );
   }
 
@@ -11756,16 +11894,17 @@ class _DashboardViewState extends State<DashboardView>
         indicatorWeight: 3,
         indicatorSize: TabBarIndicatorSize.tab,
         labelStyle: const TextStyle(
-          fontSize: 12,
+          fontSize: 11.5,
           fontWeight: FontWeight.w800,
-          letterSpacing: 0.8,
+          letterSpacing: 0.6,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontSize: 12,
+          fontSize: 11.5,
           fontWeight: FontWeight.bold,
         ),
         tabs: [
           Tab(
+            height: 54,
             icon: _buildGlossy3DIcon(
               Icons.text_fields_rounded,
               const Color(0xFFEC4899),
@@ -11773,6 +11912,7 @@ class _DashboardViewState extends State<DashboardView>
             text: 'Element',
           ),
           Tab(
+            height: 54,
             icon: _buildGlossy3DIcon(
               Icons.wallpaper_rounded,
               const Color(0xFF38BDF8),
@@ -11780,6 +11920,7 @@ class _DashboardViewState extends State<DashboardView>
             text: 'Background',
           ),
           Tab(
+            height: 54,
             icon: _buildGlossy3DIcon(
               Icons.tune_rounded,
               const Color(0xFFC084FC),
@@ -11957,6 +12098,7 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.seconds,
           ElementKey.day,
           ElementKey.date,
+          ElementKey.neonBadge,
           ElementKey.neonBox,
         ].contains(key);
 
@@ -11967,6 +12109,8 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.minutes,
           ElementKey.seconds,
           ElementKey.day,
+          ElementKey.date,
+          ElementKey.ampm,
         ].contains(key);
 
       case 'arc_clock':
@@ -11974,9 +12118,13 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.hours,
           ElementKey.minutes,
           ElementKey.seconds,
+          ElementKey.glowOuter,
+          ElementKey.glowInner,
           ElementKey.separator,
+          ElementKey.innerBackground,
           ElementKey.day,
           ElementKey.date,
+          ElementKey.neonBox,
         ].contains(key);
 
       case 'flip_clock':
@@ -11988,6 +12136,7 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.day,
           ElementKey.date,
           ElementKey.year,
+          ElementKey.innerBackground,
           ElementKey.neonBox,
         ].contains(key);
 
@@ -11996,6 +12145,9 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.hours,
           ElementKey.minutes,
           ElementKey.seconds,
+          ElementKey.glowOuter,
+          ElementKey.innerBackground,
+          ElementKey.separator,
           ElementKey.day,
           ElementKey.date,
           ElementKey.weatherIcon,
@@ -18541,13 +18693,13 @@ class _DashboardViewState extends State<DashboardView>
                               children: [
                                 Text('// CYBER', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
                                 SizedBox(width: 4),
-                                Text('2026', style: TextStyle(color: Colors.white54, fontSize: 7, fontWeight: FontWeight.w600)),
+                                Text('27 OCT 2026', style: TextStyle(color: Colors.white70, fontSize: 6.5, fontWeight: FontWeight.w600)),
                               ],
                             ),
                             SizedBox(height: 4),
                             Text('12:00', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.0)),
                             SizedBox(height: 5),
-                            Text('SYS_ACTIVE • 100%', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 6.5, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
+                            Text('TUESDAY • SYS_ACTIVE 100%', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 6.5, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
                           ],
                         ),
                       );
@@ -18558,7 +18710,7 @@ class _DashboardViewState extends State<DashboardView>
                         children: [
                           Text('12:00', style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: -1.0, height: 1.0)),
                           SizedBox(height: 5),
-                          Text('ATOMIC • ANURATI', style: TextStyle(color: Color(0xFF818CF8), fontSize: 7.5, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontFamily: 'Anurati')),
+                          Text('TUESDAY • 27 OCT', style: TextStyle(color: Color(0xFF818CF8), fontSize: 7.5, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontFamily: 'Anurati')),
                         ],
                       );
 
@@ -19245,7 +19397,9 @@ class _DashboardViewState extends State<DashboardView>
                         const SizedBox(height: 6),
 
                         // Badges
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -19266,7 +19420,6 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 7,
@@ -19286,7 +19439,6 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 7,
@@ -19423,37 +19575,42 @@ class _DashboardViewState extends State<DashboardView>
         child: Row(
           children: [
             // Left Sub-navigation Pills
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildWidgetSubTabChip(
-                  id: 'desktop',
-                  label: 'Desktop Widgets',
-                  icon: Icons.desktop_windows_rounded,
-                  activeColor: const Color(0xFF38BDF8),
-                  count: 14,
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildWidgetSubTabChip(
+                      id: 'desktop',
+                      label: 'Desktop Widgets',
+                      icon: Icons.desktop_windows_rounded,
+                      activeColor: const Color(0xFF38BDF8),
+                      count: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildWidgetSubTabChip(
+                      id: 'taskbar',
+                      label: 'Taskbar Widgets',
+                      icon: Icons.dock_rounded,
+                      activeColor: const Color(0xFF818CF8),
+                      count: 7,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildWidgetSubTabChip(
+                      id: 'custom',
+                      label: 'Custom Studio',
+                      icon: Icons.palette_rounded,
+                      activeColor: const Color(0xFFEC4899),
+                      count: _settings.savedCustomWidgets.isNotEmpty
+                          ? _settings.savedCustomWidgets.length
+                          : null,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                _buildWidgetSubTabChip(
-                  id: 'taskbar',
-                  label: 'Taskbar Widgets',
-                  icon: Icons.dock_rounded,
-                  activeColor: const Color(0xFF818CF8),
-                  count: 7,
-                ),
-                const SizedBox(width: 6),
-                _buildWidgetSubTabChip(
-                  id: 'custom',
-                  label: 'Custom Studio',
-                  icon: Icons.palette_rounded,
-                  activeColor: const Color(0xFFEC4899),
-                  count: _settings.savedCustomWidgets.isNotEmpty
-                      ? _settings.savedCustomWidgets.length
-                      : null,
-                ),
-              ],
+              ),
             ),
-            const Spacer(),
+            const SizedBox(width: 12),
 
             // Instant Search Input Box
             Container(
@@ -19727,9 +19884,28 @@ class _DashboardViewState extends State<DashboardView>
               final tagColor = item['tagColor'] as Color;
               final isSelected = _settings.widgetTemplate == key;
 
+              void applyTemplate() {
+                final defaults = WidgetSettings.templateDefaults[key] ?? {
+                  'width': 360.0,
+                  'height': 200.0,
+                  'sizeFactor': 1.0,
+                };
+                final newSettings = _settings.copyWith(
+                  widgetTemplate: key,
+                  width: defaults['width'],
+                  height: defaults['height'],
+                  sizeFactor: defaults['sizeFactor'],
+                );
+                _updateSettings(newSettings);
+                if (_isOverlayRunning) {
+                  _launchOverlay();
+                }
+              }
+
               return SizedBox(
                 width: 320,
                 child: HoverCard(
+                  onTap: applyTemplate,
                   borderRadius: BorderRadius.circular(18),
                   glowColor: isSelected ? const Color(0xFF38BDF8) : tagColor,
                   maxGlowOpacity: isSelected ? 0.35 : 0.15,
@@ -19864,17 +20040,7 @@ class _DashboardViewState extends State<DashboardView>
                           children: [
                             Expanded(
                               child: ElevatedButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _settings = _settings.copyWith(
-                                      widgetTemplate: key,
-                                    );
-                                  });
-                                  _updateSettings(_settings);
-                                  if (_isOverlayRunning) {
-                                    _launchOverlay();
-                                  }
-                                },
+                                onPressed: applyTemplate,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isSelected
                                       ? const Color(0xFF10B981)
@@ -19911,13 +20077,22 @@ class _DashboardViewState extends State<DashboardView>
                               icon: const Icon(Icons.tune_rounded, size: 16),
                               color: Colors.white70,
                               onPressed: () {
+                                final defaults = WidgetSettings.templateDefaults[key] ?? {
+                                  'width': 360.0,
+                                  'height': 200.0,
+                                  'sizeFactor': 1.0,
+                                };
                                 setState(() {
-                                  _settings = _settings.copyWith(
-                                    widgetTemplate: key,
-                                  );
                                   _editingWidget = true;
                                 });
-                                _updateSettings(_settings);
+                                _updateSettings(
+                                  _settings.copyWith(
+                                    widgetTemplate: key,
+                                    width: _settings.widgetTemplate == key ? _settings.width : defaults['width'],
+                                    height: _settings.widgetTemplate == key ? _settings.height : defaults['height'],
+                                    sizeFactor: _settings.widgetTemplate == key ? _settings.sizeFactor : defaults['sizeFactor'],
+                                  ),
+                                );
                               },
                               style: IconButton.styleFrom(
                                 backgroundColor:
@@ -20024,9 +20199,28 @@ class _DashboardViewState extends State<DashboardView>
               final tagColor = item['tagColor'] as Color;
               final isSelected = _settings.widgetTemplate == key;
 
+              void applyTaskbarTemplate() {
+                final defaults = WidgetSettings.templateDefaults[key] ?? {
+                  'width': 340.0,
+                  'height': 44.0,
+                  'sizeFactor': 0.85,
+                };
+                final newSettings = _settings.copyWith(
+                  widgetTemplate: key,
+                  width: defaults['width'],
+                  height: defaults['height'],
+                  sizeFactor: defaults['sizeFactor'],
+                );
+                _updateSettings(newSettings);
+                if (_isOverlayRunning) {
+                  _launchOverlay();
+                }
+              }
+
               return SizedBox(
                 width: 320,
                 child: HoverCard(
+                  onTap: applyTaskbarTemplate,
                   borderRadius: BorderRadius.circular(18),
                   glowColor: isSelected ? const Color(0xFF818CF8) : tagColor,
                   maxGlowOpacity: isSelected ? 0.35 : 0.15,
@@ -20163,17 +20357,7 @@ class _DashboardViewState extends State<DashboardView>
                           children: [
                             Expanded(
                               child: ElevatedButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _settings = _settings.copyWith(
-                                      widgetTemplate: key,
-                                    );
-                                  });
-                                  _updateSettings(_settings);
-                                  if (_isOverlayRunning) {
-                                    _launchOverlay();
-                                  }
-                                },
+                                onPressed: applyTaskbarTemplate,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isSelected
                                       ? const Color(0xFF10B981)
@@ -20210,13 +20394,22 @@ class _DashboardViewState extends State<DashboardView>
                               icon: const Icon(Icons.tune_rounded, size: 16),
                               color: Colors.white70,
                               onPressed: () {
+                                final defaults = WidgetSettings.templateDefaults[key] ?? {
+                                  'width': 340.0,
+                                  'height': 44.0,
+                                  'sizeFactor': 0.85,
+                                };
                                 setState(() {
-                                  _settings = _settings.copyWith(
-                                    widgetTemplate: key,
-                                  );
                                   _editingWidget = true;
                                 });
-                                _updateSettings(_settings);
+                                _updateSettings(
+                                  _settings.copyWith(
+                                    widgetTemplate: key,
+                                    width: _settings.widgetTemplate == key ? _settings.width : defaults['width'],
+                                    height: _settings.widgetTemplate == key ? _settings.height : defaults['height'],
+                                    sizeFactor: _settings.widgetTemplate == key ? _settings.sizeFactor : defaults['sizeFactor'],
+                                  ),
+                                );
                               },
                               style: IconButton.styleFrom(
                                 backgroundColor:
@@ -20381,9 +20574,17 @@ class _DashboardViewState extends State<DashboardView>
                 final isSelected = _settings.widgetTemplate == 'custom' &&
                     _activeSavedWidgetId == cw.id;
 
+                void applyCustomWidget() {
+                  _selectSavedCustomWidget(cw);
+                  if (_isOverlayRunning) {
+                    _launchOverlay();
+                  }
+                }
+
                 return SizedBox(
                   width: 320,
                   child: HoverCard(
+                    onTap: applyCustomWidget,
                     borderRadius: BorderRadius.circular(18),
                     glowColor: const Color(0xFFEC4899),
                     child: Container(
@@ -20431,12 +20632,7 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                           const SizedBox(height: 14),
                           ElevatedButton(
-                            onPressed: () {
-                              _selectSavedCustomWidget(cw);
-                              if (_isOverlayRunning) {
-                                _launchOverlay();
-                              }
-                            },
+                            onPressed: applyCustomWidget,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFEC4899),
                               foregroundColor: Colors.white,
@@ -21280,8 +21476,8 @@ class _DashboardViewState extends State<DashboardView>
                   ),
                   SizedBox(width: 4),
                   Text(
-                    '2026',
-                    style: TextStyle(color: Colors.white54, fontSize: 7.5),
+                    '27 OCT 2026',
+                    style: TextStyle(color: Colors.white70, fontSize: 7, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -21297,12 +21493,12 @@ class _DashboardViewState extends State<DashboardView>
               ),
               SizedBox(height: 3),
               Text(
-                'SYS_ACTIVE • 100%',
+                'TUESDAY • SYS_ACTIVE 100%',
                 style: TextStyle(
                   color: Color(0xFF00FFCC),
                   fontSize: 6.5,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+                  letterSpacing: 0.6,
                 ),
               ),
             ],
@@ -21324,12 +21520,12 @@ class _DashboardViewState extends State<DashboardView>
             ),
             SizedBox(height: 3),
             Text(
-              'ATOMIC • ANURATI',
+              'TUESDAY • 27 OCT',
               style: TextStyle(
                 color: Color(0xFF818CF8),
                 fontSize: 7.5,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 2.4,
+                letterSpacing: 2.2,
                 fontFamily: 'Anurati',
               ),
             ),
@@ -21946,6 +22142,22 @@ class _DashboardViewState extends State<DashboardView>
 
         if (_settings.widgetTemplate == 'neon') ...[
           _buildGlassNeonLayoutControls(),
+        ],
+
+        if (_settings.widgetTemplate == 'station_weather') ...[
+          _sectionLabel('WEATHER & LOCATION'),
+          const SizedBox(height: 8),
+          _buildToggleTile(
+            'Show Weather Details',
+            _settings.showWeather,
+            (v) => _updateSettings(_settings.copyWith(showWeather: v)),
+          ),
+          if (_settings.showWeather) ...[
+            const SizedBox(height: 12),
+            _buildWeatherSettingsControls(),
+            const SizedBox(height: 14),
+          ],
+          const SizedBox(height: 20),
         ],
 
         _sectionLabel('DISPLAY FORMAT'),
@@ -25253,7 +25465,19 @@ class _DashboardViewState extends State<DashboardView>
                       contentPadding: EdgeInsets.zero,
                       isDense: true,
                     ),
-                    onSubmitted: (val) => _handleManualWeatherSearch(val),
+                    onChanged: (val) {
+                      _weatherDebounceTimer?.cancel();
+                      _weatherDebounceTimer = Timer(const Duration(milliseconds: 600), () {
+                        final trimmed = val.trim();
+                        if (trimmed.length >= 3 && trimmed != _settings.weatherLocation) {
+                          _handleManualWeatherSearch(trimmed);
+                        }
+                      });
+                    },
+                    onSubmitted: (val) {
+                      _weatherDebounceTimer?.cancel();
+                      _handleManualWeatherSearch(val);
+                    },
                   ),
                 ),
               ),
@@ -25388,25 +25612,36 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _handleManualWeatherSearch(String val) async {
-    if (val.trim().isEmpty) return;
+    final query = val.trim();
+    if (query.isEmpty) return;
+    _weatherDebounceTimer?.cancel();
+    if (_isAutoDetectingWeather) return;
     setState(() {
       _weatherSearchError = '';
     });
     try {
-      final loc = await WeatherService().searchLocation(val);
+      final loc = await WeatherService().searchLocation(query);
       if (loc != null) {
         final lat = loc['lat'] as double;
         final lon = loc['lon'] as double;
         final name = loc['name'] as String;
         final info = await WeatherService().fetchWeather(lat, lon, name);
         if (info != null && mounted) {
-          final updated = _settings.copyWith(
-            weatherLocation: val,
-            weatherTemp: info.temperature.toStringAsFixed(1),
-            weatherStatus: info.status,
-            weatherLocationResolved: info.locationName,
-          );
-          _updateSettings(updated);
+          final tempStr = info.temperature.toStringAsFixed(1);
+          if (_settings.weatherLocation != query ||
+              _settings.weatherTemp != tempStr ||
+              _settings.weatherStatus != info.status ||
+              _settings.weatherLocationResolved != info.locationName ||
+              _settings.weatherForecastJson != info.forecastJson) {
+            final updated = _settings.copyWith(
+              weatherLocation: query,
+              weatherTemp: tempStr,
+              weatherStatus: info.status,
+              weatherLocationResolved: info.locationName,
+              weatherForecastJson: info.forecastJson,
+            );
+            _updateSettings(updated);
+          }
         } else {
           setState(() {
             _weatherSearchError = 'Could not fetch weather data.';
@@ -25447,6 +25682,7 @@ class _DashboardViewState extends State<DashboardView>
             weatherTemp: info.temperature.toStringAsFixed(1),
             weatherStatus: info.status,
             weatherLocationResolved: info.locationName,
+            weatherForecastJson: info.forecastJson,
           );
           _weatherSearchCtrl.clear();
           _updateSettings(updated);

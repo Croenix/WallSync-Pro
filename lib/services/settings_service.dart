@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'overlay_startup_service.dart';
@@ -790,6 +791,7 @@ class WidgetSettings {
   String weatherTemp;
   String weatherStatus;
   String weatherLocationResolved;
+  String weatherForecastJson;
 
   bool showWifi;
   bool wifiEnabled;
@@ -829,13 +831,12 @@ class WidgetSettings {
     'robik': {'width': 430.0, 'height': 220.0, 'sizeFactor': 1.0},
     'custom': {'width': 480.0, 'height': 260.0, 'sizeFactor': 1.0},
     // New Highly-Requested Desktop Widget Templates
-    'cyber_hud': {'width': 260.0, 'height': 260.0, 'sizeFactor': 1.0},
-    'atomic_clean': {'width': 340.0, 'height': 180.0, 'sizeFactor': 1.0},
-    'arc_clock': {'width': 280.0, 'height': 320.0, 'sizeFactor': 1.0},
-    'flip_clock': {'width': 380.0, 'height': 210.0, 'sizeFactor': 1.0},
-    'station_weather': {'width': 440.0, 'height': 200.0, 'sizeFactor': 1.0},
-    // TaskbarWidgets Add-on Templates (pfcdev/TaskbarWidgets)
-    'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
+        'cyber_hud': {'width': 280.0, 'height': 240.0, 'sizeFactor': 1.0},
+    'atomic_clean': {'width': 300.0, 'height': 160.0, 'sizeFactor': 1.0},
+    'arc_clock': {'width': 280.0, 'height': 300.0, 'sizeFactor': 1.0},
+    'flip_clock': {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0},
+    'station_weather': {'width': 420.0, 'height': 180.0, 'sizeFactor': 1.0},
+'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
     'taskbar_media': {'width': 340.0, 'height': 44.0, 'sizeFactor': 1.0},
     'taskbar_system': {'width': 260.0, 'height': 44.0, 'sizeFactor': 1.0},
     'taskbar_steam': {'width': 280.0, 'height': 44.0, 'sizeFactor': 1.0},
@@ -899,6 +900,7 @@ class WidgetSettings {
     this.weatherTemp = '',
     this.weatherStatus = '',
     this.weatherLocationResolved = '',
+    this.weatherForecastJson = '',
     this.showWifi = true,
     this.wifiEnabled = true,
     this.showBluetooth = true,
@@ -1077,33 +1079,50 @@ class WidgetSettings {
         return 0xFFFFFFFF;
       case 'cyber_hud':
         if (key == 'hours' || key == 'minutes') return 0xFFFFFFFF;
-        if (key == 'separator' || key == 'neon_badge') return 0xFF00FFCC;
+        if (key == 'seconds' || key == 'separator') return 0xFF00FFCC;
         if (key == 'day') return 0xFF00FFCC;
-        if (key == 'date') return 0x8AFFFFFF;
+        if (key == 'date') return 0xB3FFFFFF;
+        if (key == 'neon_badge') return 0xFF00FFCC;
         if (key == 'neon_box') return 0xFF00FFCC;
+        if (key == 'inner_background') return 0xEE070B12;
         return 0xFF00FFCC;
       case 'atomic_clean':
         if (key == 'hours' || key == 'minutes') return 0xFFFFFFFF;
-        if (key == 'separator' || key == 'day') return 0xFF818CF8;
+        if (key == 'seconds' || key == 'separator') return 0xFF818CF8;
+        if (key == 'day') return 0xFF818CF8;
+        if (key == 'date') return 0xC0818CF8;
+        if (key == 'ampm') return 0xFF818CF8;
         return 0xFF818CF8;
       case 'arc_clock':
         if (key == 'hours') return 0xFF555B66;
-        if (key == 'minutes' || key == 'separator') return 0xFF00E5FF;
+        if (key == 'minutes') return 0xFF00E5FF;
         if (key == 'seconds') return 0xFFE040FB;
-        if (key == 'day' || key == 'date') return 0x99FFFFFF;
+        if (key == 'glow_outer') return 0xFF00E5FF;
+        if (key == 'glow_inner') return 0xFFE040FB;
+        if (key == 'separator') return 0x6600E5FF;
+        if (key == 'inner_background') return 0x00000000;
+        if (key == 'day') return 0xFF00E5FF;
+        if (key == 'date') return 0xB3FFFFFF;
+        if (key == 'neon_box') return 0x00000000;
         return 0xFF00E5FF;
       case 'flip_clock':
         if (key == 'hours' || key == 'minutes' || key == 'seconds') return 0xFFEFEEDB;
         if (key == 'day' || key == 'date' || key == 'year') return 0xFFE2E8F0;
-        if (key == 'separator') return 0xFF23272E;
+        if (key == 'separator') return 0xFF000000;
+        if (key == 'inner_background') return 0xFF1E2229;
         if (key == 'neon_box') return 0xFFD4D0C8;
         return 0xFFEFEEDB;
       case 'station_weather':
-        if (key == 'hours' || key == 'minutes') return 0xFF111827;
+        if (key == 'hours') return 0xFF111827;
+        if (key == 'minutes') return 0xFF111827;
         if (key == 'seconds') return 0xFFEF4444;
-        if (key == 'day' || key == 'date') return 0xFFFFFFFF;
-        if (key == 'weatherTemp' || key == 'weatherIcon') return 0xFFFFFFFF;
+        if (key == 'separator') return 0x55111827;
+        if (key == 'inner_background') return 0xFFFFFFFF;
+        if (key == 'glow_outer') return 0xCCB91C1C;
         if (key == 'neon_box') return 0xFFB91C1C;
+        if (key == 'day') return 0xE6FFFFFF;
+        if (key == 'date') return 0xFFFFFFFF;
+        if (key == 'weatherTemp' || key == 'weatherIcon') return 0xFFFFFFFF;
         return 0xFFFFFFFF;
       case 'classic':
       default:
@@ -1365,6 +1384,7 @@ class WidgetSettings {
       weatherTemp: json['weatherTemp'] ?? '',
       weatherStatus: json['weatherStatus'] ?? '',
       weatherLocationResolved: json['weatherLocationResolved'] ?? '',
+      weatherForecastJson: json['weatherForecastJson'] ?? '',
       showWifi: json['showWifi'] ?? true,
       wifiEnabled: json['wifiEnabled'] ?? true,
       showBluetooth: json['showBluetooth'] ?? true,
@@ -1436,6 +1456,7 @@ class WidgetSettings {
       'weatherTemp': weatherTemp,
       'weatherStatus': weatherStatus,
       'weatherLocationResolved': weatherLocationResolved,
+      'weatherForecastJson': weatherForecastJson,
       'showWifi': showWifi,
       'wifiEnabled': wifiEnabled,
       'showBluetooth': showBluetooth,
@@ -1510,6 +1531,7 @@ class WidgetSettings {
     String? weatherTemp,
     String? weatherStatus,
     String? weatherLocationResolved,
+    String? weatherForecastJson,
     bool? showWifi,
     bool? wifiEnabled,
     bool? showBluetooth,
@@ -1593,6 +1615,8 @@ class WidgetSettings {
       weatherStatus: weatherStatus ?? this.weatherStatus,
       weatherLocationResolved:
           weatherLocationResolved ?? this.weatherLocationResolved,
+      weatherForecastJson:
+          weatherForecastJson ?? this.weatherForecastJson,
       showWifi: showWifi ?? this.showWifi,
       wifiEnabled: wifiEnabled ?? this.wifiEnabled,
       showBluetooth: showBluetooth ?? this.showBluetooth,
@@ -1612,6 +1636,75 @@ class WidgetSettings {
           savedCustomWidgets ??
           this.savedCustomWidgets.map((w) => w.copyWith()).toList(),
     );
+  }
+}
+
+class _SettingsFileWritePayload {
+  final String settingsFilePath;
+  final String lockFilePath;
+  final String jsonStr;
+  final int pid;
+
+  const _SettingsFileWritePayload({
+    required this.settingsFilePath,
+    required this.lockFilePath,
+    required this.jsonStr,
+    required this.pid,
+  });
+}
+
+Future<bool> _executeIsolatedSettingsWrite(_SettingsFileWritePayload payload) async {
+  final lock = File(payload.lockFilePath);
+  final file = File(payload.settingsFilePath);
+  RandomAccessFile? raf;
+  try {
+    raf = await lock.open(mode: FileMode.append);
+    await raf.lock(FileLock.exclusive).timeout(const Duration(seconds: 3));
+
+    if (await file.exists()) {
+      try {
+        final existing = await file.readAsString();
+        if (existing == payload.jsonStr) {
+          return false;
+        }
+      } catch (_) {}
+    }
+
+    final tempFile = File(
+      '${file.path}.${payload.pid}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await tempFile.writeAsString(payload.jsonStr, flush: true);
+      bool renamed = false;
+      for (int i = 0; i < 3; i++) {
+        try {
+          await tempFile.rename(file.path);
+          renamed = true;
+          break;
+        } catch (_) {
+          await Future.delayed(const Duration(milliseconds: 40));
+        }
+      }
+      if (!renamed) {
+        await file.writeAsString(payload.jsonStr, flush: true);
+      }
+      return true;
+    } finally {
+      if (await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } catch (_) {}
+      }
+    }
+  } finally {
+    if (raf != null) {
+      try {
+        await raf.unlock();
+      } catch (_) {}
+      try {
+        await raf.close();
+      } catch (_) {}
+    }
   }
 }
 
@@ -1678,6 +1771,7 @@ class SettingsService {
   }
 
   WidgetSettings _cachedSettings = WidgetSettings();
+  String? _lastPersistedJsonStr;
   bool _settingsLoadSucceeded = false;
 
   bool get settingsLoadSucceeded => _settingsLoadSucceeded;
@@ -1698,6 +1792,7 @@ class SettingsService {
           if (content.trim().isNotEmpty) {
             final Map<String, dynamic> json = jsonDecode(content);
             _cachedSettings = WidgetSettings.fromJson(json);
+            _lastPersistedJsonStr = content;
             _settingsLoadSucceeded = true;
             return _cachedSettings;
           }
@@ -1728,18 +1823,30 @@ class SettingsService {
 
   Future<void> saveSettings(WidgetSettings settings) => _serializeSettingsWrite(
     () async {
-      RandomAccessFile? raf;
       final totalSw = Stopwatch()..start();
       try {
         final previousStartOnBoot = _cachedSettings.startOnBoot;
+        final jsonStr = jsonEncode(settings.toJson());
+
+        // Fast path: skip file write completely if settings are identical in content
+        if (_lastPersistedJsonStr == jsonStr) {
+          _cachedSettings = settings;
+          return;
+        }
+
+        final file = await settingsFile;
         final lock = await _settingsLockFile;
-        final lockSw = Stopwatch()..start();
-        raf = await lock.open(mode: FileMode.append);
-        await raf.lock(FileLock.exclusive).timeout(const Duration(seconds: 3));
-        final lockMs = lockSw.elapsedMilliseconds;
+        final payload = _SettingsFileWritePayload(
+          settingsFilePath: file.path,
+          lockFilePath: lock.path,
+          jsonStr: jsonStr,
+          pid: pid,
+        );
 
         final writeSw = Stopwatch()..start();
-        await _writeSettings(settings);
+        await Isolate.run(() => _executeIsolatedSettingsWrite(payload));
+        _cachedSettings = settings;
+        _lastPersistedJsonStr = jsonStr;
         final writeMs = writeSw.elapsedMilliseconds;
 
         var shortcutMs = 0;
@@ -1751,9 +1858,8 @@ class SettingsService {
         final totalMs = totalSw.elapsedMilliseconds;
         logPerf(
           'SettingsService',
-          'Settings saved to file: total=${totalMs}ms '
-              '(lockAcquire=${lockMs}ms, write=${writeMs}ms, '
-              'shortcutSync=${shortcutMs}ms).',
+          'Settings saved to file off-thread: total=${totalMs}ms '
+              '(write=${writeMs}ms, shortcutSync=${shortcutMs}ms).',
         );
       } catch (e, stackTrace) {
         logError(
@@ -1763,15 +1869,6 @@ class SettingsService {
           stackTrace,
         );
         rethrow;
-      } finally {
-        if (raf != null) {
-          try {
-            await raf.unlock();
-          } catch (_) {}
-          try {
-            await raf.close();
-          } catch (_) {}
-        }
       }
     },
   );
@@ -1781,15 +1878,29 @@ class SettingsService {
   Future<WidgetSettings> updateSettings(
     WidgetSettings Function(WidgetSettings current) update,
   ) => _serializeSettingsWrite(() async {
-    final lock = await _settingsLockFile;
-    RandomAccessFile? raf;
     try {
-      raf = await lock.open(mode: FileMode.append);
-      await raf.lock(FileLock.exclusive).timeout(const Duration(seconds: 3));
-
       final current = await loadSettings();
       final updated = update(current);
-      await _writeSettings(updated);
+      final jsonStr = jsonEncode(updated.toJson());
+
+      if (_lastPersistedJsonStr == jsonStr) {
+        _cachedSettings = updated;
+        return updated;
+      }
+
+      final file = await settingsFile;
+      final lock = await _settingsLockFile;
+      final payload = _SettingsFileWritePayload(
+        settingsFilePath: file.path,
+        lockFilePath: lock.path,
+        jsonStr: jsonStr,
+        pid: pid,
+      );
+
+      await Isolate.run(() => _executeIsolatedSettingsWrite(payload));
+      _cachedSettings = updated;
+      _lastPersistedJsonStr = jsonStr;
+
       if (current.startOnBoot != updated.startOnBoot) {
         await _updateStartupShortcut(updated.startOnBoot);
       }
@@ -1797,61 +1908,8 @@ class SettingsService {
     } catch (e, stackTrace) {
       logError('SettingsService', 'Failed to update settings', e, stackTrace);
       rethrow;
-    } finally {
-      if (raf != null) {
-        try {
-          await raf.unlock();
-        } catch (_) {}
-        try {
-          await raf.close();
-        } catch (_) {}
-      }
     }
   });
-
-  Future<void> _writeSettings(WidgetSettings settings) async {
-    final file = await settingsFile;
-    final jsonStr = jsonEncode(settings.toJson());
-    if (await file.exists()) {
-      try {
-        if (await file.readAsString() == jsonStr) {
-          _cachedSettings = settings;
-          return;
-        }
-      } on FileSystemException catch (error) {
-        logWarning(
-          'SettingsService',
-          'Could not compare existing settings before saving: $error',
-        );
-      }
-    }
-    final tempFile = File(
-      '${file.path}.$pid.${DateTime.now().microsecondsSinceEpoch}.tmp',
-    );
-    try {
-      await tempFile.writeAsString(jsonStr, flush: true);
-      bool renamed = false;
-      for (int i = 0; i < 3; i++) {
-        try {
-          await tempFile.rename(file.path);
-          renamed = true;
-          break;
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 40));
-        }
-      }
-      if (!renamed) {
-        await file.writeAsString(jsonStr, flush: true);
-      }
-      _cachedSettings = settings;
-    } finally {
-      if (await tempFile.exists()) {
-        try {
-          await tempFile.delete();
-        } catch (_) {}
-      }
-    }
-  }
 
   Future<void> _updateStartupShortcut(bool startOnBoot) async {
     if (!Platform.isWindows) return;

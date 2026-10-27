@@ -1,12 +1,72 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 
 import 'mpv_runtime_resolver.dart';
 import 'settings_service.dart';
 import 'video_wallpaper_cache.dart';
+
+class _MpvThumbnailExtractPayload {
+  final String mpvPath;
+  final String resolvedSource;
+  final String tempOutDirPath;
+  final String targetFilePath;
+
+  const _MpvThumbnailExtractPayload({
+    required this.mpvPath,
+    required this.resolvedSource,
+    required this.tempOutDirPath,
+    required this.targetFilePath,
+  });
+}
+
+Future<bool> _runMpvThumbnailExtractWorker(_MpvThumbnailExtractPayload payload) async {
+  try {
+    // Attempt 1: 1.0 second (avoids black intro frame)
+    await Process.run(payload.mpvPath, [
+      payload.resolvedSource,
+      '--no-audio',
+      '--no-config',
+      '--start=1',
+      '--frames=1',
+      '--vo=image',
+      '--vo-image-format=jpg',
+      '--vo-image-outdir=${payload.tempOutDirPath}',
+    ]).timeout(const Duration(seconds: 12));
+
+    var generated = File('${payload.tempOutDirPath}\\00000001.jpg');
+    if (!await generated.exists() || await generated.length() == 0) {
+      await Process.run(payload.mpvPath, [
+        payload.resolvedSource,
+        '--no-audio',
+        '--no-config',
+        '--start=0',
+        '--frames=1',
+        '--vo=image',
+        '--vo-image-format=jpg',
+        '--vo-image-outdir=${payload.tempOutDirPath}',
+      ]).timeout(const Duration(seconds: 12));
+      generated = File('${payload.tempOutDirPath}\\00000001.jpg');
+    }
+
+    if (await generated.exists() && await generated.length() > 500) {
+      final targetFile = File(payload.targetFilePath);
+      if (await targetFile.exists()) {
+        try {
+          await targetFile.delete();
+        } catch (_) {}
+      }
+      await generated.rename(targetFile.path);
+      return true;
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
 
 /// High-performance video thumbnail generator and cache.
 /// Extracts actual video frame snapshots directly from video files or streams using MPV,
@@ -189,41 +249,19 @@ class VideoThumbnailService {
 
     final sw = Stopwatch()..start();
     try {
-      // Step 1: Attempt extraction at 1.0 second (avoids black intro frame)
-      await Process.run(mpvPath, [
-        resolvedSource,
-        '--no-audio',
-        '--no-config',
-        '--start=1',
-        '--frames=1',
-        '--vo=image',
-        '--vo-image-format=jpg',
-        '--vo-image-outdir=${tempOutDir.path}',
-      ]).timeout(const Duration(seconds: 12));
+      final payload = _MpvThumbnailExtractPayload(
+        mpvPath: mpvPath,
+        resolvedSource: resolvedSource,
+        tempOutDirPath: tempOutDir.path,
+        targetFilePath: targetFile.path,
+      );
 
-      var generated = File('${tempOutDir.path}\\00000001.jpg');
-
-      // Step 2: Fallback to second 0 if --start=1 did not produce a frame
-      if (!await generated.exists() || await generated.length() == 0) {
-        await Process.run(mpvPath, [
-          resolvedSource,
-          '--no-audio',
-          '--no-config',
-          '--start=0',
-          '--frames=1',
-          '--vo=image',
-          '--vo-image-format=jpg',
-          '--vo-image-outdir=${tempOutDir.path}',
-        ]).timeout(const Duration(seconds: 12));
-        generated = File('${tempOutDir.path}\\00000001.jpg');
-      }
+      final extracted = await Isolate.run(
+        () => _runMpvThumbnailExtractWorker(payload),
+      );
 
       final durationMs = sw.elapsedMilliseconds;
-      if (await generated.exists() && await generated.length() > 500) {
-        if (await targetFile.exists()) {
-          await targetFile.delete();
-        }
-        await generated.rename(targetFile.path);
+      if (extracted && await targetFile.exists()) {
         _memoryCache[key] = targetFile.path;
         _negativeCache.remove(key);
         if (durationMs > 3000) {
@@ -234,7 +272,7 @@ class VideoThumbnailService {
         } else {
           logPerf(
             'VideoThumbnailService',
-            'Extracted video thumbnail in ${durationMs}ms: ${targetFile.path}',
+            'Extracted video thumbnail off-thread in ${durationMs}ms: ${targetFile.path}',
           );
         }
         return targetFile;

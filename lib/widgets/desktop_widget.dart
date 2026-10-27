@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ffi' hide Size;
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:window_manager/window_manager.dart';
@@ -21,7 +21,7 @@ import '../services/discord_ipc_service.dart';
 import '../services/steam_monitor_service.dart';
 import 'custom_widget_renderer.dart';
 
-Uint8List _decodeMediaThumbnail(String encoded, String owner) {
+Future<Uint8List> _decodeMediaThumbnailAsync(String encoded, String owner) async {
   final stopwatch = Stopwatch()..start();
   final task = developer.TimelineTask()
     ..start(
@@ -29,17 +29,18 @@ Uint8List _decodeMediaThumbnail(String encoded, String owner) {
       arguments: {'owner': owner, 'encodedCharacters': encoded.length},
     );
   try {
-    return base64Decode(encoded);
+    return await compute(base64Decode, encoded);
   } finally {
     final durationMs = stopwatch.elapsedMilliseconds;
     task.finish(arguments: {'durationMs': durationMs});
     logPerf(
       'DesktopWidget',
-      'Media artwork base64 decode for $owner completed in '
+      'Media artwork base64 decode for $owner completed off-thread in '
           '${durationMs}ms (${encoded.length} encoded characters).',
     );
   }
 }
+
 
 class DesktopWidget extends StatefulWidget {
   final WidgetSettings? initialSettings;
@@ -294,17 +295,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
     });
     _mediaInfo = MediaSessionService().current;
     if (_mediaInfo.thumbnail.isNotEmpty) {
-      try {
-        _thumbnailBytes = _decodeMediaThumbnail(
-          _mediaInfo.thumbnail,
-          'initial overlay media state',
-        );
-      } on FormatException catch (error, stackTrace) {
+      final initialThumb = _mediaInfo.thumbnail;
+      _decodeMediaThumbnailAsync(
+        initialThumb,
+        'initial overlay media state',
+      ).then((bytes) {
+        if (mounted && _mediaInfo.thumbnail == initialThumb) {
+          setState(() => _thumbnailBytes = bytes);
+        }
+      }).catchError((error, stackTrace) {
         logWarning(
           'DesktopWidget',
           'Initial media artwork base64 decoding failed: $error\n$stackTrace',
         );
-      }
+      });
     }
     _updatePlaybackPosition(_mediaInfo);
     _mediaSubscription = MediaSessionService().mediaStream.listen((info) {
@@ -338,18 +342,23 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
         // Cache thumbnail bytes on change to prevent reloading flickering
         if (thumbChanged) {
-          try {
-            _thumbnailBytes = _decodeMediaThumbnail(
-              info.thumbnail,
-              'overlay media update',
-            );
-          } on FormatException catch (error, stackTrace) {
-            _thumbnailBytes = null;
-            logWarning(
-              'DesktopWidget',
-              'Media artwork base64 decoding failed: $error\n$stackTrace',
-            );
-          }
+          final targetThumb = info.thumbnail;
+          _decodeMediaThumbnailAsync(
+            targetThumb,
+            'overlay media update',
+          ).then((bytes) {
+            if (mounted && _mediaInfo.thumbnail == targetThumb) {
+              setState(() => _thumbnailBytes = bytes);
+            }
+          }).catchError((error, stackTrace) {
+            if (mounted) {
+              setState(() => _thumbnailBytes = null);
+              logWarning(
+                'DesktopWidget',
+                'Media artwork base64 decoding failed: $error\n$stackTrace',
+              );
+            }
+          });
         } else if (info.thumbnail.isEmpty) {
           _thumbnailBytes = null;
         }
@@ -3674,18 +3683,22 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final boxColor = Color(_settings.colorFor(ElementKey.neonBox));
     final sepColor = Color(_settings.colorFor(ElementKey.separator));
     final dateColor = Color(_settings.colorFor(ElementKey.date));
-    final badgeColor = Color(_settings.colorFor(ElementKey.day));
+    final dayColor = Color(_settings.colorFor(ElementKey.day));
+    final badgeColor = Color(_settings.colorFor(ElementKey.neonBadge));
 
     final sepSize = _settings.sizeFor(ElementKey.separator, 10.0) * _settings.fontSizeMultiplier;
     final dateSize = _settings.sizeFor(ElementKey.date, 10.0) * _settings.fontSizeMultiplier;
-    final badgeSize = _settings.sizeFor(ElementKey.day, 9.5) * _settings.fontSizeMultiplier;
+    final daySize = _settings.sizeFor(ElementKey.day, 9.5) * _settings.fontSizeMultiplier;
+    final badgeSize = _settings.sizeFor(ElementKey.neonBadge, 9.0) * _settings.fontSizeMultiplier;
+
+    final dateStr = '${_dateTime.day.toString().padLeft(2, '0')} ${DateFormat('MMM').format(_dateTime).toUpperCase()} ${_dateTime.year}';
 
     return _apply3D(
       ElementKey.neonBox,
       Container(
         padding: EdgeInsets.symmetric(
-          horizontal: 22 * _settings.fontSizeMultiplier,
-          vertical: 18 * _settings.fontSizeMultiplier,
+          horizontal: 20 * _settings.fontSizeMultiplier,
+          vertical: 16 * _settings.fontSizeMultiplier,
         ),
         decoration: BoxDecoration(
           color: const Color(0xFF070B12).withValues(alpha: 0.94),
@@ -3709,7 +3722,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Top: // CYBER  2026
+            // Top: // CYBER  27 OCT 2026
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -3726,15 +3739,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 _apply3D(
                   ElementKey.date,
                   Text(
-                    _year,
+                    dateStr,
                     style: TextStyle(
                       color: dateColor,
                       fontSize: dateSize,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.0,
                       fontFamily: _settings.fontFor(ElementKey.date),
                     ),
                   ),
@@ -3801,19 +3815,41 @@ class _DesktopWidgetState extends State<DesktopWidget>
             ),
             SizedBox(height: 12 * _settings.fontSizeMultiplier),
 
-            // Bottom: SYS_ACTIVE • 100%
-            _apply3D(
-              ElementKey.day,
-              Text(
-                'SYS_ACTIVE • ${_ramUsage > 0 ? "${_ramUsage.toInt()}%" : "100%"}',
-                style: TextStyle(
-                  color: badgeColor,
-                  fontSize: badgeSize,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
-                  fontFamily: _settings.fontFor(ElementKey.day),
+            // Bottom: TUESDAY  •  SYS_ACTIVE 100%
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _apply3D(
+                  ElementKey.day,
+                  Text(
+                    _dayOfWeek,
+                    style: TextStyle(
+                      color: dayColor,
+                      fontSize: daySize,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      fontFamily: _settings.fontFor(ElementKey.day),
+                    ),
+                  ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text('•', style: TextStyle(color: dayColor.withValues(alpha: 0.6), fontSize: daySize)),
+                ),
+                _apply3D(
+                  ElementKey.neonBadge,
+                  Text(
+                    'SYS_ACTIVE ${_ramUsage > 0 ? "${_ramUsage.toInt()}%" : "100%"}',
+                    style: TextStyle(
+                      color: badgeColor,
+                      fontSize: badgeSize,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                      fontFamily: _settings.fontFor(ElementKey.neonBadge),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -3824,6 +3860,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   // ── 2. Atomic Anurati Minimal (Image 2) ──────────────────────────────────────
   Widget _buildAtomicCleanLayout() {
     final subColor = Color(_settings.colorFor(ElementKey.day));
+    final dateColor = Color(_settings.colorFor(ElementKey.date));
     final subSize = _settings.sizeFor(ElementKey.day, 10.5) * _settings.fontSizeMultiplier;
 
     return Column(
@@ -3887,25 +3924,47 @@ class _DesktopWidgetState extends State<DesktopWidget>
           ),
         ),
         SizedBox(height: 8 * _settings.fontSizeMultiplier),
-        _apply3D(
-          ElementKey.day,
-          Text(
-            'ATOMIC • ANURATI',
-            style: TextStyle(
-              color: subColor,
-              fontSize: subSize,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 3.2,
-              fontFamily: _settings.fontFor(ElementKey.day),
-              shadows: [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  blurRadius: 4,
-                  offset: const Offset(0.5, 1),
+        // Day of Week & Date Row with Anurati Styling
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _apply3D(
+              ElementKey.day,
+              Text(
+                _dayOfWeek,
+                style: TextStyle(
+                  color: subColor,
+                  fontSize: subSize,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.8,
+                  fontFamily: _settings.fontFor(ElementKey.day),
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      blurRadius: 4,
+                      offset: const Offset(0.5, 1),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(width: 6),
+            Text('•', style: TextStyle(color: subColor.withValues(alpha: 0.4), fontSize: subSize)),
+            const SizedBox(width: 6),
+            _apply3D(
+              ElementKey.date,
+              Text(
+                DateFormat('d MMM').format(_dateTime).toUpperCase(),
+                style: TextStyle(
+                  color: dateColor,
+                  fontSize: subSize,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.0,
+                  fontFamily: _settings.fontFor(ElementKey.date),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -3913,17 +3972,21 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   // ── 3. Radial Arc Clock & Gauge (Image 3) ───────────────────────────────────
   Widget _buildArcClockLayout() {
-    final arcStart = Color(_settings.colorFor(ElementKey.minutes));
-    final arcEnd = Color(_settings.colorFor(ElementKey.seconds));
+    final arcStart = Color(_settings.colorFor(ElementKey.glowOuter));
+    final arcEnd = Color(_settings.colorFor(ElementKey.glowInner));
     final hourHandCol = Color(_settings.colorFor(ElementKey.hours));
+    final minuteHandCol = Color(_settings.colorFor(ElementKey.minutes));
+    final secondHandCol = Color(_settings.colorFor(ElementKey.seconds));
+    final tickCol = Color(_settings.colorFor(ElementKey.separator));
+    final dialBg = Color(_settings.colorFor(ElementKey.innerBackground));
 
-    final dialSize = (165.0 * _settings.fontSizeMultiplier).clamp(90.0, 300.0);
+    final dialSize = (165.0 * _settings.fontSizeMultiplier).clamp(90.0, 260.0);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Analog Arc Dial Face
+        // Analog Arc Dial Face with fully customizable colors
         _apply3D(
           ElementKey.hours,
           SizedBox(
@@ -3935,8 +3998,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 arcStartColor: arcStart,
                 arcEndColor: arcEnd,
                 hourHandColor: hourHandCol,
-                minuteHandColor: arcStart,
-                secondHandColor: arcEnd,
+                minuteHandColor: minuteHandCol,
+                secondHandColor: secondHandCol,
+                tickColor: tickCol,
+                dialBgColor: dialBg,
               ),
             ),
           ),
@@ -3974,90 +4039,6 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   // ── 4. Mechanical Split-Flap Clock (Image 4) ─────────────────────────────────
-  Widget _buildFlipTile({
-    required String text,
-    String? subTag,
-    required double width,
-    required double height,
-    required double fontSize,
-    required String fontKey,
-  }) {
-    final numColor = Color(_settings.colorFor(fontKey));
-
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2229),
-        borderRadius: BorderRadius.circular(6 * (width / 54.0)),
-        border: Border.all(color: const Color(0xFF2E333D), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          // Centered Number
-          Center(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: numColor,
-                fontSize: fontSize,
-                fontWeight: FontWeight.w900,
-                fontFamily: _settings.fontFor(fontKey),
-                height: 1.0,
-              ),
-            ),
-          ),
-          // Subtag (AM/PM) if any
-          if (subTag != null)
-            Positioned(
-              bottom: 4 * (height / 74.0),
-              left: 4 * (width / 54.0),
-              child: Text(
-                subTag,
-                style: TextStyle(
-                  color: numColor.withValues(alpha: 0.75),
-                  fontSize: 7.5 * (fontSize / 34.0),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          // Mechanical Split Crease Line
-          Positioned(
-            top: (height / 2) - 0.75,
-            left: 0,
-            right: 0,
-            height: 1.5,
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.7),
-            ),
-          ),
-          // Side mechanical hinge notches
-          Positioned(
-            top: (height / 2) - 2.5,
-            left: 0,
-            width: 3,
-            height: 5,
-            child: Container(color: Colors.black54),
-          ),
-          Positioned(
-            top: (height / 2) - 2.5,
-            right: 0,
-            width: 3,
-            height: 5,
-            child: Container(color: Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFlipClockLayout() {
     final frameColor = Color(_settings.colorFor(ElementKey.neonBox));
     final h1 = _hours.isNotEmpty ? _hours[0] : '1';
@@ -4080,26 +4061,28 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final gap = 6.0 * _settings.fontSizeMultiplier;
     final midGap = 10.0 * _settings.fontSizeMultiplier;
 
+    final cardBg = Color(_settings.colorFor(ElementKey.innerBackground));
+
     return _apply3D(
       ElementKey.neonBox,
       Container(
-        padding: EdgeInsets.all(14 * _settings.fontSizeMultiplier),
+        padding: EdgeInsets.all(12 * _settings.fontSizeMultiplier),
         decoration: BoxDecoration(
-          color: const Color(0xFF13161C),
+          color: Colors.transparent, // Default transparent background
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: frameColor, width: 2.2),
+          border: Border.all(color: frameColor, width: 2.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.55),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Top Row: 4 Time Flip Cards
+            // Top Row: 4 Live Mechanical Time Flip Cards
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -4108,21 +4091,27 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildFlipTile(
+                      MechanicalFlipTile(
                         text: h1,
                         subTag: _settings.use24HourFormat ? null : _ampm,
                         width: cardW,
                         height: cardH,
                         fontSize: numSize,
                         fontKey: ElementKey.hours,
+                        textColor: Color(_settings.colorFor(ElementKey.hours)),
+                        cardBg: cardBg,
+                        fontFamily: _settings.fontFor(ElementKey.hours),
                       ),
                       SizedBox(width: gap),
-                      _buildFlipTile(
+                      MechanicalFlipTile(
                         text: h2,
                         width: cardW,
                         height: cardH,
                         fontSize: numSize,
                         fontKey: ElementKey.hours,
+                        textColor: Color(_settings.colorFor(ElementKey.hours)),
+                        cardBg: cardBg,
+                        fontFamily: _settings.fontFor(ElementKey.hours),
                       ),
                     ],
                   ),
@@ -4133,62 +4122,109 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildFlipTile(
+                      MechanicalFlipTile(
                         text: m1,
                         width: cardW,
                         height: cardH,
                         fontSize: numSize,
                         fontKey: ElementKey.minutes,
+                        textColor: Color(_settings.colorFor(ElementKey.minutes)),
+                        cardBg: cardBg,
+                        fontFamily: _settings.fontFor(ElementKey.minutes),
                       ),
                       SizedBox(width: gap),
-                      _buildFlipTile(
+                      MechanicalFlipTile(
                         text: m2,
                         width: cardW,
                         height: cardH,
                         fontSize: numSize,
                         fontKey: ElementKey.minutes,
+                        textColor: Color(_settings.colorFor(ElementKey.minutes)),
+                        cardBg: cardBg,
+                        fontFamily: _settings.fontFor(ElementKey.minutes),
                       ),
                     ],
                   ),
                 ),
+                if (_settings.showSeconds) ...[
+                  SizedBox(width: midGap),
+                  _apply3D(
+                    ElementKey.seconds,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MechanicalFlipTile(
+                          text: _seconds.isNotEmpty ? _seconds[0] : '0',
+                          width: cardW * 0.7,
+                          height: cardH * 0.7,
+                          fontSize: numSize * 0.7,
+                          fontKey: ElementKey.seconds,
+                          textColor: Color(_settings.colorFor(ElementKey.seconds)),
+                          cardBg: cardBg,
+                          fontFamily: _settings.fontFor(ElementKey.seconds),
+                        ),
+                        SizedBox(width: gap * 0.7),
+                        MechanicalFlipTile(
+                          text: _seconds.length > 1 ? _seconds[1] : '0',
+                          width: cardW * 0.7,
+                          height: cardH * 0.7,
+                          fontSize: numSize * 0.7,
+                          fontKey: ElementKey.seconds,
+                          textColor: Color(_settings.colorFor(ElementKey.seconds)),
+                          cardBg: cardBg,
+                          fontFamily: _settings.fontFor(ElementKey.seconds),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
             SizedBox(height: 8 * _settings.fontSizeMultiplier),
 
-            // Bottom Row: 3 Date Flip Cards
+            // Bottom Row: 3 Live Mechanical Date Flip Cards
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _apply3D(
                   ElementKey.day,
-                  _buildFlipTile(
+                  MechanicalFlipTile(
                     text: dayStr,
                     width: dateCardW,
                     height: dateCardH,
                     fontSize: dateNumSize,
                     fontKey: ElementKey.day,
+                    textColor: Color(_settings.colorFor(ElementKey.day)),
+                    cardBg: cardBg,
+                    fontFamily: _settings.fontFor(ElementKey.day),
                   ),
                 ),
                 SizedBox(width: gap),
                 _apply3D(
                   ElementKey.date,
-                  _buildFlipTile(
+                  MechanicalFlipTile(
                     text: dateStr,
                     width: dateCardW * 0.9,
                     height: dateCardH,
                     fontSize: dateNumSize,
                     fontKey: ElementKey.date,
+                    textColor: Color(_settings.colorFor(ElementKey.date)),
+                    cardBg: cardBg,
+                    fontFamily: _settings.fontFor(ElementKey.date),
                   ),
                 ),
                 SizedBox(width: gap),
                 _apply3D(
                   ElementKey.year,
-                  _buildFlipTile(
+                  MechanicalFlipTile(
                     text: monthStr,
                     width: dateCardW,
                     height: dateCardH,
                     fontSize: dateNumSize,
                     fontKey: ElementKey.year,
+                    textColor: Color(_settings.colorFor(ElementKey.year)),
+                    cardBg: cardBg,
+                    fontFamily: _settings.fontFor(ElementKey.year),
                   ),
                 ),
               ],
@@ -4202,22 +4238,48 @@ class _DesktopWidgetState extends State<DesktopWidget>
   // ── 5. Swiss Station Clock & 3-Step Weather Pill (Image 5) ───────────────────
   Widget _buildStationWeatherLayout() {
     final pillBg = Color(_settings.colorFor(ElementKey.neonBox));
-    final handCol = Color(_settings.colorFor(ElementKey.hours));
+    final rimCol = Color(_settings.colorFor(ElementKey.glowOuter));
+    final dialBg = Color(_settings.colorFor(ElementKey.innerBackground));
+    final hourCol = Color(_settings.colorFor(ElementKey.hours));
+    final minuteCol = Color(_settings.colorFor(ElementKey.minutes));
     final secCol = Color(_settings.colorFor(ElementKey.seconds));
+    final tickCol = Color(_settings.colorFor(ElementKey.separator));
 
     final weekdayStr = DateFormat('EEEE').format(_dateTime);
     final monthDayStr = _formatWithOrdinal(_dateTime);
-    final currentTemp = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '12°C';
-    final baseTempInt = int.tryParse(_settings.weatherTemp) ?? 12;
+    final currentTemp = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '--°C';
+    final currentIcon = WeatherService.getIconForStatus(_settings.weatherStatus);
 
-    final clockSize = (124.0 * _settings.fontSizeMultiplier).clamp(70.0, 220.0);
+    List<Map<String, dynamic>> forecastList = [];
+    try {
+      if (_settings.weatherForecastJson.isNotEmpty) {
+        final decoded = jsonDecode(_settings.weatherForecastJson);
+        if (decoded is List) {
+          forecastList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }
+    } catch (_) {}
+
+    final col2Time = forecastList.isNotEmpty ? (forecastList[0]['time']?.toString() ?? '+1h') : '+1h';
+    final col2Temp = forecastList.isNotEmpty ? '${forecastList[0]['temp']}°C' : currentTemp;
+    final col2Icon = forecastList.isNotEmpty
+        ? WeatherService.getIconForCode(forecastList[0]['code'] as int? ?? 0)
+        : currentIcon;
+
+    final col3Time = forecastList.length > 1 ? (forecastList[1]['time']?.toString() ?? '+2h') : '+2h';
+    final col3Temp = forecastList.length > 1 ? '${forecastList[1]['temp']}°C' : currentTemp;
+    final col3Icon = forecastList.length > 1
+        ? WeatherService.getIconForCode(forecastList[1]['code'] as int? ?? 0)
+        : currentIcon;
+
+    final clockSize = (116.0 * _settings.fontSizeMultiplier).clamp(65.0, 180.0);
 
     return _apply3D(
       ElementKey.neonBox,
       Container(
         padding: EdgeInsets.symmetric(
-          horizontal: 20 * _settings.fontSizeMultiplier,
-          vertical: 16 * _settings.fontSizeMultiplier,
+          horizontal: 18 * _settings.fontSizeMultiplier,
+          vertical: 14 * _settings.fontSizeMultiplier,
         ),
         decoration: BoxDecoration(
           color: pillBg,
@@ -4239,7 +4301,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Left: Analog Swiss Station Clock
+            // Left: Analog Swiss Station Clock with editable colors & background
             _apply3D(
               ElementKey.hours,
               Container(
@@ -4247,8 +4309,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 height: clockSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white,
-                  border: Border.all(color: pillBg.withValues(alpha: 0.8), width: 6),
+                  color: dialBg,
+                  border: Border.all(color: rimCol, width: 5.5),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.35),
@@ -4261,17 +4323,19 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   child: CustomPaint(
                     painter: StationClockDialPainter(
                       dateTime: _dateTime,
-                      dialColor: Colors.white,
-                      handColor: handCol,
+                      dialColor: dialBg,
+                      handColor: hourCol,
+                      minuteHandColor: minuteCol,
                       secondColor: secCol,
+                      tickColor: tickCol,
                     ),
                   ),
                 ),
               ),
             ),
-            SizedBox(width: 20 * _settings.fontSizeMultiplier),
+            SizedBox(width: 18 * _settings.fontSizeMultiplier),
 
-            // Right: Date & 3-Step Weather Forecast
+            // Right: Date & 3-Step Weather Forecast with Interactive Location
             Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4294,33 +4358,61 @@ class _DesktopWidgetState extends State<DesktopWidget>
                     monthDayStr,
                     style: _styleFor(
                       ElementKey.date,
-                      baseSize: 22,
+                      baseSize: 21,
                       weight: FontWeight.w700,
                     ).copyWith(letterSpacing: -0.2),
                   ),
                 ),
-                SizedBox(height: 6 * _settings.fontSizeMultiplier),
+                SizedBox(height: 5 * _settings.fontSizeMultiplier),
                 Container(
-                  width: 170 * _settings.fontSizeMultiplier,
+                  width: 165 * _settings.fontSizeMultiplier,
                   height: 1,
                   color: Colors.white.withValues(alpha: 0.25),
                 ),
-                SizedBox(height: 8 * _settings.fontSizeMultiplier),
+                SizedBox(height: 7 * _settings.fontSizeMultiplier),
 
-                // 3-step forecast columns
-                _apply3D(
-                  ElementKey.weatherTemp,
+                // 3-step forecast columns with quick tap-to-refresh
+                GestureDetector(
+                  onTap: () {
+                    _fetchWeatherAndUpdate();
+                  },
+                  child: _apply3D(
+                    ElementKey.weatherTemp,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildForecastCol(currentIcon, currentTemp, 'Now'),
+                        SizedBox(width: 16 * _settings.fontSizeMultiplier),
+                        _buildForecastCol(col2Icon, col2Temp, col2Time),
+                        SizedBox(width: 16 * _settings.fontSizeMultiplier),
+                        _buildForecastCol(col3Icon, col3Temp, col3Time),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_settings.weatherLocationResolved.isNotEmpty) ...[
+                  SizedBox(height: 5 * _settings.fontSizeMultiplier),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildForecastCol(Icons.thunderstorm_rounded, currentTemp, 'Now'),
-                      SizedBox(width: 18 * _settings.fontSizeMultiplier),
-                      _buildForecastCol(Icons.cloud_queue_rounded, '${baseTempInt - 1}°C', '14:00'),
-                      SizedBox(width: 18 * _settings.fontSizeMultiplier),
-                      _buildForecastCol(Icons.cloud_queue_rounded, '${baseTempInt - 2}°C', '15:00'),
+                      Icon(Icons.location_on_rounded, size: 9 * _settings.fontSizeMultiplier, color: Colors.white70),
+                      const SizedBox(width: 3),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: 160 * _settings.fontSizeMultiplier),
+                        child: Text(
+                          _settings.weatherLocationResolved,
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 8.5 * _settings.fontSizeMultiplier,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
-                ),
+                ],
               ],
             ),
           ],
@@ -5450,6 +5542,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
               weatherTemp: info.temperature.toStringAsFixed(1),
               weatherStatus: info.status,
               weatherLocationResolved: info.locationName,
+              weatherForecastJson: info.forecastJson,
             );
             setState(() => _settings = updated);
             await _settingsService.saveSettings(updated);
@@ -5471,6 +5564,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
               weatherTemp: info.temperature.toStringAsFixed(1),
               weatherStatus: info.status,
               weatherLocationResolved: info.locationName,
+              weatherForecastJson: info.forecastJson,
             );
             setState(() => _settings = updated);
             await _settingsService.saveSettings(updated);
@@ -5504,6 +5598,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
             weatherTemp: info.temperature.toStringAsFixed(1),
             weatherStatus: info.status,
             weatherLocationResolved: info.locationName,
+            weatherForecastJson: info.forecastJson,
           );
           setState(() {
             _settings = updated;
@@ -5553,6 +5648,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
             weatherTemp: info.temperature.toStringAsFixed(1),
             weatherStatus: info.status,
             weatherLocationResolved: info.locationName,
+            weatherForecastJson: info.forecastJson,
           );
           setState(() {
             _settings = updated;
@@ -5597,8 +5693,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final defaults =
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
-    final baseWidth = defaults['width']!;
-    final baseHeight = defaults['height']!;
+    final baseWidth = _settings.widgetTemplate == 'custom' && _settings.width > 0
+        ? _settings.width
+        : defaults['width']!;
+    final baseHeight = _settings.widgetTemplate == 'custom' && _settings.height > 0
+        ? _settings.height
+        : defaults['height']!;
 
     Widget mainWidget;
     if (isSleepWeather) {
@@ -6002,9 +6102,238 @@ class SleepTrackerPainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ── Arc Clock Dial Painter (Image 3) ──────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Live Mechanical Flip Tile Widget (Image 4) ──────────────────────────────
+class MechanicalFlipTile extends StatefulWidget {
+  final String text;
+  final String? subTag;
+  final double width;
+  final double height;
+  final double fontSize;
+  final String fontKey;
+  final Color textColor;
+  final Color cardBg;
+  final String fontFamily;
 
+  const MechanicalFlipTile({
+    super.key,
+    required this.text,
+    this.subTag,
+    required this.width,
+    required this.height,
+    required this.fontSize,
+    required this.fontKey,
+    required this.textColor,
+    required this.cardBg,
+    required this.fontFamily,
+  });
+
+  @override
+  State<MechanicalFlipTile> createState() => _MechanicalFlipTileState();
+}
+
+class _MechanicalFlipTileState extends State<MechanicalFlipTile>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  String _currentText = '';
+  String _previousText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _currentText = widget.text;
+    _previousText = widget.text;
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MechanicalFlipTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _previousText = oldWidget.text;
+      _currentText = widget.text;
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _buildHalfCard({
+    required String text,
+    required bool isTop,
+    required double width,
+    required double height,
+  }) {
+    return ClipRect(
+      child: Align(
+        alignment: isTop ? Alignment.topCenter : Alignment.bottomCenter,
+        heightFactor: 0.5,
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: widget.cardBg,
+            borderRadius: BorderRadius.circular(6 * (width / 54.0)),
+            border: Border.all(color: const Color(0xFF2E333D), width: 1.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: widget.textColor,
+                    fontSize: widget.fontSize,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: widget.fontFamily,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+              if (widget.subTag != null && isTop)
+                Positioned(
+                  top: 3 * (height / 74.0),
+                  left: 4 * (width / 54.0),
+                  child: Text(
+                    widget.subTag!,
+                    style: TextStyle(
+                      color: widget.textColor.withValues(alpha: 0.75),
+                      fontSize: 7.0 * (widget.fontSize / 34.0),
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.width;
+    final h = widget.height;
+
+    return SizedBox(
+      width: w,
+      height: h,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 1. Static bottom half with NEW text
+          Positioned(
+            bottom: 0,
+            child: _buildHalfCard(text: _currentText, isTop: false, width: w, height: h),
+          ),
+          // 2. Static top half with OLD text
+          Positioned(
+            top: 0,
+            child: _buildHalfCard(
+              text: _controller.value > 0.5 ? _currentText : _previousText,
+              isTop: true,
+              width: w,
+              height: h,
+            ),
+          ),
+          // 3. 3D Mechanical flap flip animation
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final val = _controller.value;
+              if (val == 0.0 || val == 1.0) {
+                return Positioned(
+                  top: 0,
+                  child: _buildHalfCard(text: _currentText, isTop: true, width: w, height: h),
+                );
+              }
+
+              if (val < 0.5) {
+                final angle = -val * math.pi;
+                return Positioned(
+                  top: 0,
+                  child: Transform(
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.002)
+                      ..rotateX(angle),
+                    alignment: Alignment.bottomCenter,
+                    child: _buildHalfCard(text: _previousText, isTop: true, width: w, height: h),
+                  ),
+                );
+              } else {
+                final angle = (1.0 - val) * math.pi;
+                return Positioned(
+                  bottom: 0,
+                  child: Transform(
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.002)
+                      ..rotateX(angle),
+                    alignment: Alignment.topCenter,
+                    child: _buildHalfCard(text: _currentText, isTop: false, width: w, height: h),
+                  ),
+                );
+              }
+            },
+          ),
+          // 4. Split Crease Line
+          Positioned(
+            top: (h / 2) - 0.75,
+            left: 0,
+            right: 0,
+            height: 1.5,
+            child: Container(color: Colors.black.withValues(alpha: 0.8)),
+          ),
+          // 5. Left & right hinge notches
+          Positioned(
+            top: (h / 2) - 3.0,
+            left: 0,
+            width: 3.5,
+            height: 6.0,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF111418),
+                borderRadius: BorderRadius.only(
+                  topRight: Radius.circular(2),
+                  bottomRight: Radius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: (h / 2) - 3.0,
+            right: 0,
+            width: 3.5,
+            height: 6.0,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFF111418),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(2),
+                  bottomLeft: Radius.circular(2),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Arc Clock Dial Painter (Image 3) ──────────────────────────────────────────
 class ArcClockDialPainter extends CustomPainter {
   final DateTime dateTime;
   final Color arcStartColor;
@@ -6012,6 +6341,8 @@ class ArcClockDialPainter extends CustomPainter {
   final Color hourHandColor;
   final Color minuteHandColor;
   final Color secondHandColor;
+  final Color tickColor;
+  final Color dialBgColor;
 
   ArcClockDialPainter({
     required this.dateTime,
@@ -6020,6 +6351,8 @@ class ArcClockDialPainter extends CustomPainter {
     this.hourHandColor = const Color(0xFF555B66),
     this.minuteHandColor = const Color(0xFF00E5FF),
     this.secondHandColor = const Color(0xFFE040FB),
+    this.tickColor = const Color(0x6600E5FF),
+    this.dialBgColor = Colors.transparent,
   });
 
   @override
@@ -6027,7 +6360,11 @@ class ArcClockDialPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 8;
 
-    // 1. Draw glowing gradient arc on the left side (~220 degrees)
+    if (dialBgColor != Colors.transparent && dialBgColor.a > 0) {
+      canvas.drawCircle(center, radius, Paint()..color = dialBgColor);
+    }
+
+    // 1. Glowing gradient arc on the left side
     final arcRect = Rect.fromCircle(center: center, radius: radius);
     final gradient = SweepGradient(
       startAngle: math.pi * 0.6,
@@ -6042,18 +6379,11 @@ class ArcClockDialPainter extends CustomPainter {
       ..strokeWidth = 3.5
       ..strokeCap = StrokeCap.round;
 
-    // Sweep from ~65 degrees to ~285 degrees (around the left side)
     const arcStartAngle = math.pi * 0.55;
     const arcSweepAngle = math.pi * 1.25;
-    canvas.drawArc(
-      arcRect,
-      arcStartAngle,
-      arcSweepAngle,
-      false,
-      arcPaint,
-    );
+    canvas.drawArc(arcRect, arcStartAngle, arcSweepAngle, false, arcPaint);
 
-    // End caps markers on the arc (magenta top, cyan bottom)
+    // End caps markers on the arc
     final capPaintMagenta = Paint()
       ..color = arcEndColor
       ..strokeWidth = 3.0
@@ -6063,25 +6393,26 @@ class ArcClockDialPainter extends CustomPainter {
       ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round;
 
-    // Draw perpendicular cap notch at top end (arcStartAngle + arcSweepAngle)
     final topCapAngle = arcStartAngle + arcSweepAngle;
-    final topP1 = Offset(center.dx + (radius - 5) * math.cos(topCapAngle), center.dy + (radius - 5) * math.sin(topCapAngle));
-    final topP2 = Offset(center.dx + (radius + 5) * math.cos(topCapAngle), center.dy + (radius + 5) * math.sin(topCapAngle));
-    canvas.drawLine(topP1, topP2, capPaintMagenta);
-
-    // Draw perpendicular cap notch at bottom end (arcStartAngle)
-    final bottomP1 = Offset(center.dx + (radius - 5) * math.cos(arcStartAngle), center.dy + (radius - 5) * math.sin(arcStartAngle));
-    final bottomP2 = Offset(center.dx + (radius + 5) * math.cos(arcStartAngle), center.dy + (radius + 5) * math.sin(arcStartAngle));
-    canvas.drawLine(bottomP1, bottomP2, capPaintCyan);
+    canvas.drawLine(
+      Offset(center.dx + (radius - 5) * math.cos(topCapAngle), center.dy + (radius - 5) * math.sin(topCapAngle)),
+      Offset(center.dx + (radius + 5) * math.cos(topCapAngle), center.dy + (radius + 5) * math.sin(topCapAngle)),
+      capPaintMagenta,
+    );
+    canvas.drawLine(
+      Offset(center.dx + (radius - 5) * math.cos(arcStartAngle), center.dy + (radius - 5) * math.sin(arcStartAngle)),
+      Offset(center.dx + (radius + 5) * math.cos(arcStartAngle), center.dy + (radius + 5) * math.sin(arcStartAngle)),
+      capPaintCyan,
+    );
 
     // 2. Tick marks along the circle
     final tickPaintFaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.25)
+      ..color = tickColor.withValues(alpha: 0.35)
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round;
 
     final tickPaintAccent = Paint()
-      ..color = arcEndColor.withValues(alpha: 0.8)
+      ..color = arcEndColor.withValues(alpha: 0.85)
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
 
@@ -6090,88 +6421,60 @@ class ArcClockDialPainter extends CustomPainter {
       final isAccent = (i == 9 || i == 0 || i == 3);
       final tickLen = isAccent ? 8.0 : 5.0;
 
-      final p1 = Offset(
-        center.dx + (radius - tickLen) * math.cos(angle),
-        center.dy + (radius - tickLen) * math.sin(angle),
-      );
-      final p2 = Offset(
-        center.dx + radius * math.cos(angle),
-        center.dy + radius * math.sin(angle),
-      );
-
+      final p1 = Offset(center.dx + (radius - tickLen) * math.cos(angle), center.dy + (radius - tickLen) * math.sin(angle));
+      final p2 = Offset(center.dx + radius * math.cos(angle), center.dy + radius * math.sin(angle));
       canvas.drawLine(p1, p2, isAccent ? tickPaintAccent : tickPaintFaint);
     }
 
-    // 3. Hour Hand (Chunky charcoal/grey)
+    // 3. Hour Hand
     final hourAngle = ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) - (math.pi / 2);
     final hourLen = radius * 0.50;
-    final hourPaint = Paint()
-      ..color = hourHandColor
-      ..strokeWidth = 4.5
-      ..strokeCap = StrokeCap.round;
-
     canvas.drawLine(
       center,
-      Offset(
-        center.dx + hourLen * math.cos(hourAngle),
-        center.dy + hourLen * math.sin(hourAngle),
-      ),
-      hourPaint,
+      Offset(center.dx + hourLen * math.cos(hourAngle), center.dy + hourLen * math.sin(hourAngle)),
+      Paint()
+        ..color = hourHandColor
+        ..strokeWidth = 4.5
+        ..strokeCap = StrokeCap.round,
     );
 
-    // 4. Minute Hand (Cyan)
+    // 4. Minute Hand
     final minuteAngle = (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) - (math.pi / 2);
     final minuteLen = radius * 0.78;
-    final minutePaint = Paint()
-      ..color = minuteHandColor
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
-
     canvas.drawLine(
       center,
-      Offset(
-        center.dx + minuteLen * math.cos(minuteAngle),
-        center.dy + minuteLen * math.sin(minuteAngle),
-      ),
-      minutePaint,
+      Offset(center.dx + minuteLen * math.cos(minuteAngle), center.dy + minuteLen * math.sin(minuteAngle)),
+      Paint()
+        ..color = minuteHandColor
+        ..strokeWidth = 3.0
+        ..strokeCap = StrokeCap.round,
     );
 
-    // 5. Center Pivot Hub (Cyan ring with inner white/cyan circle)
-    final hubOuterPaint = Paint()
-      ..color = minuteHandColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
-    canvas.drawCircle(center, 6.0, hubOuterPaint);
-
-    final hubInnerPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, 2.5, hubInnerPaint);
+    // 5. Center Pivot Hub
+    canvas.drawCircle(center, 6.0, Paint()..color = minuteHandColor..style = PaintingStyle.stroke..strokeWidth = 2.5);
+    canvas.drawCircle(center, 2.5, Paint()..color = secondHandColor..style = PaintingStyle.fill);
   }
 
   @override
-  bool shouldRepaint(covariant ArcClockDialPainter oldDelegate) {
-    return oldDelegate.dateTime != dateTime ||
-        oldDelegate.arcStartColor != arcStartColor ||
-        oldDelegate.arcEndColor != arcEndColor;
-  }
+  bool shouldRepaint(covariant ArcClockDialPainter oldDelegate) => true;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // ── Swiss Station Clock Dial Painter (Image 5) ───────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-
 class StationClockDialPainter extends CustomPainter {
   final DateTime dateTime;
   final Color dialColor;
   final Color handColor;
+  final Color minuteHandColor;
   final Color secondColor;
+  final Color tickColor;
 
   StationClockDialPainter({
     required this.dateTime,
     this.dialColor = Colors.white,
     this.handColor = const Color(0xFF111827),
+    this.minuteHandColor = const Color(0xFF111827),
     this.secondColor = const Color(0xFFEF4444),
+    this.tickColor = const Color(0xFF111827),
   });
 
   @override
@@ -6180,15 +6483,17 @@ class StationClockDialPainter extends CustomPainter {
     final radius = math.min(size.width, size.height) / 2;
 
     // Dial background
-    final bgPaint = Paint()..color = dialColor;
-    canvas.drawCircle(center, radius, bgPaint);
+    canvas.drawCircle(center, radius, Paint()..color = dialColor);
 
     // Subtle concentric inner ring
-    final innerRingPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    canvas.drawCircle(center, radius * 0.55, innerRingPaint);
+    canvas.drawCircle(
+      center,
+      radius * 0.55,
+      Paint()
+        ..color = tickColor.withValues(alpha: 0.1)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
 
     // Railroad tick marks around rim
     for (int i = 0; i < 60; i++) {
@@ -6197,79 +6502,47 @@ class StationClockDialPainter extends CustomPainter {
       final tickLen = isHour ? 9.0 : 4.0;
       final tickWidth = isHour ? 2.5 : 1.0;
 
-      final p1 = Offset(
-        center.dx + (radius - 4 - tickLen) * math.cos(angle),
-        center.dy + (radius - 4 - tickLen) * math.sin(angle),
-      );
-      final p2 = Offset(
-        center.dx + (radius - 4) * math.cos(angle),
-        center.dy + (radius - 4) * math.sin(angle),
-      );
+      final p1 = Offset(center.dx + (radius - 4 - tickLen) * math.cos(angle), center.dy + (radius - 4 - tickLen) * math.sin(angle));
+      final p2 = Offset(center.dx + (radius - 4) * math.cos(angle), center.dy + (radius - 4) * math.sin(angle));
 
-      final p = Paint()
-        ..color = isHour ? handColor : handColor.withValues(alpha: 0.5)
-        ..strokeWidth = tickWidth
-        ..strokeCap = StrokeCap.square;
-
-      canvas.drawLine(p1, p2, p);
+      canvas.drawLine(
+        p1,
+        p2,
+        Paint()
+          ..color = isHour ? tickColor : tickColor.withValues(alpha: 0.5)
+          ..strokeWidth = tickWidth
+          ..strokeCap = StrokeCap.square,
+      );
     }
 
     // Hour Hand
     final hourAngle = ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) - (math.pi / 2);
     final hourLen = radius * 0.52;
-    final hourPaint = Paint()
-      ..color = handColor
-      ..strokeWidth = 4.2
-      ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       center,
-      Offset(
-        center.dx + hourLen * math.cos(hourAngle),
-        center.dy + hourLen * math.sin(hourAngle),
-      ),
-      hourPaint,
+      Offset(center.dx + hourLen * math.cos(hourAngle), center.dy + hourLen * math.sin(hourAngle)),
+      Paint()..color = handColor..strokeWidth = 4.2..strokeCap = StrokeCap.round,
     );
 
     // Minute Hand
     final minuteAngle = (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) - (math.pi / 2);
     final minuteLen = radius * 0.76;
-    final minutePaint = Paint()
-      ..color = handColor
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       center,
-      Offset(
-        center.dx + minuteLen * math.cos(minuteAngle),
-        center.dy + minuteLen * math.sin(minuteAngle),
-      ),
-      minutePaint,
+      Offset(center.dx + minuteLen * math.cos(minuteAngle), center.dy + minuteLen * math.sin(minuteAngle)),
+      Paint()..color = minuteHandColor..strokeWidth = 3.0..strokeCap = StrokeCap.round,
     );
 
     // Second Hand (Swiss Red with counterweight disk)
     final secAngle = dateTime.second * (math.pi / 30) - (math.pi / 2);
     final secLen = radius * 0.82;
     final secBackLen = radius * 0.22;
-    final secPaint = Paint()
-      ..color = secondColor
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round;
-
-    final pStart = Offset(
-      center.dx - secBackLen * math.cos(secAngle),
-      center.dy - secBackLen * math.sin(secAngle),
-    );
-    final pEnd = Offset(
-      center.dx + secLen * math.cos(secAngle),
-      center.dy + secLen * math.sin(secAngle),
-    );
-    canvas.drawLine(pStart, pEnd, secPaint);
+    final pStart = Offset(center.dx - secBackLen * math.cos(secAngle), center.dy - secBackLen * math.sin(secAngle));
+    final pEnd = Offset(center.dx + secLen * math.cos(secAngle), center.dy + secLen * math.sin(secAngle));
+    canvas.drawLine(pStart, pEnd, Paint()..color = secondColor..strokeWidth = 1.6..strokeCap = StrokeCap.round);
 
     // Counterweight circular disk on second hand
-    final diskCenter = Offset(
-      center.dx - secBackLen * 0.7 * math.cos(secAngle),
-      center.dy - secBackLen * 0.7 * math.sin(secAngle),
-    );
+    final diskCenter = Offset(center.dx - secBackLen * 0.7 * math.cos(secAngle), center.dy - secBackLen * 0.7 * math.sin(secAngle));
     canvas.drawCircle(diskCenter, 3.5, Paint()..color = secondColor);
 
     // Center pivot pin
@@ -6277,10 +6550,5 @@ class StationClockDialPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant StationClockDialPainter oldDelegate) {
-    return oldDelegate.dateTime != dateTime ||
-        oldDelegate.dialColor != dialColor ||
-        oldDelegate.handColor != handColor;
-  }
+  bool shouldRepaint(covariant StationClockDialPainter oldDelegate) => true;
 }
-
