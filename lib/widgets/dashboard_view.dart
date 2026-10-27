@@ -880,6 +880,9 @@ class _DashboardViewState extends State<DashboardView>
   String _selectedRecentFilter = 'All'; // 'All' | 'static' | 'video'
   String _wallpaperSearchQuery = '';
   final TextEditingController _wallpaperSearchCtrl = TextEditingController();
+  String _widgetSubTab = 'desktop'; // 'desktop' | 'taskbar' | 'custom'
+  String _widgetSearchQuery = '';
+  final TextEditingController _widgetSearchCtrl = TextEditingController();
   int _videoElapsedSeconds = 0;
 
   // Animation controller for the mesh background
@@ -1531,6 +1534,7 @@ class _DashboardViewState extends State<DashboardView>
     _videoUrlController.dispose();
     _wallpaperBetaEmailCtrl.dispose();
     _wallpaperSearchCtrl.dispose();
+    _widgetSearchCtrl.dispose();
     _weatherSearchCtrl.dispose();
     _mediaSubscription?.cancel();
     _connectivitySubscription?.cancel();
@@ -3079,12 +3083,35 @@ class _DashboardViewState extends State<DashboardView>
     IconData icon, {
     bool compact = false,
   }) {
-    final isSelected = _currentMainTab == tabKey;
+    final isSelected = tabKey == 'taskbar'
+        ? (_currentMainTab == 'widgets' && _widgetSubTab == 'taskbar')
+        : tabKey == 'widgets'
+            ? (_currentMainTab == 'widgets' && _widgetSubTab != 'taskbar')
+            : _currentMainTab == tabKey;
+
+    void handleTabTap() {
+      setState(() {
+        if (tabKey == 'taskbar') {
+          _currentMainTab = 'widgets';
+          _widgetSubTab = 'taskbar';
+          _editingWidget = false;
+        } else if (tabKey == 'widgets') {
+          _currentMainTab = 'widgets';
+          if (_widgetSubTab == 'taskbar') {
+            _widgetSubTab = 'desktop';
+          }
+          _editingWidget = false;
+        } else {
+          _currentMainTab = tabKey;
+        }
+      });
+    }
+
     if (compact) {
       return Tooltip(
         message: label,
         child: InkWell(
-          onTap: () => setState(() => _currentMainTab = tabKey),
+          onTap: handleTabTap,
           borderRadius: BorderRadius.circular(14),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
@@ -3124,7 +3151,7 @@ class _DashboardViewState extends State<DashboardView>
       );
     }
     return InkWell(
-      onTap: () => setState(() => _currentMainTab = tabKey),
+      onTap: handleTabTap,
       borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
@@ -18431,6 +18458,10 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Widget _buildTemplateDirectoryView() {
+    return _buildMinimalistWidgetDashboard();
+  }
+
+  Widget _buildOldTemplateDirectoryView() {
     final templates = {
       'custom': 'Custom Widget Studio',
       'classic': 'Classic',
@@ -20626,418 +20657,832 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
-  Widget _buildTemplateDirectoryViewOld() {
-    final templates = {
-      'classic': 'Classic',
-      'minimal': 'Minimal',
-      'cyber': 'Bold Cyber',
-      'split': 'Split Accent',
-      'neon': 'Glass Neon',
-      'animated_neon': 'Animated Neon',
-    };
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ── Minimalist Widgets Dashboard (Sleek, Uniform Architecture) ───────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  Widget _buildMinimalistWidgetDashboard({Key? key}) {
+    return Container(
+      key: key,
+      color: Colors.transparent,
+      child: Column(
+        children: [
+          // ── Hero Spotlight Showcase (Hidden when searching to maximize results) ──
+          if (_widgetSearchQuery.trim().isEmpty)
+            _buildWidgetHeroShowcase(),
+
+          // ── Top Sub-Navigation Header: Cyber-Deck Floating Dock with Instant Search ──
+          _buildWidgetSubTabSelector(),
+
+          // ── Sub-Tab Content ──
+          Expanded(
+            child: _widgetSubTab == 'taskbar'
+                ? _buildTaskbarWidgetsSubView()
+                : (_widgetSubTab == 'custom'
+                    ? _buildCustomWidgetsSubView()
+                    : _buildDesktopWidgetsSubView()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Hero Spotlight Showcase ──────────────────────────────────────────────────
+  Widget _buildWidgetHeroShowcase() {
+    final activeKey = _settings.widgetTemplate;
+    final isTaskbar = activeKey.startsWith('taskbar_');
+    final activeTitle = _getWidgetTitle(activeKey);
+    final isRunning = _isOverlayRunning;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 6),
+      height: 168,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D101C),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isRunning
+              ? const Color(0xFF10B981).withValues(alpha: 0.5)
+              : const Color(0xFF38BDF8).withValues(alpha: 0.25),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isRunning ? const Color(0xFF10B981) : const Color(0xFF38BDF8))
+                .withValues(alpha: 0.16),
+            blurRadius: 24,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(21),
+        child: Stack(
+          children: [
+            // Ambient background glow
+            Positioned(
+              left: -40,
+              top: -40,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: (isRunning ? const Color(0xFF10B981) : const Color(0xFF38BDF8))
+                      .withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  // Live Mini Preview Box
+                  Container(
+                    width: 200,
+                    height: 128,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF07090F),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        width: 1.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: _buildMiniWidgetPreview(activeKey),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+
+                  // Metadata & Actions
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Status pill
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isRunning
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF38BDF8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isRunning
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFF38BDF8))
+                                        .withValues(alpha: 0.6),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              isRunning
+                                  ? (isTaskbar
+                                      ? 'ACTIVE & DOCKED ON TASKBAR'
+                                      : 'RUNNING LIVE ON DESKTOP')
+                                  : 'READY FOR LAUNCH • STANDBY',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
+                                color: isRunning
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF38BDF8),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Title
+                        Text(
+                          activeTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Badges
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isTaskbar ? 'TASKBAR DOCK' : 'DESKTOP OVERLAY',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF38BDF8),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'ZERO-CPU RUNTIME',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF10B981),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'HARDWARE ACCELERATED',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white70,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                if (isRunning) {
+                                  _closeOverlay();
+                                } else {
+                                  _launchOverlay();
+                                }
+                              },
+                              icon: Icon(
+                                isRunning
+                                    ? Icons.stop_circle_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 16,
+                              ),
+                              label: Text(
+                                isRunning ? 'Stop Overlay' : 'Launch Overlay',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isRunning
+                                    ? Colors.redAccent.withValues(alpha: 0.85)
+                                    : const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 9,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _editingWidget = true;
+                                });
+                              },
+                              icon: const Icon(
+                                Icons.tune_rounded,
+                                size: 15,
+                                color: Color(0xFF38BDF8),
+                              ),
+                              label: const Text(
+                                'Customize 3D Layout',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: const Color(0xFF38BDF8)
+                                      .withValues(alpha: 0.4),
+                                ),
+                                backgroundColor: const Color(0xFF38BDF8)
+                                    .withValues(alpha: 0.07),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 9,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Top Sub-Navigation Header: Cyber-Deck Floating Dock with Instant Search ──
+  Widget _buildWidgetSubTabSelector() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F111A).withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 14,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Left Sub-navigation Pills
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildWidgetSubTabChip(
+                  id: 'desktop',
+                  label: 'Desktop Widgets',
+                  icon: Icons.desktop_windows_rounded,
+                  activeColor: const Color(0xFF38BDF8),
+                  count: 9,
+                ),
+                const SizedBox(width: 6),
+                _buildWidgetSubTabChip(
+                  id: 'taskbar',
+                  label: 'Taskbar Widgets',
+                  icon: Icons.dock_rounded,
+                  activeColor: const Color(0xFF818CF8),
+                  count: 7,
+                ),
+                const SizedBox(width: 6),
+                _buildWidgetSubTabChip(
+                  id: 'custom',
+                  label: 'Custom Studio',
+                  icon: Icons.palette_rounded,
+                  activeColor: const Color(0xFFEC4899),
+                  count: _settings.savedCustomWidgets.isNotEmpty
+                      ? _settings.savedCustomWidgets.length
+                      : null,
+                ),
+              ],
+            ),
+            const Spacer(),
+
+            // Instant Search Input Box
+            Container(
+              width: 220,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.09),
+                  width: 1.0,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    size: 16,
+                    color: Colors.white.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      controller: _widgetSearchCtrl,
+                      onChanged: (val) {
+                        setState(() {
+                          _widgetSearchQuery = val;
+                        });
+                      },
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                      ),
+                      cursorColor: const Color(0xFF38BDF8),
+                      decoration: InputDecoration(
+                        hintText: 'Search widgets...',
+                        hintStyle: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 12,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  if (_widgetSearchQuery.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        _widgetSearchCtrl.clear();
+                        setState(() {
+                          _widgetSearchQuery = '';
+                        });
+                      },
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 14,
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── SubTab Chip ─────────────────────────────────────────────────────────────
+  Widget _buildWidgetSubTabChip({
+    required String id,
+    required String label,
+    required IconData icon,
+    required Color activeColor,
+    int? count,
+  }) {
+    final isSelected = _widgetSubTab == id;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _widgetSubTab = id;
+        });
+      },
+      borderRadius: BorderRadius.circular(11),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6.5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? activeColor.withValues(alpha: 0.18)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: isSelected
+                ? activeColor.withValues(alpha: 0.55)
+                : Colors.transparent,
+            width: 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isSelected ? activeColor : Colors.white54,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : Colors.white60,
+              ),
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? activeColor.withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  count.toString(),
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: isSelected ? activeColor : Colors.white38,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Desktop Widgets Sub-View ────────────────────────────────────────────────
+  Widget _buildDesktopWidgetsSubView() {
+    final desktopWidgets = [
+      {
+        'key': 'classic',
+        'title': 'Classic Roman',
+        'desc': 'Elegant Roman numerals with golden divider accent',
+        'tag': 'PREMIUM',
+        'tagColor': const Color(0xFFFFD700),
+      },
+      {
+        'key': 'minimal',
+        'title': 'Minimal Clean',
+        'desc': 'Ultra-clean sans-serif typography with inline date indicator',
+        'tag': 'MINIMAL',
+        'tagColor': const Color(0xFF38BDF8),
+      },
+      {
+        'key': 'cyber',
+        'title': 'Bold Cyber',
+        'desc': 'Futuristic HUD terminal with neon teal telemetry metrics',
+        'tag': 'CYBERPUNK',
+        'tagColor': const Color(0xFF00FFCC),
+      },
+      {
+        'key': 'split',
+        'title': 'Split Accent',
+        'desc': 'Dual-tone vertical stacked time with glowing gradient bar',
+        'tag': 'MODERN',
+        'tagColor': const Color(0xFFEC4899),
+      },
+      {
+        'key': 'neon',
+        'title': 'Glass Neon',
+        'desc': 'Vibrant blue glassmorphism glow with dynamic ambient lighting',
+        'tag': 'NEON GLOW',
+        'tagColor': const Color(0xFF3B82F6),
+      },
+      {
+        'key': 'animated_neon',
+        'title': 'Animated Neon',
+        'desc': 'Pulsing outer halo ring with live GPU & memory indicators',
+        'tag': 'DYNAMIC',
+        'tagColor': const Color(0xFF10B981),
+      },
+      {
+        'key': 'sleep_weather',
+        'title': 'Smart Dashboard',
+        'desc': 'Integrated clock, weather forecast & media status bar',
+        'tag': 'ALL-IN-ONE',
+        'tagColor': const Color(0xFFF59E0B),
+      },
+      {
+        'key': 'robik',
+        'title': 'Robik Theme',
+        'desc': 'Bold geometric architecture with modern sans typography',
+        'tag': 'BOLD',
+        'tagColor': const Color(0xFFA855F7),
+      },
+      {
+        'key': 'atomic_clock',
+        'title': 'Atomic Clock',
+        'desc': 'Precision Anurati sci-fi geometry with clean seconds track',
+        'tag': 'PRECISION',
+        'tagColor': const Color(0xFF818CF8),
+      },
+    ];
+
+    final filtered = desktopWidgets.where((w) {
+      if (_widgetSearchQuery.trim().isEmpty) return true;
+      final q = _widgetSearchQuery.toLowerCase();
+      final title = (w['title'] as String).toLowerCase();
+      final desc = (w['desc'] as String).toLowerCase();
+      final tag = (w['tag'] as String).toLowerCase();
+      return title.contains(q) || desc.contains(q) || tag.contains(q);
+    }).toList();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          ShaderMask(
-            shaderCallback: (bounds) {
-              return const LinearGradient(
-                colors: [Color(0xFF38BDF8), Color(0xFFF472B6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ).createShader(bounds);
-            },
-            child: const Text(
-              'WIDGET TEMPLATES',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.5,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Select a template below to launch the customizer board and adjust 3D controls.',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.white.withValues(alpha: 0.45),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Grid/Wrap of templates
           Wrap(
             spacing: 20,
             runSpacing: 20,
-            children: templates.entries.map((e) {
-              final key = e.key;
-              final name = e.value;
+            children: filtered.map((item) {
+              final key = item['key'] as String;
+              final title = item['title'] as String;
+              final desc = item['desc'] as String;
+              final tag = item['tag'] as String;
+              final tagColor = item['tagColor'] as Color;
               final isSelected = _settings.widgetTemplate == key;
-              final activeColor = const Color(0xFFEC4899);
 
-              // Mini preview widget
-              Widget miniClockPreview() {
-                const textStyle = TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                );
-                const dateStyle = TextStyle(color: Colors.white38, fontSize: 8);
-
-                switch (key) {
-                  case 'minimal':
-                    return const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '12:00',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6),
-                          child: Text(
-                            '|',
-                            style: TextStyle(
-                              color: Colors.white24,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          'SUN JUN 21',
-                          style: TextStyle(color: Colors.white38, fontSize: 8),
-                        ),
-                      ],
-                    );
-                  case 'cyber':
-                    return const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text('12', style: textStyle),
-                        Text('00', style: textStyle),
-                        SizedBox(height: 2),
-                        Text('SUN JUN 21', style: dateStyle),
-                      ],
-                    );
-                  case 'split':
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 3,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: activeColor,
-                            borderRadius: BorderRadius.circular(1.5),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '12:00',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'SUN JUN 21',
-                              style: TextStyle(
-                                color: Colors.white38,
-                                fontSize: 7,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  case 'neon':
-                    return Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF3B82F6,
-                            ).withValues(alpha: 0.4),
-                            blurRadius: 10,
-                          ),
-                        ],
+              return SizedBox(
+                width: 320,
+                child: HoverCard(
+                  borderRadius: BorderRadius.circular(18),
+                  glowColor: isSelected ? const Color(0xFF38BDF8) : tagColor,
+                  maxGlowOpacity: isSelected ? 0.35 : 0.15,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111422).withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF38BDF8)
+                            : Colors.white.withValues(alpha: 0.08),
+                        width: isSelected ? 1.6 : 1.0,
                       ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(
-                            0xFF3B82F6,
-                          ).withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: const Color(
-                              0xFF3B82F6,
-                            ).withValues(alpha: 0.9),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: const Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '12:00',
-                              style: TextStyle(
-                                color: Color(0xFFD946EF),
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 1),
-                            Text(
-                              'SUN  ·  21 JUN',
-                              style: TextStyle(
-                                color: Color(0xFF3B82F6),
-                                fontSize: 7,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  case 'animated_neon':
-                    return Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: activeColor.withValues(alpha: 0.6),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          '12:00',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    );
-                  case 'classic':
-                  default:
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('12:00', style: textStyle),
-                        const SizedBox(height: 3),
-                        Container(
-                          width: 30,
-                          height: 1.5,
-                          color: Colors.white10,
-                        ),
-                        const SizedBox(height: 4),
-                        const Text('SUN JUN 21', style: dateStyle),
-                      ],
-                    );
-                }
-              }
-
-              return HoverCard(
-                scaleUp: 1.035,
-                borderRadius: BorderRadius.circular(18),
-                glowColor: isSelected ? activeColor : Colors.transparent,
-                maxGlowOpacity: 0.25,
-                blurRadius: 12,
-                onTap: () {
-                  if (_settings.widgetTemplate != key) {
-                    final defaults =
-                        WidgetSettings.templateDefaults[key] ??
-                        {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
-                    _updateSettings(
-                      _settings.copyWith(
-                        widgetTemplate: key,
-                        width: defaults['width'],
-                        height: defaults['height'],
-                        sizeFactor: defaults['sizeFactor'],
-                        editorMode: !_settings.isLocked,
-                      ),
-                    );
-                  } else {
-                    _updateSettings(
-                      _settings.copyWith(editorMode: !_settings.isLocked),
-                    );
-                  }
-                  setState(() {
-                    _editingWidget = true;
-                  });
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 220,
-                  height: 195,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? activeColor.withValues(alpha: 0.08)
-                        : Colors.white.withValues(alpha: 0.02),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: isSelected
-                          ? activeColor.withValues(alpha: 0.6)
-                          : Colors.white.withValues(alpha: 0.06),
-                      width: isSelected ? 2.0 : 1.0,
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // graphical representation of layout
-                      Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Live mini preview
+                        Container(
+                          height: 120,
+                          width: double.infinity,
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(14),
+                            color: const Color(0xFF090B14),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.04),
+                              color: Colors.white.withValues(alpha: 0.06),
                             ),
                           ),
-                          child: Center(child: miniClockPreview()),
-                        ),
-                      ),
-                      // footer
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
+                          child: Stack(
+                            children: [
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: _buildMiniWidgetPreview(key),
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: tagColor.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: tagColor.withValues(alpha: 0.4),
+                                    ),
+                                  ),
                                   child: Text(
-                                    name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    tag,
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w900
-                                          : FontWeight.bold,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.white70,
+                                      color: tagColor,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                if (isSelected)
-                                  Container(
+                              ),
+                              if (isSelected)
+                                Positioned(
+                                  top: 8,
+                                  left: 8,
+                                  child: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 6,
-                                      vertical: 3,
+                                      vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: activeColor.withValues(
-                                        alpha: 0.25,
+                                      color: const Color(0xFF10B981)
+                                          .withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xFF10B981)
+                                            .withValues(alpha: 0.6),
                                       ),
-                                      borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Text(
-                                      'ACTIVE',
-                                      style: TextStyle(
-                                        color: activeColor,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.5,
-                                      ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 10,
+                                          color: Color(0xFF10B981),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'ACTIVE',
+                                          style: TextStyle(
+                                            color: Color(0xFF10B981),
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 28,
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  if (_settings.widgetTemplate != key) {
-                                    final defaults =
-                                        WidgetSettings.templateDefaults[key] ??
-                                        {
-                                          'width': 360.0,
-                                          'height': 200.0,
-                                          'sizeFactor': 1.0,
-                                        };
-                                    _updateSettings(
-                                      _settings.copyWith(
-                                        widgetTemplate: key,
-                                        width: defaults['width'],
-                                        height: defaults['height'],
-                                        sizeFactor: defaults['sizeFactor'],
-                                        editorMode: !_settings.isLocked,
-                                      ),
-                                    );
-                                  } else {
-                                    _updateSettings(
-                                      _settings.copyWith(
-                                        editorMode: !_settings.isLocked,
-                                      ),
-                                    );
-                                  }
-                                  setState(() {
-                                    _editingWidget = true;
-                                  });
-                                },
-                                icon: Icon(
-                                  Icons.tune,
-                                  size: 12,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.white70,
                                 ),
-                                label: Text(
-                                  isSelected
-                                      ? 'Customize Elements'
-                                      : 'Select & Customize',
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Title & Description
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          desc,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _settings = _settings.copyWith(
+                                      widgetTemplate: key,
+                                    );
+                                  });
+                                  _updateSettings(_settings);
+                                  if (_isOverlayRunning) {
+                                    _launchOverlay();
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isSelected
+                                      ? const Color(0xFF10B981)
+                                          .withValues(alpha: 0.2)
+                                      : const Color(0xFF38BDF8),
+                                  foregroundColor: isSelected
+                                      ? const Color(0xFF10B981)
+                                      : Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: isSelected
+                                        ? const BorderSide(
+                                            color: Color(0xFF10B981),
+                                          )
+                                        : BorderSide.none,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                ),
+                                child: Text(
+                                  isSelected ? 'Selected' : 'Apply Widget',
                                   style: const TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 11.5,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                style: ElevatedButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  backgroundColor: isSelected
-                                      ? activeColor
-                                      : Colors.white.withValues(alpha: 0.05),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Customize 3D Layout',
+                              icon: const Icon(Icons.tune_rounded, size: 16),
+                              color: Colors.white70,
+                              onPressed: () {
+                                setState(() {
+                                  _settings = _settings.copyWith(
+                                    widgetTemplate: key,
+                                  );
+                                  _editingWidget = true;
+                                });
+                                _updateSettings(_settings);
+                              },
+                              style: IconButton.styleFrom(
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.05),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.1),
                                   ),
-                                  elevation: 0,
                                 ),
+                                minimumSize: const Size(34, 34),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -21046,6 +21491,938 @@ class _DashboardViewState extends State<DashboardView>
         ],
       ),
     );
+  }
+
+  // ── Taskbar Widgets Sub-View ────────────────────────────────────────────────
+  Widget _buildTaskbarWidgetsSubView() {
+    final taskbarWidgets = [
+      {
+        'key': 'taskbar_dock',
+        'title': 'Modular Taskbar Dock',
+        'desc': 'Unified floating dock with quick toggles, media, audio & volume',
+        'tag': 'MODULAR DOCK',
+        'tagColor': const Color(0xFF38BDF8),
+      },
+      {
+        'key': 'taskbar_media',
+        'title': 'Taskbar Media Bar',
+        'desc': 'Live Spotify & Windows media controller embedded in taskbar',
+        'tag': 'MEDIA HUB',
+        'tagColor': const Color(0xFFEC4899),
+      },
+      {
+        'key': 'taskbar_system',
+        'title': 'Taskbar System Monitor',
+        'desc': 'Real-time CPU load, memory utilization & network speed',
+        'tag': 'TELEMETRY',
+        'tagColor': const Color(0xFF00FFCC),
+      },
+      {
+        'key': 'taskbar_steam',
+        'title': 'Taskbar Steam Tracker',
+        'desc': 'Live Steam game download speed, ETA & active game telemetry',
+        'tag': 'GAMING',
+        'tagColor': const Color(0xFF66C0F4),
+      },
+      {
+        'key': 'taskbar_discord',
+        'title': 'Taskbar Discord Hub',
+        'desc': 'Voice channel indicator, instant mute toggle & friend activity',
+        'tag': 'SOCIAL',
+        'tagColor': const Color(0xFF5865F2),
+      },
+      {
+        'key': 'taskbar_weather',
+        'title': 'Taskbar Live Weather',
+        'desc': 'Current ambient temperature, condition icon & precipitation',
+        'tag': 'WEATHER',
+        'tagColor': const Color(0xFFFBBF24),
+      },
+      {
+        'key': 'taskbar_parking_lot',
+        'title': 'Taskbar Parking Lot',
+        'desc': 'Instant scratchpad, temporary clipboard stash & quick notes',
+        'tag': 'UTILITY',
+        'tagColor': const Color(0xFFF97316),
+      },
+    ];
+
+    final filtered = taskbarWidgets.where((w) {
+      if (_widgetSearchQuery.trim().isEmpty) return true;
+      final q = _widgetSearchQuery.toLowerCase();
+      final title = (w['title'] as String).toLowerCase();
+      final desc = (w['desc'] as String).toLowerCase();
+      final tag = (w['tag'] as String).toLowerCase();
+      return title.contains(q) || desc.contains(q) || tag.contains(q);
+    }).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 20,
+            runSpacing: 20,
+            children: filtered.map((item) {
+              final key = item['key'] as String;
+              final title = item['title'] as String;
+              final desc = item['desc'] as String;
+              final tag = item['tag'] as String;
+              final tagColor = item['tagColor'] as Color;
+              final isSelected = _settings.widgetTemplate == key;
+
+              return SizedBox(
+                width: 320,
+                child: HoverCard(
+                  borderRadius: BorderRadius.circular(18),
+                  glowColor: isSelected ? const Color(0xFF818CF8) : tagColor,
+                  maxGlowOpacity: isSelected ? 0.35 : 0.15,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111422).withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF818CF8)
+                            : Colors.white.withValues(alpha: 0.08),
+                        width: isSelected ? 1.6 : 1.0,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Live mini taskbar preview
+                        Container(
+                          height: 120,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF090B14),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.06),
+                            ),
+                          ),
+                          child: Stack(
+                            children: [
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                  ),
+                                  child: _buildMiniWidgetPreview(key),
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: tagColor.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: tagColor.withValues(alpha: 0.4),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: TextStyle(
+                                      color: tagColor,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Positioned(
+                                  top: 8,
+                                  left: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981)
+                                          .withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xFF10B981)
+                                            .withValues(alpha: 0.6),
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          size: 10,
+                                          color: Color(0xFF10B981),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'ACTIVE',
+                                          style: TextStyle(
+                                            color: Color(0xFF10B981),
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Title & Description
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          desc,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.5),
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _settings = _settings.copyWith(
+                                      widgetTemplate: key,
+                                    );
+                                  });
+                                  _updateSettings(_settings);
+                                  if (_isOverlayRunning) {
+                                    _launchOverlay();
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isSelected
+                                      ? const Color(0xFF10B981)
+                                          .withValues(alpha: 0.2)
+                                      : const Color(0xFF818CF8),
+                                  foregroundColor: isSelected
+                                      ? const Color(0xFF10B981)
+                                      : Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: isSelected
+                                        ? const BorderSide(
+                                            color: Color(0xFF10B981),
+                                          )
+                                        : BorderSide.none,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                ),
+                                child: Text(
+                                  isSelected ? 'Selected' : 'Dock to Taskbar',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Customize 3D Layout',
+                              icon: const Icon(Icons.tune_rounded, size: 16),
+                              color: Colors.white70,
+                              onPressed: () {
+                                setState(() {
+                                  _settings = _settings.copyWith(
+                                    widgetTemplate: key,
+                                  );
+                                  _editingWidget = true;
+                                });
+                                _updateSettings(_settings);
+                              },
+                              style: IconButton.styleFrom(
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.05),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                ),
+                                minimumSize: const Size(34, 34),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Custom Widgets Sub-View ─────────────────────────────────────────────────
+  Widget _buildCustomWidgetsSubView() {
+    final customList = _settings.savedCustomWidgets;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Studio Hero Banner Card
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFFEC4899).withValues(alpha: 0.18),
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFFEC4899).withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEC4899).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.palette_rounded,
+                    color: Color(0xFFEC4899),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Custom Widget Studio',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Design, position, and craft personalized interactive desktop and taskbar widgets with full live preview.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _settings = _settings.copyWith(widgetTemplate: 'custom');
+                      _editingWidget = true;
+                    });
+                    _updateSettings(_settings);
+                  },
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text(
+                    'Launch Custom Studio',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEC4899),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Custom items or empty state
+          if (customList.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 48),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.widgets_outlined,
+                      size: 48,
+                      color: Colors.white.withValues(alpha: 0.25),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No Custom Widgets Yet',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Launch the Custom Studio above to create and save your first widget!',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 20,
+              runSpacing: 20,
+              children: customList.map((cw) {
+                final isSelected = _settings.widgetTemplate == 'custom' &&
+                    _activeSavedWidgetId == cw.id;
+
+                return SizedBox(
+                  width: 320,
+                  child: HoverCard(
+                    borderRadius: BorderRadius.circular(18),
+                    glowColor: const Color(0xFFEC4899),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111422).withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFFEC4899)
+                              : Colors.white.withValues(alpha: 0.08),
+                          width: isSelected ? 1.6 : 1.0,
+                        ),
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.tune_rounded,
+                                size: 16,
+                                color: Color(0xFFEC4899),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  cw.name,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Elements: ${cw.elements.length}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          ElevatedButton(
+                            onPressed: () {
+                              _selectSavedCustomWidget(cw);
+                              if (_isOverlayRunning) {
+                                _launchOverlay();
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEC4899),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              minimumSize: const Size(double.infinity, 36),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text('Apply Custom Widget'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Helper Title Formatter ──────────────────────────────────────────────────
+  String _getWidgetTitle(String key) {
+    switch (key) {
+      case 'classic':
+        return 'Classic Roman';
+      case 'minimal':
+        return 'Minimal Clean';
+      case 'cyber':
+        return 'Bold Cyber Deck';
+      case 'split':
+        return 'Split Accent Stack';
+      case 'neon':
+        return 'Glass Neon Capsule';
+      case 'animated_neon':
+        return 'Animated Neon Ring';
+      case 'sleep_weather':
+        return 'Smart Dashboard';
+      case 'robik':
+        return 'Robik Geometric Theme';
+      case 'atomic_clock':
+        return 'Atomic Sci-Fi Clock';
+      case 'taskbar_dock':
+        return 'Modular Taskbar Dock';
+      case 'taskbar_media':
+        return 'Taskbar Media Bar';
+      case 'taskbar_system':
+        return 'Taskbar System Monitor';
+      case 'taskbar_steam':
+        return 'Taskbar Steam Tracker';
+      case 'taskbar_discord':
+        return 'Taskbar Discord Hub';
+      case 'taskbar_weather':
+        return 'Taskbar Live Weather';
+      case 'taskbar_parking_lot':
+        return 'Taskbar Parking Lot';
+      case 'custom':
+        return 'Custom Widget Studio';
+      default:
+        return 'WallSync Pro Widget';
+    }
+  }
+
+  // ── Helper Mini Widget Preview Renderer ─────────────────────────────────────
+  Widget _buildMiniWidgetPreview(String key) {
+    switch (key) {
+      case 'minimal':
+        return const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '12:00',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                '|',
+                style: TextStyle(color: Colors.white24, fontSize: 13),
+              ),
+            ),
+            Text(
+              'SUN JUN 21',
+              style: TextStyle(color: Colors.white38, fontSize: 8.5),
+            ),
+          ],
+        );
+
+      case 'cyber':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: const Color(0xFF00FFCC).withValues(alpha: 0.3),
+            ),
+            borderRadius: BorderRadius.circular(8),
+            color: const Color(0xFF00FFCC).withValues(alpha: 0.04),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '// CYBER',
+                    style: TextStyle(
+                      color: Color(0xFF00FFCC),
+                      fontSize: 6.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    '2026',
+                    style: TextStyle(color: Colors.white54, fontSize: 6.5),
+                  ),
+                ],
+              ),
+              SizedBox(height: 2),
+              Text(
+                '12:00',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'Segoe UI',
+                  letterSpacing: -0.5,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'SYS_ACTIVE • 100%',
+                style: TextStyle(
+                  color: Color(0xFF00FFCC),
+                  fontSize: 6,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case 'split':
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '12',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                  ),
+                ),
+                Text(
+                  '00',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 2,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'JUN',
+                  style: TextStyle(
+                    color: Color(0xFFEC4899),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  '21',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  'SUN',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 7,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+
+      case 'neon':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF3B82F6), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '12:00',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'GLASS NEON',
+                style: TextStyle(
+                  color: Color(0xFF38BDF8),
+                  fontSize: 6.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case 'animated_neon':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF00FFCC), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00FFCC).withValues(alpha: 0.3),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '12:00:45',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'NEON RING • GPU',
+                style: TextStyle(
+                  color: Color(0xFF00FFCC),
+                  fontSize: 6.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case 'sleep_weather':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141721),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '12:00',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'Sunday, Jun 21',
+                    style: TextStyle(color: Colors.white54, fontSize: 6.5),
+                  ),
+                ],
+              ),
+              SizedBox(width: 10),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.wb_sunny_rounded,
+                        size: 10,
+                        color: Color(0xFFFBBF24),
+                      ),
+                      SizedBox(width: 3),
+                      Text(
+                        '24°C',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '♪ Nightcall',
+                    style: TextStyle(color: Color(0xFFEC4899), fontSize: 7),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+
+      case 'atomic_clock':
+        return const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '12:00',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.0,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'ATOMIC • ANURATI',
+              style: TextStyle(
+                color: Color(0xFF818CF8),
+                fontSize: 6.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
+        );
+
+      case 'taskbar_dock':
+      case 'taskbar_media':
+      case 'taskbar_system':
+      case 'taskbar_steam':
+      case 'taskbar_discord':
+      case 'taskbar_weather':
+      case 'taskbar_parking_lot':
+        return _buildEmbeddedTaskbarPreview(key);
+
+      case 'classic':
+      default:
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              '12:00',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Georgia',
+                letterSpacing: 1.0,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Container(
+              width: 32,
+              height: 1.8,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+            const SizedBox(height: 3),
+            const Text(
+              'SUNDAY, 21 JUNE 2026',
+              style: TextStyle(
+                color: Color(0xFFFFD700),
+                fontSize: 6.5,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Georgia',
+                letterSpacing: 0.6,
+              ),
+            ),
+          ],
+        );
+    }
   }
 
   Widget _buildActiveTemplateLayoutTile() {
