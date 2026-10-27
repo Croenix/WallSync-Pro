@@ -2949,13 +2949,6 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                     const SizedBox(width: 3),
                     _buildMainTabButton(
-                      'Taskbar',
-                      'taskbar',
-                      Icons.dock_rounded,
-                      compact: compact,
-                    ),
-                    const SizedBox(width: 3),
-                    _buildMainTabButton(
                       'Diagnostics',
                       'diagnostics',
                       Icons.analytics_rounded,
@@ -3083,23 +3076,12 @@ class _DashboardViewState extends State<DashboardView>
     IconData icon, {
     bool compact = false,
   }) {
-    final isSelected = tabKey == 'taskbar'
-        ? (_currentMainTab == 'widgets' && _widgetSubTab == 'taskbar')
-        : tabKey == 'widgets'
-            ? (_currentMainTab == 'widgets' && _widgetSubTab != 'taskbar')
-            : _currentMainTab == tabKey;
+    final isSelected = _currentMainTab == tabKey;
 
     void handleTabTap() {
       setState(() {
-        if (tabKey == 'taskbar') {
+        if (tabKey == 'widgets') {
           _currentMainTab = 'widgets';
-          _widgetSubTab = 'taskbar';
-          _editingWidget = false;
-        } else if (tabKey == 'widgets') {
-          _currentMainTab = 'widgets';
-          if (_widgetSubTab == 'taskbar') {
-            _widgetSubTab = 'desktop';
-          }
           _editingWidget = false;
         } else {
           _currentMainTab = tabKey;
@@ -10666,37 +10648,150 @@ class _DashboardViewState extends State<DashboardView>
 
             case 'split':
               final barColor = Color(_settings.colorFor(ElementKey.separator));
-              return IntrinsicHeight(
+              final monthAbbr = DateFormat('MMM').format(now).toUpperCase();
+              final dayNum = now.day.toString();
+              final weekdayAbbr = DateFormat('EEE').format(now).toUpperCase();
+
+              return FittedBox(
+                fit: BoxFit.scaleDown,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // Left Column: Stacked Hours & Minutes (Right-aligned)
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _applyPreview3D(
+                          ElementKey.hours,
+                          tappable(
+                            ElementKey.hours,
+                            Text(
+                              hourStr,
+                              style: styleFor(
+                                ElementKey.hours,
+                                34,
+                                FontWeight.w900,
+                              ).copyWith(height: 1.0),
+                            ),
+                          ),
+                        ),
+                        _applyPreview3D(
+                          ElementKey.minutes,
+                          tappable(
+                            ElementKey.minutes,
+                            Text(
+                              minStr,
+                              style: styleFor(
+                                ElementKey.minutes,
+                                34,
+                                FontWeight.w900,
+                              ).copyWith(height: 1.0),
+                            ),
+                          ),
+                        ),
+                        if (showSec) ...[
+                          const SizedBox(height: 2),
+                          _applyPreview3D(
+                            ElementKey.seconds,
+                            tappable(
+                              ElementKey.seconds,
+                              Text(
+                                secStr,
+                                style: styleFor(
+                                  ElementKey.seconds,
+                                  12,
+                                  FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Glowing Vertical Gradient Divider Bar
                     _applyPreview3D(
                       ElementKey.separator,
                       tappable(
                         ElementKey.separator,
                         Container(
-                          width: 3,
+                          width: 3.5,
+                          height: 56,
                           decoration: BoxDecoration(
-                            color: barColor,
-                            borderRadius: BorderRadius.circular(1.5),
-                            boxShadow: null,
+                            gradient: LinearGradient(
+                              colors: [
+                                barColor,
+                                const Color(0xFF8B5CF6),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                            borderRadius: BorderRadius.circular(1.75),
+                            boxShadow: [
+                              BoxShadow(
+                                color: barColor.withValues(alpha: 0.5),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
+
+                    // Right Column: Month, Day Number, Weekday (Left-aligned)
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: buildClockRow(size: 26),
+                        _applyPreview3D(
+                          ElementKey.day,
+                          tappable(
+                            ElementKey.day,
+                            Text(
+                              monthAbbr,
+                              style: styleFor(
+                                ElementKey.day,
+                                14,
+                                FontWeight.w900,
+                              ).copyWith(height: 1.1, letterSpacing: 0.5),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: buildDateRow(size: 8),
+                        _applyPreview3D(
+                          ElementKey.date,
+                          tappable(
+                            ElementKey.date,
+                            Text(
+                              dayNum,
+                              style: styleFor(
+                                ElementKey.date,
+                                20,
+                                FontWeight.w900,
+                              ).copyWith(height: 1.1),
+                            ),
+                          ),
+                        ),
+                        _applyPreview3D(
+                          ElementKey.year,
+                          tappable(
+                            ElementKey.year,
+                            Text(
+                              weekdayAbbr,
+                              style: styleFor(
+                                ElementKey.year,
+                                11,
+                                FontWeight.bold,
+                              ).copyWith(height: 1.1, letterSpacing: 0.5),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -16973,7 +17068,9 @@ class _DashboardViewState extends State<DashboardView>
               ElevatedButton.icon(
                 onPressed: () {
                   setState(() {
-                    _currentMainTab = 'taskbar';
+                    _currentMainTab = 'widgets';
+                    _widgetSubTab = 'taskbar';
+                    _editingWidget = false;
                   });
                 },
                 icon: const Icon(Icons.dock_rounded, size: 14),

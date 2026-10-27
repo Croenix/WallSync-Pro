@@ -970,10 +970,13 @@ class WidgetSettings {
         if (key == 'seconds') return 0xFFA855F7;
         return 0xFF10B981;
       case 'split':
-        if (key == 'hours' || key == 'seconds') return 0xFFF43F5E;
-        if (key == 'minutes') return 0xFFFFFFFF;
-        if (key == 'separator') return 0xFFF43F5E;
-        return 0xFFE9D5FF;
+        if (key == 'hours') return 0xFFFFFFFF;
+        if (key == 'minutes') return 0x8AFFFFFF;
+        if (key == 'separator') return 0xFFEC4899;
+        if (key == 'day') return 0xFFEC4899;
+        if (key == 'date') return 0xFFFFFFFF;
+        if (key == 'year') return 0x8AFFFFFF;
+        return 0xFFFFFFFF;
       case 'neon':
         if (key == 'hours' || key == 'minutes' || key == 'ampm') {
           return 0xFFD946EF; // Signature Neon Magenta / Fuchsia

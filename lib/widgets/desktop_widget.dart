@@ -1225,36 +1225,126 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   Widget _buildSplitLayout() {
     final barColor = Color(_settings.colorFor(ElementKey.separator));
-    return IntrinsicHeight(
+    final monthAbbr = DateFormat('MMM').format(_dateTime).toUpperCase();
+    final dayNum = _dateTime.day.toString();
+    final weekdayAbbr = DateFormat('EEE').format(_dateTime).toUpperCase();
+
+    final hoursStyle = _styleFor(
+      ElementKey.hours,
+      baseSize: 44,
+      weight: FontWeight.w900,
+    ).copyWith(height: 1.0);
+
+    final minutesStyle = _styleFor(
+      ElementKey.minutes,
+      baseSize: 44,
+      weight: FontWeight.w900,
+    ).copyWith(height: 1.0);
+
+    final monthStyle = _styleFor(
+      ElementKey.day,
+      baseSize: 19,
+      weight: FontWeight.w900,
+    ).copyWith(height: 1.05, letterSpacing: 0.5);
+
+    final dayNumStyle = _styleFor(
+      ElementKey.date,
+      baseSize: 28,
+      weight: FontWeight.w900,
+    ).copyWith(height: 1.05);
+
+    final weekStyle = _styleFor(
+      ElementKey.year,
+      baseSize: 14,
+      weight: FontWeight.bold,
+    ).copyWith(height: 1.05, letterSpacing: 0.5);
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Left Column: Stacked Hours & Minutes (Right-aligned)
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _apply3D(
+                ElementKey.hours,
+                Text(_hours, style: hoursStyle),
+              ),
+              _apply3D(
+                ElementKey.minutes,
+                Text(_minutes, style: minutesStyle),
+              ),
+              if (_settings.showSeconds) ...[
+                const SizedBox(height: 2),
+                _apply3D(
+                  ElementKey.seconds,
+                  Text(
+                    _seconds,
+                    style: _styleFor(
+                      ElementKey.seconds,
+                      baseSize: 14,
+                      weight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(width: 14),
+
+          // Glowing Vertical Gradient Divider Bar
           _apply3D(
             ElementKey.separator,
             Container(
               width: _settings.effectiveSeparatorWidth > 20
                   ? 4
-                  : _settings.effectiveSeparatorWidth,
+                  : (_settings.effectiveSeparatorWidth < 2 ? 3.5 : _settings.effectiveSeparatorWidth),
+              height: 76,
               decoration: BoxDecoration(
-                color: barColor,
+                gradient: LinearGradient(
+                  colors: [
+                    barColor,
+                    const Color(0xFF8B5CF6),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
                 borderRadius: BorderRadius.circular(2),
-                boxShadow: null,
+                boxShadow: [
+                  BoxShadow(
+                    color: barColor.withValues(alpha: 0.5),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ],
               ),
             ),
           ),
           const SizedBox(width: 14),
+
+          // Right Column: Month, Day Number, Weekday (Left-aligned)
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: _buildClockRow(baseSize: 34),
+              _apply3D(
+                ElementKey.day,
+                Text(monthAbbr, style: monthStyle),
               ),
-              const SizedBox(height: 4),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: _buildDateRow(baseSize: 10),
+              _apply3D(
+                ElementKey.date,
+                Text(dayNum, style: dayNumStyle),
+              ),
+              _apply3D(
+                ElementKey.year,
+                Text(weekdayAbbr, style: weekStyle),
               ),
             ],
           ),
