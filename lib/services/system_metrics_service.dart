@@ -87,15 +87,43 @@ class DiskSnapshot {
     required this.totalBytes,
     required this.freeBytes,
     required this.drive,
+    this.label = '',
+    this.type = 'Fixed',
   });
 
   final int usedBytes;
   final int totalBytes;
   final int freeBytes;
   final String drive;
+  final String label;
+  final String type;
 
   double get usedPercentage =>
       totalBytes == 0 ? 0 : usedBytes * 100 / totalBytes;
+
+  String get formattedTotal {
+    final gb = totalBytes / (1024 * 1024 * 1024);
+    if (gb >= 1000) return '${(gb / 1024).toStringAsFixed(1)} TB';
+    return '${gb.toStringAsFixed(0)} GB';
+  }
+
+  String get formattedFree {
+    final gb = freeBytes / (1024 * 1024 * 1024);
+    if (gb >= 1000) return '${(gb / 1024).toStringAsFixed(1)} TB';
+    return '${gb.toStringAsFixed(0)} GB';
+  }
+
+  String get formattedUsed {
+    final gb = usedBytes / (1024 * 1024 * 1024);
+    if (gb >= 1000) return '${(gb / 1024).toStringAsFixed(1)} TB';
+    return '${gb.toStringAsFixed(0)} GB';
+  }
+
+  String get totalFormatted => formattedTotal;
+  String get freeFormatted => formattedFree;
+  String get usedFormatted => formattedUsed;
+
+  String get displayName => label.isNotEmpty ? '$drive ($label)' : drive;
 
   @override
   bool operator ==(Object other) =>
@@ -103,17 +131,24 @@ class DiskSnapshot {
       usedBytes == other.usedBytes &&
       totalBytes == other.totalBytes &&
       freeBytes == other.freeBytes &&
-      drive == other.drive;
+      drive == other.drive &&
+      label == other.label &&
+      type == other.type;
 
   @override
-  int get hashCode => Object.hash(usedBytes, totalBytes, freeBytes, drive);
+  int get hashCode => Object.hash(usedBytes, totalBytes, freeBytes, drive, label, type);
 }
 
 class SystemMetricsSnapshot {
-  const SystemMetricsSnapshot({this.battery, this.disk});
+  const SystemMetricsSnapshot({
+    this.battery,
+    this.disk,
+    this.allDisks = const [],
+  });
 
   final BatterySnapshot? battery;
   final DiskSnapshot? disk;
+  final List<DiskSnapshot> allDisks;
 
   @override
   bool operator ==(Object other) =>
@@ -128,14 +163,28 @@ class SystemMetricsSnapshot {
 class SystemMetricsService {
   const SystemMetricsService._();
 
-  static Future<SystemMetricsSnapshot> readSnapshotAsync() =>
-      Isolate.run(readSnapshot);
+  static Future<SystemMetricsSnapshot> readSnapshotAsync([String? selectedDrive]) =>
+      Isolate.run(() => readSnapshot(selectedDrive));
 
-  static SystemMetricsSnapshot readSnapshot() {
+  static SystemMetricsSnapshot readSnapshot([String? selectedDrive]) {
     if (!Platform.isWindows) return const SystemMetricsSnapshot();
+    final disks = readAllDisks();
+    DiskSnapshot? primary;
+    if (selectedDrive != null && selectedDrive.isNotEmpty && selectedDrive != 'Auto') {
+      primary = disks.firstWhere(
+        (d) => d.drive.toUpperCase().startsWith(selectedDrive.toUpperCase()),
+        orElse: () => disks.isNotEmpty ? disks.first : _readSystemDisk()!,
+      );
+    } else {
+      primary = disks.firstWhere(
+        (d) => d.drive.toUpperCase().startsWith('C:'),
+        orElse: () => disks.isNotEmpty ? disks.first : _readSystemDisk()!,
+      );
+    }
     return SystemMetricsSnapshot(
       battery: _readBattery(),
-      disk: _readSystemDisk(),
+      disk: primary,
+      allDisks: disks,
     );
   }
 
@@ -161,44 +210,115 @@ class SystemMetricsService {
     });
   }
 
-  static DiskSnapshot? _readSystemDisk() {
-    final systemDrive = Platform.environment['SystemDrive'];
-    final drive = (systemDrive == null || systemDrive.isEmpty)
-        ? 'C:'
-        : systemDrive;
-    final root = drive.endsWith(r'\') ? drive : '$drive\\';
+  static List<DiskSnapshot> readAllDisks() {
+    if (!Platform.isWindows) return const [];
+    try {
+      final bitmaskRes = GetLogicalDrives();
+      final bitmask = bitmaskRes.value;
+      if (bitmask == 0) {
+        final fallback = _readSystemDisk();
+        return fallback != null ? [fallback] : const [];
+      }
+      final results = <DiskSnapshot>[];
+      for (int i = 0; i < 26; i++) {
+        if ((bitmask & (1 << i)) != 0) {
+          final letter = String.fromCharCode(65 + i);
+          final drive = '$letter:';
+          final disk = _readDiskForDrive(drive);
+          if (disk != null) {
+            results.add(disk);
+          }
+        }
+      }
+      if (results.isEmpty) {
+        final fallback = _readSystemDisk();
+        if (fallback != null) results.add(fallback);
+      }
+      return results;
+    } catch (e) {
+      logWarning('SystemMetricsService', 'Error reading all logical drives: $e');
+      final fallback = _readSystemDisk();
+      return fallback != null ? [fallback] : const [];
+    }
+  }
 
+  static DiskSnapshot? _readDiskForDrive(String drive) {
+    final root = drive.endsWith(r'\') ? drive : '$drive\\';
     return using((arena) {
       final availableToCaller = arena<Uint64>();
       final totalBytes = arena<Uint64>();
       final totalFreeBytes = arena<Uint64>();
+      final rootUtf16 = root.toNativeUtf16(allocator: arena);
       final result = GetDiskFreeSpaceEx(
-        PCWSTR(root.toNativeUtf16(allocator: arena)),
+        PCWSTR(rootUtf16),
         availableToCaller,
         totalBytes,
         totalFreeBytes,
       );
       if (!result.value) {
-        logWarning(
-          'SystemMetricsService',
-          'GetDiskFreeSpaceEx failed for $root with Win32 error ${result.error}.',
-        );
         return null;
       }
 
       if (totalBytes.value == 0 || totalFreeBytes.value > totalBytes.value) {
-        logWarning(
-          'SystemMetricsService',
-          'GetDiskFreeSpaceEx returned invalid capacity data for $root.',
-        );
         return null;
       }
+
+      String label = '';
+      try {
+        final volBuf = arena<Uint16>(261);
+        final fsBuf = arena<Uint16>(261);
+        final volRes = GetVolumeInformation(
+          PCWSTR(rootUtf16),
+          PWSTR(volBuf.cast<Utf16>()),
+          260,
+          nullptr,
+          nullptr,
+          nullptr,
+          PWSTR(fsBuf.cast<Utf16>()),
+          260,
+        );
+        if (volRes.value) {
+          label = volBuf.cast<Utf16>().toDartString();
+        }
+      } catch (_) {}
+      if (label.isEmpty) {
+        label = drive.toUpperCase() == 'C:' ? 'Windows / OS' : 'Local Disk';
+      }
+
+      int driveType = 0;
+      try {
+        driveType = GetDriveType(PCWSTR(rootUtf16));
+      } catch (_) {}
+
+      String type = 'Fixed';
+      if (driveType == DRIVE_REMOVABLE) {
+        type = 'Removable / USB';
+      } else if (driveType == DRIVE_REMOTE) {
+        type = 'Network Drive';
+      } else if (driveType == DRIVE_CDROM) {
+        type = 'Optical Drive';
+      } else if (drive.toUpperCase() == 'C:') {
+        type = 'NVMe / SSD (OS)';
+      } else {
+        type = 'SSD / Storage';
+      }
+
       return DiskSnapshot(
         usedBytes: totalBytes.value - totalFreeBytes.value,
         totalBytes: totalBytes.value,
         freeBytes: totalFreeBytes.value,
         drive: drive,
+        label: label,
+        type: type,
       );
     });
+  }
+
+  static DiskSnapshot? _readSystemDisk() {
+    final systemDrive = Platform.environment['SystemDrive'];
+    final drive = (systemDrive == null || systemDrive.isEmpty)
+        ? 'C:'
+        : systemDrive;
+    return _readDiskForDrive(drive);
   }
 }

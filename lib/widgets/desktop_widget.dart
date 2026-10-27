@@ -44,7 +44,8 @@ Future<Uint8List> _decodeMediaThumbnailAsync(String encoded, String owner) async
 
 class DesktopWidget extends StatefulWidget {
   final WidgetSettings? initialSettings;
-  const DesktopWidget({super.key, this.initialSettings});
+  final String? instanceId;
+  const DesktopWidget({super.key, this.initialSettings, this.instanceId});
 
   @override
   State<DesktopWidget> createState() => _DesktopWidgetState();
@@ -55,7 +56,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   late WidgetSettings _settings;
   late Timer _timer;
   late DateTime _dateTime;
-  final _settingsService = SettingsService();
+  late final SettingsService _settingsService;
   StreamSubscription<FileSystemEvent>? _settingsWatcher;
   bool _isLoading = true;
   String? _startupError;
@@ -191,7 +192,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
       return const SystemMetricsSnapshot();
     }
     try {
-      return await SystemMetricsService.readSnapshotAsync();
+      return await SystemMetricsService.readSnapshotAsync(settings.taskbarDiskDrive);
     } catch (error, stackTrace) {
       logWarning(
         'DesktopWidget',
@@ -205,7 +206,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     if (_isRefreshingSystemMetrics) return;
     _isRefreshingSystemMetrics = true;
     try {
-      final metrics = await SystemMetricsService.readSnapshotAsync();
+      final metrics = await SystemMetricsService.readSnapshotAsync(_settings.taskbarDiskDrive);
       if (!mounted ||
           !_settingsNeedSystemMetrics(_settings) ||
           metrics == _systemMetrics) {
@@ -258,6 +259,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   @override
   void initState() {
     super.initState();
+    _settingsService = SettingsService(instanceId: widget.instanceId);
     windowManager.addListener(this);
     _settings = widget.initialSettings ?? WidgetSettings();
     _isLoading = widget.initialSettings == null;
@@ -448,12 +450,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
     final file = await _settingsService.settingsFile;
     final parentDir = file.parent;
+    final targetFileName = file.uri.pathSegments.last;
     logInfo(
       'DesktopWidget',
-      'Watching directory for settings changes: ${parentDir.path}',
+      'Watching directory for settings changes ($targetFileName): ${parentDir.path}',
     );
     _settingsWatcher = parentDir.watch().listen((event) {
-      if (!event.path.endsWith('overlay_settings.json')) return;
+      if (!event.path.endsWith(targetFileName)) return;
       _watcherDebounce?.cancel();
       _watcherDebounce = Timer(const Duration(milliseconds: 150), () async {
         if (!mounted) return;
@@ -2745,10 +2748,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
       height: height,
       padding: padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xDD16181F),
+        color: Color(_settings.taskbarBgColor),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: Color(_settings.taskbarBorderColor),
           width: 1.0,
         ),
         boxShadow: [
@@ -2813,187 +2816,202 @@ class _DesktopWidgetState extends State<DesktopWidget>
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // 1. Time & Date Pill
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF38BDF8)),
-              const SizedBox(width: 6),
-              Text(
-                '$_hours:$_minutes',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Segoe UI',
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                DateFormat('E d').format(_dateTime).toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'Segoe UI',
-                ),
-              ),
-            ],
-          ),
-
-          _buildTaskbarDivider(),
-
-          // 2. Weather Pill
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.wb_sunny_rounded, size: 14, color: Color(0xFFFBBF24)),
-              const SizedBox(width: 5),
-              Text(
-                tempStr,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'Segoe UI',
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                locStr,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: 9.5,
-                  fontFamily: 'Segoe UI',
-                ),
-              ),
-            ],
-          ),
-
-          _buildTaskbarDivider(),
-
-          // 3. Mini Media Visualizer
-          Expanded(
-            child: Row(
+          if (_settings.taskbarShowTime) ...[
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                GestureDetector(
-                  onTap: () {
-                    if (_mediaInfo.isPlaying) {
-                      MediaSessionService().pause();
-                    } else {
-                      MediaSessionService().play();
-                    }
-                  },
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _mediaInfo.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      size: 15,
-                      color: const Color(0xFF38BDF8),
-                    ),
+                Icon(
+                  Icons.access_time_rounded,
+                  size: _settings.taskbarIconSize,
+                  color: Color(_settings.taskbarIconColor),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '$_hours:$_minutes',
+                  style: TextStyle(
+                    color: Color(_settings.taskbarTextColor),
+                    fontSize: _settings.taskbarFontSize + 2,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Segoe UI',
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        hasMedia ? _mediaInfo.title : 'TaskbarWidgets Audio',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Segoe UI',
-                        ),
-                      ),
-                      Text(
-                        hasMedia ? _mediaInfo.artist : 'WASAPI Spectrum Sync',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 9,
-                          fontFamily: 'Segoe UI',
-                        ),
-                      ),
-                    ],
+                const SizedBox(width: 6),
+                Text(
+                  DateFormat('E d').format(_dateTime).toUpperCase(),
+                  style: TextStyle(
+                    color: Color(_settings.taskbarTextColor).withValues(alpha: 0.6),
+                    fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 16.0),
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Segoe UI',
                   ),
                 ),
-                const SizedBox(width: 8),
-                _buildTaskbarEqualizer(barCount: 5, color: const Color(0xFF38BDF8), maxHeight: 15),
               ],
             ),
-          ),
+            _buildTaskbarDivider(),
+          ],
 
-          _buildTaskbarDivider(),
+          // 2. Weather Pill
+          if (_settings.taskbarShowWeather) ...[
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.wb_sunny_rounded,
+                  size: (_settings.taskbarIconSize - 2).clamp(10.0, 24.0),
+                  color: const Color(0xFFFBBF24),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  tempStr,
+                  style: TextStyle(
+                    color: Color(_settings.taskbarTextColor),
+                    fontSize: _settings.taskbarFontSize,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  locStr,
+                  style: TextStyle(
+                    color: Color(_settings.taskbarTextColor).withValues(alpha: 0.5),
+                    fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 16.0),
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+              ],
+            ),
+            _buildTaskbarDivider(),
+          ],
+
+          // 3. Mini Media Visualizer
+          if (_settings.taskbarShowMedia) ...[
+            Expanded(
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (_mediaInfo.isPlaying) {
+                        MediaSessionService().pause();
+                      } else {
+                        MediaSessionService().play();
+                      }
+                    },
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: Color(_settings.taskbarAccentColor).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _mediaInfo.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        size: (_settings.taskbarIconSize - 1).clamp(12.0, 20.0),
+                        color: Color(_settings.taskbarAccentColor),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hasMedia ? _mediaInfo.title : 'TaskbarWidgets Audio',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(_settings.taskbarTextColor),
+                            fontSize: _settings.taskbarFontSize,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Segoe UI',
+                          ),
+                        ),
+                        Text(
+                          hasMedia ? _mediaInfo.artist : 'WASAPI Spectrum Sync',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(_settings.taskbarTextColor).withValues(alpha: 0.5),
+                            fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 14.0),
+                            fontFamily: 'Segoe UI',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildTaskbarEqualizer(barCount: 5, color: Color(_settings.taskbarAccentColor), maxHeight: 15),
+                ],
+              ),
+            ),
+            _buildTaskbarDivider(),
+          ],
 
           // 4. Hardware Telemetry Chips
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               // CPU
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00FFCC).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: const Color(0xFF00FFCC).withValues(alpha: 0.25),
+              if (_settings.taskbarShowCpu) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Color(_settings.taskbarAccentColor).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Color(_settings.taskbarAccentColor).withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.memory_rounded, size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0), color: Color(_settings.taskbarAccentColor)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_cpuUsage.toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          color: Color(_settings.taskbarAccentColor),
+                          fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.memory_rounded, size: 11, color: Color(0xFF00FFCC)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_cpuUsage.toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                        color: Color(0xFF00FFCC),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'Segoe UI',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
+                const SizedBox(width: 6),
+              ],
               // RAM
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFA855F7).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: const Color(0xFFA855F7).withValues(alpha: 0.25),
+              if (_settings.taskbarShowRam) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFA855F7).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFFA855F7).withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.developer_board_rounded, size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0), color: const Color(0xFFA855F7)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_ramUsage.toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          color: const Color(0xFFA855F7),
+                          fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.developer_board_rounded, size: 11, color: Color(0xFFA855F7)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_ramUsage.toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                        color: Color(0xFFA855F7),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'Segoe UI',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ],
           ),
         ],
@@ -3117,7 +3135,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   Widget _buildTaskbarSystemLayout() {
-    final diskUsage = _systemMetrics.disk?.usedPercentage ?? 45.0;
+    final disk = _systemMetrics.disk;
+    final diskUsage = disk?.usedPercentage ?? 45.0;
+    final diskName = (disk != null && disk.drive.isNotEmpty)
+        ? (disk.label.isNotEmpty ? '${disk.drive} ${disk.label}' : disk.drive)
+        : 'SSD';
+
+    final iconSz = _settings.taskbarIconSize.clamp(8.0, 24.0);
+    final fontSz = _settings.taskbarFontSize.clamp(7.0, 16.0);
+    final primaryColor = Color(_settings.taskbarAccentColor);
+    final textColor = Color(_settings.taskbarTextColor);
 
     Widget buildStatCell({
       required IconData icon,
@@ -3143,13 +3170,15 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(icon, size: 10, color: color),
+                      Icon(icon, size: iconSz * 0.75, color: color),
                       const SizedBox(width: 3),
                       Text(
                         label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: color,
-                          fontSize: 8.5,
+                          fontSize: fontSz * 0.8,
                           fontWeight: FontWeight.w700,
                           fontFamily: 'Segoe UI',
                         ),
@@ -3158,9 +3187,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   ),
                   Text(
                     '${percent.toStringAsFixed(0)}%',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 8.5,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: fontSz * 0.8,
                       fontWeight: FontWeight.w700,
                       fontFamily: 'Segoe UI',
                     ),
@@ -3188,33 +3217,55 @@ class _DesktopWidgetState extends State<DesktopWidget>
       );
     }
 
+    final cells = <Widget>[];
+    if (_settings.taskbarShowCpu) {
+      cells.add(
+        buildStatCell(
+          icon: Icons.memory_rounded,
+          label: 'CPU',
+          percent: _cpuUsage,
+          color: const Color(0xFF00FFCC),
+        ),
+      );
+    }
+    if (_settings.taskbarShowRam) {
+      if (cells.isNotEmpty) cells.add(const SizedBox(width: 6));
+      cells.add(
+        buildStatCell(
+          icon: Icons.developer_board_rounded,
+          label: 'RAM',
+          percent: _ramUsage,
+          color: const Color(0xFFA855F7),
+        ),
+      );
+    }
+    if (_settings.taskbarShowDisk) {
+      if (cells.isNotEmpty) cells.add(const SizedBox(width: 6));
+      cells.add(
+        buildStatCell(
+          icon: Icons.storage_rounded,
+          label: diskName,
+          percent: diskUsage,
+          color: primaryColor,
+        ),
+      );
+    }
+
+    if (cells.isEmpty) {
+      cells.add(
+        buildStatCell(
+          icon: Icons.storage_rounded,
+          label: diskName,
+          percent: diskUsage,
+          color: primaryColor,
+        ),
+      );
+    }
+
     return _buildTaskbarGlassContainer(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      child: Row(
-        children: [
-          buildStatCell(
-            icon: Icons.memory_rounded,
-            label: 'CPU',
-            percent: _cpuUsage,
-            color: const Color(0xFF00FFCC),
-          ),
-          const SizedBox(width: 6),
-          buildStatCell(
-            icon: Icons.developer_board_rounded,
-            label: 'RAM',
-            percent: _ramUsage,
-            color: const Color(0xFFA855F7),
-          ),
-          const SizedBox(width: 6),
-          buildStatCell(
-            icon: Icons.storage_rounded,
-            label: 'SSD',
-            percent: diskUsage,
-            color: const Color(0xFF38BDF8),
-          ),
-        ],
-      ),
+      child: Row(children: cells),
     );
   }
 

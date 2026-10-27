@@ -158,134 +158,45 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
     'Restoring enabled desktop widgets using installed executable '
         '"${Platform.resolvedExecutable}".',
   );
-  final settingsService = SettingsService();
-  final pidFile = await settingsService.pidFile;
-  Future<OverlayProcessRecord?> readOverlayRecord() async {
-    if (!await pidFile.exists()) return null;
-    return OverlayProcessRecord.tryParse(await pidFile.readAsString());
-  }
-
-  OverlayProcessRecord? existingRecord;
-  try {
-    existingRecord = await readOverlayRecord();
-  } catch (error, stackTrace) {
-    logWarning(
-      'OverlayStartup',
-      'Could not verify an existing overlay before startup recovery: $error',
-    );
-    logDebug('Main', stackTrace.toString());
-  }
-  if (existingRecord != null) {
-    OverlayProcessInspection? inspection;
-    try {
-      inspection = await inspectWindowsProcess(existingRecord.pid);
-    } catch (error, stackTrace) {
-      logWarning(
-        'OverlayStartup',
-        'Could not inspect existing overlay PID ${existingRecord.pid}: $error',
-      );
-      logDebug('Main', stackTrace.toString());
-    }
-    if (inspection != null &&
-        inspection.isRunning &&
-        inspection.matches(existingRecord)) {
-      if (existingRecord.ready) {
-        logInfo(
-          'OverlayStartup',
-          'Existing overlay PID record is healthy; skipping duplicate '
-              'startup overlay launch.',
-        );
-        return;
-      }
-      final readiness = await waitForOverlayReadiness(
-        readRecord: readOverlayRecord,
-        inspectProcess: inspectWindowsProcess,
-        timeout: const Duration(seconds: 45),
-      );
-      if (readiness.isReady) return;
-      if (readiness.inspection?.isRunning == true) {
-        throw StateError(
-          'Existing overlay PID ${existingRecord.pid} remained active but '
-          'did not become ready; refusing to launch a duplicate.',
-        );
-      }
-    }
-  }
 
   final executable = Platform.resolvedExecutable;
   final workingDirectory = File(executable).parent.path;
-  final recoveryPolicy = OverlayRecoveryPolicy();
-  while (true) {
-    Process process;
-    try {
-      process = await Process.start(
-        executable,
-        ['--overlay', '--startup-trigger=windows-logon'],
-        mode: ProcessStartMode.detached,
-        workingDirectory: workingDirectory,
-      );
-    } catch (error, stackTrace) {
-      logWarning(
-        'Main',
-        'Could not start the startup overlay process: $error\n$stackTrace',
-      );
-      final retryDelay = recoveryPolicy.nextDelay();
-      if (retryDelay == null) {
-        throw StateError(
-          'Startup overlay recovery exhausted its bounded retry policy.',
+  final activeIds = settings.activeWidgetIds.isNotEmpty
+      ? settings.activeWidgetIds
+      : [settings.widgetTemplate];
+
+  for (final id in activeIds) {
+    final instService = SettingsService(instanceId: id);
+    final pidFile = await instService.pidFile;
+    bool isRunning = false;
+    if (await pidFile.exists()) {
+      try {
+        final record = OverlayProcessRecord.tryParse(await pidFile.readAsString());
+        if (record != null) {
+          final inspection = await inspectWindowsProcess(record.pid);
+          if (inspection != null && inspection.isRunning && inspection.matches(record)) {
+            isRunning = true;
+          }
+        }
+      } catch (_) {}
+    }
+    if (!isRunning) {
+      try {
+        final process = await Process.start(
+          executable,
+          ['--overlay', '--startup-trigger=windows-logon', '--instance-id=$id'],
+          mode: ProcessStartMode.detached,
+          workingDirectory: workingDirectory,
         );
+        logInfo(
+          'OverlayStartup',
+          'Started background overlay restore for "$id" with pid=${process.pid} during '
+              'Windows logon recovery.',
+        );
+      } catch (error) {
+        logWarning('OverlayStartup', 'Could not restore overlay "$id": $error');
       }
-      logInfo(
-        'OverlayStartup',
-        'Retrying startup overlay recovery after '
-            '${retryDelay.inSeconds}s.',
-      );
-      await Future<void>.delayed(retryDelay);
-      continue;
     }
-
-    logInfo(
-      'OverlayStartup',
-      'Started background overlay restore with pid=${process.pid} during '
-          'Windows logon recovery.',
-    );
-    final readiness = await waitForOverlayReadiness(
-      readRecord: readOverlayRecord,
-      inspectProcess: inspectWindowsProcess,
-      timeout: const Duration(seconds: 45),
-    );
-    if (readiness.isReady) {
-      logInfo(
-        'OverlayStartup',
-        'Startup overlay reached readiness in '
-            '${readiness.elapsed.inMilliseconds}ms.',
-      );
-      return;
-    }
-    if (readiness.inspection?.isRunning == true) {
-      throw StateError(
-        'Startup overlay PID ${readiness.record?.pid} remained active but '
-        'did not become ready; refusing to launch a duplicate.',
-      );
-    }
-    logWarning(
-      'OverlayStartup',
-      'Startup overlay launch did not reach readiness '
-          '(${readiness.status}); the bounded recovery policy will retry.',
-    );
-
-    final retryDelay = recoveryPolicy.nextDelay();
-    if (retryDelay == null) {
-      throw StateError(
-        'Startup overlay recovery exhausted its bounded retry policy.',
-      );
-    }
-    logInfo(
-      'OverlayStartup',
-      'Retrying startup overlay recovery after '
-          '${retryDelay.inSeconds}s.',
-    );
-    await Future<void>.delayed(retryDelay);
   }
 }
 
@@ -423,8 +334,18 @@ void main(List<String> args) async {
     exit(1);
   }
 
+  final overlayInstanceId = args
+      .firstWhere(
+        (argument) => argument.startsWith('--instance-id='),
+        orElse: () => '',
+      )
+      .replaceFirst('--instance-id=', '')
+      .trim();
+
   // ── Step 4: Load settings ──
-  final settingsService = SettingsService();
+  final settingsService = SettingsService(
+    instanceId: overlayInstanceId.isNotEmpty ? overlayInstanceId : null,
+  );
   final settingsLoadStopwatch = Stopwatch()..start();
   final settings = await settingsService.loadSettings();
   final settingsLoadMs = settingsLoadStopwatch.elapsedMilliseconds;
@@ -726,6 +647,25 @@ void main(List<String> args) async {
             'Main',
             'Window position set to (${position.dx}, ${position.dy})',
           );
+        } else if (isTaskbar) {
+          try {
+            final primaryDisplay = await ScreenRetriever.instance.getPrimaryDisplay();
+            final screenSize = primaryDisplay.size;
+            final taskbarPos = Offset(
+              (screenSize.width - cleanSettings.width) / 2,
+              screenSize.height - cleanSettings.height - 12,
+            );
+            await timeWindowOperation(
+              'setPosition',
+              () => windowManager.setPosition(taskbarPos),
+            );
+            logInfo(
+              'OverlayStartup',
+              'Taskbar dock positioned at bottom center: $taskbarPos',
+            );
+          } catch (_) {
+            await timeWindowOperation('center', windowManager.center);
+          }
         } else {
           await timeWindowOperation('center', windowManager.center);
           logInfo(
@@ -734,6 +674,12 @@ void main(List<String> args) async {
           );
         }
 
+        await timeWindowOperation(
+          'setTitle',
+          () => windowManager.setTitle(
+            'WallSync Overlay ${overlayInstanceId.isNotEmpty ? overlayInstanceId : "Default"}',
+          ),
+        );
         await timeWindowOperation(
           'setAsFrameless',
           windowManager.setAsFrameless,
@@ -876,8 +822,13 @@ void main(List<String> args) async {
       }
     });
 
-    logInfo('Main', 'Starting OverlayApp widget tree...');
-    runApp(OverlayApp(settings: cleanSettings));
+    logInfo('Main', 'Starting OverlayApp widget tree (instanceId=$overlayInstanceId)...');
+    runApp(
+      OverlayApp(
+        settings: cleanSettings,
+        instanceId: overlayInstanceId.isNotEmpty ? overlayInstanceId : null,
+      ),
+    );
 
     Timer(const Duration(seconds: 35), () {
       if (!readinessRegistered) {
@@ -1115,7 +1066,8 @@ Future<void> _runStartupRecoveryStage(
 // ----------------------------------------------------
 class OverlayApp extends StatelessWidget {
   final WidgetSettings settings;
-  const OverlayApp({super.key, required this.settings});
+  final String? instanceId;
+  const OverlayApp({super.key, required this.settings, this.instanceId});
 
   @override
   Widget build(BuildContext context) {
@@ -1130,7 +1082,7 @@ class OverlayApp extends StatelessWidget {
       ),
       home: Scaffold(
         backgroundColor: Colors.transparent,
-        body: DesktopWidget(initialSettings: settings),
+        body: DesktopWidget(initialSettings: settings, instanceId: instanceId),
       ),
     );
   }

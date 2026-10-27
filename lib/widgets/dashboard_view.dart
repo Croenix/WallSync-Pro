@@ -901,6 +901,11 @@ class _DashboardViewState extends State<DashboardView>
   Timer? _watcherDebounce;
   late String _activeTemplate;
 
+  // Multi-widget simultaneous instances tracking
+  Set<String> _activeRunningWidgetIds = {};
+  List<DiskSnapshot> _cachedDisks = [];
+  String _taskbarColorMode = 'bg'; // 'bg' | 'border' | 'accent' | 'text' | 'icon'
+
   // Background Download Queue
   final List<FirebaseWallpaper> _downloadQueue = [];
   final Map<String, Completer<File?>> _wallpaperDownloadTasks = {};
@@ -1581,32 +1586,28 @@ class _DashboardViewState extends State<DashboardView>
         if (Platform.isWindows) {
           final exeDir = File(Platform.resolvedExecutable).parent.path;
           final candidatePaths = [
-            '$exeDir\\WallSync.ico',
             '$exeDir\\resources\\app_icon.ico',
+            '$exeDir\\WallSync.ico',
             '$exeDir\\data\\flutter_assets\\assets\\app_icon.png',
             'assets/app_icon.png',
           ];
-          String? iconPath;
+          bool trayReady = false;
           for (final path in candidatePaths) {
-            if (await File(path).exists()) {
-              iconPath = path;
-              break;
-            }
+            try {
+              if (path.startsWith('assets/') || await File(path).exists()) {
+                await trayManager.setIcon(path);
+                await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
+                await _updateTrayMenu();
+                logInfo(
+                  'OverlayStartup',
+                  'System tray icon and menu are ready from "$path" (attempt $attempt).',
+                );
+                trayReady = true;
+                break;
+              }
+            } catch (_) {}
           }
-          if (iconPath == null) {
-            throw FileSystemException(
-              'The installed WallSync tray icon is missing.',
-              candidatePaths.first,
-            );
-          }
-          await trayManager.setIcon(iconPath);
-          await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
-          await _updateTrayMenu();
-          logInfo(
-            'OverlayStartup',
-            'System tray icon and menu are ready from "$iconPath" (attempt $attempt).',
-          );
-          return;
+          if (trayReady) return;
         }
         await trayManager.setIcon('assets/app_icon.png');
         await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
@@ -1637,6 +1638,7 @@ class _DashboardViewState extends State<DashboardView>
           _settings.activeWallpaperType == 'video' &&
           !_settings.videoWallpaperPaused;
       final isOverlayOn = _isOverlayRunning;
+      final activeCount = _activeRunningWidgetIds.length;
 
       final menu = Menu(
         items: [
@@ -1644,7 +1646,9 @@ class _DashboardViewState extends State<DashboardView>
           MenuItem.separator(),
           MenuItem(
             key: 'toggle_widget',
-            label: isOverlayOn ? 'Hide Desktop Widget' : 'Show Desktop Widget',
+            label: isOverlayOn
+                ? 'Hide Widgets ($activeCount Active)'
+                : 'Show Widgets',
           ),
           if (_settings.activeWallpaperType == 'video')
             MenuItem(
@@ -1741,9 +1745,9 @@ class _DashboardViewState extends State<DashboardView>
         break;
       case 'toggle_widget':
         if (_isOverlayRunning) {
-          await _closeOverlay();
+          await _stopAllRunningWidgets();
         } else {
-          await _launchOverlay();
+          await _recoverOverlay();
         }
         await _updateTrayMenu();
         break;
@@ -1858,12 +1862,40 @@ class _DashboardViewState extends State<DashboardView>
           inspection != null &&
           inspection.isRunning &&
           inspection.matches(record);
-      final wasRunning = _isOverlayRunning;
-      if (mounted && _isOverlayRunning != isRunning) {
-        setState(() => _isOverlayRunning = isRunning);
-        _updateTrayMenu();
+
+      // Verify all active simultaneous widget instances
+      final runningWidgetIds = <String>{};
+      for (final widgetId in _settings.activeWidgetIds) {
+        try {
+          final instService = SettingsService(instanceId: widgetId);
+          final instPidFile = await instService.pidFile;
+          final instContent = (await _safeReadPidFile(instPidFile)).trim();
+          final instRecord = OverlayProcessRecord.tryParse(instContent);
+          if (instRecord != null && instRecord.ready) {
+            final instInspection = await inspectWindowsProcess(instRecord.pid);
+            if (instInspection != null && instInspection.isRunning && instInspection.matches(instRecord)) {
+              runningWidgetIds.add(widgetId);
+            }
+          }
+        } catch (_) {}
       }
-      if (mounted && isRunning) {
+      if (isRunning && _settings.widgetTemplate.isNotEmpty) {
+        runningWidgetIds.add(_settings.widgetTemplate);
+      }
+      final anyRunning = isRunning || runningWidgetIds.isNotEmpty;
+      final wasRunning = _isOverlayRunning;
+      if (mounted) {
+        final idsChanged = _activeRunningWidgetIds.length != runningWidgetIds.length ||
+            !_activeRunningWidgetIds.containsAll(runningWidgetIds);
+        if (_isOverlayRunning != anyRunning || idsChanged) {
+          setState(() {
+            _isOverlayRunning = anyRunning;
+            _activeRunningWidgetIds = runningWidgetIds;
+          });
+          _updateTrayMenu();
+        }
+      }
+      if (mounted && anyRunning) {
         _isOverlayExplicitlyClosed = false;
         _overlayRecoveryTimer?.cancel();
         _overlayRecoveryTimer = null;
@@ -1883,7 +1915,10 @@ class _DashboardViewState extends State<DashboardView>
         st,
       );
       if (mounted && _isOverlayRunning) {
-        setState(() => _isOverlayRunning = false);
+        setState(() {
+          _isOverlayRunning = false;
+          _activeRunningWidgetIds.clear();
+        });
         _updateTrayMenu();
         _overlayRecoveryStabilityTimer?.cancel();
         _overlayRecoveryStabilityTimer = null;
@@ -1892,6 +1927,270 @@ class _DashboardViewState extends State<DashboardView>
         }
       }
     }
+  }
+
+  void _refreshDisks() {
+    try {
+      final disks = SystemMetricsService.readAllDisks();
+      if (mounted) {
+        setState(() {
+          _cachedDisks = disks;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _launchWidgetOverlay(String widgetId) async {
+    try {
+      final defaults = WidgetSettings.templateDefaults[widgetId] ?? {
+        'width': widgetId.startsWith('taskbar_') ? 340.0 : 360.0,
+        'height': widgetId.startsWith('taskbar_') ? 44.0 : 200.0,
+        'sizeFactor': widgetId.startsWith('taskbar_') ? 0.85 : 1.0,
+      };
+
+      final isTaskbar = widgetId.startsWith('taskbar_');
+      final activeIds = List<String>.from(_settings.activeWidgetIds);
+      if (!activeIds.contains(widgetId)) {
+        activeIds.add(widgetId);
+      }
+
+      final instService = SettingsService(instanceId: widgetId);
+      WidgetSettings instSettings;
+      try {
+        final loaded = await instService.load();
+        instSettings = loaded.copyWith(
+          widgetTemplate: widgetId,
+          exitOverlay: false,
+          activeWidgetIds: activeIds,
+        );
+      } catch (_) {
+        instSettings = _settings.copyWith(
+          widgetTemplate: widgetId,
+          width: defaults['width'],
+          height: defaults['height'],
+          sizeFactor: defaults['sizeFactor'],
+          exitOverlay: false,
+          activeWidgetIds: activeIds,
+        );
+      }
+
+      // Compute distinct coordinates if not set, or if colliding with default/stale positions
+      if (instSettings.posX == null || instSettings.posY == null) {
+        if (isTaskbar) {
+          final count = _activeRunningWidgetIds.where((id) => id.startsWith('taskbar_')).length;
+          instSettings = instSettings.copyWith(
+            posX: 380.0 + (count * 360.0),
+            posY: 960.0,
+          );
+        } else {
+          final count = _activeRunningWidgetIds.where((id) => !id.startsWith('taskbar_')).length;
+          final staggerX = 80.0 + ((count % 3) * 380.0);
+          final staggerY = 80.0 + ((count ~/ 3) * 260.0);
+          instSettings = instSettings.copyWith(
+            posX: staggerX,
+            posY: staggerY,
+          );
+        }
+      }
+
+      await instService.save(instSettings);
+
+      _settings = _settings.copyWith(
+        activeWidgetIds: activeIds,
+        widgetTemplate: widgetId,
+      );
+      await _saveSettingsSafely(_settings);
+
+      // Prepare shadow runtime copy so MSBuild / VS debug never locks DLLs
+      String appPath = Platform.resolvedExecutable;
+      String workingDir = File(appPath).parent.path;
+      try {
+        final runtimeDir = await DiagnosticsService.instance
+            .trackAsyncOperation<Directory>(
+              tag: 'DashboardView',
+              name: 'overlay.prepareRuntime.$widgetId',
+              operation: _wallpaperEngine.prepareOverlayRuntime,
+              warningThreshold: const Duration(milliseconds: 500),
+            );
+        final exeName = File(appPath).uri.pathSegments.last;
+        final runtimeExe = File('${runtimeDir.path}\\$exeName');
+        if (await runtimeExe.exists()) {
+          appPath = runtimeExe.path;
+          workingDir = runtimeDir.path;
+        }
+      } catch (e) {
+        logWarning('DashboardView', 'Shadow runtime fallback for $widgetId: $e');
+      }
+
+      // Launch overlay process
+      // In kDebugMode, direct Process.start gets trapped by the VS Code debugger Job Object.
+      // We use Task Scheduler with a unique task name per widget, or cmd start, to break out.
+      bool launched = false;
+      if (kDebugMode) {
+        final sanitizedId = widgetId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+        final taskName = 'WallSyncOverlay_$sanitizedId';
+        final tempDir = Platform.environment['TEMP'] ?? Directory.systemTemp.path;
+        final batPath = '$tempDir\\overlay_launch_$sanitizedId.bat';
+
+        try {
+          final batContent =
+              '@echo off\r\ncd /d "$workingDir"\r\nstart "" "$appPath" --overlay --startup-trigger=dashboard --instance-id=$widgetId\r\n';
+          await File(batPath).writeAsString(batContent, flush: true);
+
+          final createResult = await Process.run('schtasks', [
+            '/create',
+            '/f',
+            '/tn',
+            taskName,
+            '/tr',
+            '"$batPath"',
+            '/sc',
+            'once',
+            '/st',
+            '00:00',
+            '/it',
+          ]);
+          if (createResult.exitCode == 0) {
+            final runResult = await Process.run('schtasks', ['/run', '/tn', taskName]);
+            if (runResult.exitCode == 0) {
+              launched = true;
+              logInfo('DashboardView', 'Overlay "$widgetId" spawned via Task Scheduler ($taskName).');
+            }
+          }
+        } catch (e) {
+          logWarning('DashboardView', 'Task Scheduler spawn failed for $widgetId: $e');
+        } finally {
+          Future.delayed(const Duration(seconds: 15), () async {
+            try {
+              await Process.run('schtasks', ['/delete', '/f', '/tn', taskName]);
+            } catch (_) {}
+            try {
+              final f = File(batPath);
+              if (await f.exists()) await f.delete();
+            } catch (_) {}
+          });
+        }
+      }
+
+      if (!launched) {
+        try {
+          await Process.start(
+            'cmd.exe',
+            ['/c', 'start', '""', appPath, '--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
+            workingDirectory: workingDir,
+            mode: ProcessStartMode.detached,
+          );
+          launched = true;
+          logInfo('DashboardView', 'Overlay "$widgetId" spawned via cmd.exe start detached.');
+        } catch (_) {
+          await Process.start(
+            appPath,
+            ['--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
+            workingDirectory: workingDir,
+            mode: ProcessStartMode.detached,
+          );
+          logInfo('DashboardView', 'Overlay "$widgetId" spawned via direct Process.start.');
+        }
+      }
+
+      setState(() {
+        _activeRunningWidgetIds.add(widgetId);
+        _isOverlayRunning = true;
+      });
+      _updateTrayMenu();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 16),
+                const SizedBox(width: 8),
+                Text('"${_getWidgetTitle(widgetId)}" launched and running live!'),
+              ],
+            ),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF0F172A),
+          ),
+        );
+      }
+    } catch (e, st) {
+      logError('DashboardView', 'Error launching widget overlay $widgetId', e, st);
+    }
+  }
+
+  Future<void> _closeWidgetOverlay(String widgetId) async {
+    try {
+      final instService = SettingsService(instanceId: widgetId);
+      try {
+        final cur = await instService.load();
+        await instService.save(cur.copyWith(exitOverlay: true));
+      } catch (_) {}
+
+      try {
+        final pidFile = await instService.pidFile;
+        final content = (await _safeReadPidFile(pidFile)).trim();
+        final record = OverlayProcessRecord.tryParse(content);
+        if (record != null) {
+          Process.killPid(record.pid);
+        }
+      } catch (_) {}
+
+      final activeIds = List<String>.from(_settings.activeWidgetIds)..remove(widgetId);
+      _settings = _settings.copyWith(activeWidgetIds: activeIds);
+      await _saveSettingsSafely(_settings);
+
+      setState(() {
+        _activeRunningWidgetIds.remove(widgetId);
+        _isOverlayRunning = _activeRunningWidgetIds.isNotEmpty;
+      });
+      _updateTrayMenu();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"${_getWidgetTitle(widgetId)}" turned off.'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF1E293B),
+          ),
+        );
+      }
+    } catch (e, st) {
+      logError('DashboardView', 'Error stopping widget $widgetId', e, st);
+    }
+  }
+
+  Future<void> _stopAllRunningWidgets() async {
+    final toStop = Set<String>.from(_activeRunningWidgetIds);
+    for (final id in _settings.activeWidgetIds) {
+      toStop.add(id);
+    }
+    for (final id in toStop) {
+      await _closeWidgetOverlay(id);
+    }
+    await _closeOverlay();
+    setState(() {
+      _activeRunningWidgetIds.clear();
+      _isOverlayRunning = false;
+    });
+    _updateTrayMenu();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All running widgets stopped.'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Color(0xFF1E293B),
+        ),
+      );
+    }
+  }
+
+  void _customizeWidget(String widgetId) {
+    setState(() {
+      _settings = _settings.copyWith(widgetTemplate: widgetId);
+      _editingWidget = true;
+    });
   }
 
   void _startOverlayRecoveryStabilityTimer() {
@@ -1944,8 +2243,15 @@ class _DashboardViewState extends State<DashboardView>
 
   Future<void> _recoverOverlay() async {
     if (_isOverlayExplicitlyClosed) return;
-    logInfo('DashboardView', 'Attempting overlay recovery launch.');
-    await _launchOverlay(startupTrigger: 'recovery');
+    logInfo('DashboardView', 'Attempting overlay recovery launch for active widgets.');
+    final targets = _settings.activeWidgetIds.isNotEmpty
+        ? _settings.activeWidgetIds
+        : (_settings.widgetTemplate.isNotEmpty ? [_settings.widgetTemplate] : <String>['clock_card']);
+    for (final id in targets) {
+      if (!_activeRunningWidgetIds.contains(id)) {
+        await _launchWidgetOverlay(id);
+      }
+    }
     if (mounted && !_isOverlayRunning && !_isOverlayExplicitlyClosed) {
       _scheduleOverlayRecovery();
     }
@@ -1996,6 +2302,11 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _saveSettingsSafely(WidgetSettings settings) async {
     try {
       await _settingsService.saveSettings(settings);
+      if (settings.widgetTemplate.isNotEmpty) {
+        try {
+          await SettingsService(instanceId: settings.widgetTemplate).saveSettings(settings);
+        } catch (_) {}
+      }
     } catch (error, stackTrace) {
       logError(
         'DashboardView',
@@ -2170,12 +2481,12 @@ class _DashboardViewState extends State<DashboardView>
 
   // Spawns the overlay via Windows Task Scheduler — the ONLY reliable way to escape VS Code's Job Object.
   //
-  // Root cause: VS Code wraps its debug session in a Windows Job Object. ALL child processes
-  // (PowerShell, cmd, wscript, Process.start) inherit this Job Object, and the Dart VM inside them
-  // fails silently before reaching main(). Task Scheduler creates processes as children of svchost.exe
-  // (the Schedule service), completely outside any application Job Object — exactly like system services.
-  Future<void> _launchOverlay({String startupTrigger = 'dashboard'}) =>
-      _overlayLaunchGate.run(() => _launchOverlayInternal(startupTrigger));
+  Future<void> _launchOverlay() => _overlayLaunchGate.run(() async {
+    final target = _activeTemplate.isNotEmpty
+        ? _activeTemplate
+        : (_settings.widgetTemplate.isNotEmpty ? _settings.widgetTemplate : 'clock_card');
+    await _launchWidgetOverlay(target);
+  });
 
   Future<void> _launchOverlayInternal(String startupTrigger) async {
     if (_overlayCloseOperation != null) {
@@ -12312,6 +12623,9 @@ class _DashboardViewState extends State<DashboardView>
       _selectedElement = null;
       return _buildElementIdentificationDeck();
     }
+    if (_settings.widgetTemplate.startsWith('taskbar_')) {
+      return _buildTaskbarCustomizationDeck();
+    }
     if (_selectedElement != null &&
         !_isElementActiveInCurrentTemplate(_selectedElement!)) {
       _selectedElement = null;
@@ -12320,6 +12634,570 @@ class _DashboardViewState extends State<DashboardView>
       return _buildElementIdentificationDeck();
     }
     return _buildDedicatedObjectInspector(_selectedElement!);
+  }
+
+  Widget _buildTaskbarCustomizationDeck() {
+    final templateTitle = _getWidgetTitle(_settings.widgetTemplate);
+    if (_cachedDisks.isEmpty) {
+      _refreshDisks();
+    }
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      children: [
+        // 1. Studio Header Banner
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                ),
+                child: const Icon(Icons.dock_rounded, color: Color(0xFF38BDF8), size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          templateTitle,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                          ),
+                          child: const Text(
+                            'TASKBAR STUDIO',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF10B981),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'A-to-Z Customization • Hardware Telemetry • Glass Aesthetics • Windows Core Sync',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  _updateSettings(
+                    _settings.copyWith(
+                      taskbarIconSize: 16.0,
+                      taskbarFontSize: 11.0,
+                      taskbarBgColor: 0xE6080A12,
+                      taskbarBorderColor: 0x3338BDF8,
+                      taskbarAccentColor: 0xFF38BDF8,
+                      taskbarTextColor: 0xFFFFFFFF,
+                      taskbarIconColor: 0xFF94A3B8,
+                      taskbarDiskDrive: null,
+                      taskbarShowCpu: true,
+                      taskbarShowRam: true,
+                      taskbarShowDisk: true,
+                      taskbarShowTime: true,
+                      taskbarShowWeather: true,
+                      taskbarShowMedia: true,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 14),
+                label: const Text('Reset Defaults', style: TextStyle(fontSize: 11)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 2. Windows Core Storage & Drive Selector
+        _sectionLabel('WINDOWS CORE STORAGE & DRIVE SELECTOR'),
+        const SizedBox(height: 6),
+        Text(
+          'Hardware-level storage telemetry synced via native Win32 APIs. Select a specific drive to monitor or auto-detect.',
+          style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.5)),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F111A),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.storage_rounded, size: 16, color: Color(0xFF38BDF8)),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Active Monitored Drive',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: _refreshDisks,
+                    icon: const Icon(Icons.sync_rounded, size: 16),
+                    tooltip: 'Rescan Storage Drives',
+                    color: const Color(0xFF38BDF8),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Drive Dropdown / Selector
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: DropdownButton<String>(
+                  value: _settings.taskbarDiskDrive == 'Auto' || !_cachedDisks.any((d) => d.drive == _settings.taskbarDiskDrive)
+                      ? 'Auto'
+                      : _settings.taskbarDiskDrive,
+                  isExpanded: true,
+                  dropdownColor: const Color(0xFF1E2235),
+                  underline: const SizedBox(),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF38BDF8)),
+                  items: [
+                    DropdownMenuItem<String>(
+                      value: 'Auto',
+                      child: Text(
+                        'Auto-Detect OS Primary Drive (${_cachedDisks.isNotEmpty ? _cachedDisks.first.drive : 'C:'})',
+                        style: const TextStyle(fontSize: 12, color: Colors.white),
+                      ),
+                    ),
+                    ..._cachedDisks.map((d) {
+                      return DropdownMenuItem<String>(
+                        value: d.drive,
+                        child: Text(
+                          '${d.displayName} • ${d.totalFormatted} (${d.freeFormatted} Free)',
+                          style: const TextStyle(fontSize: 12, color: Colors.white),
+                        ),
+                      );
+                    }),
+                  ],
+                  onChanged: (val) {
+                    _updateSettings(_settings.copyWith(taskbarDiskDrive: val ?? 'Auto'));
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Disks Cards List
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: _cachedDisks.map((d) {
+                  final isCurrentSelected = (_settings.taskbarDiskDrive == 'Auto' && d == _cachedDisks.first) ||
+                      (_settings.taskbarDiskDrive == d.drive);
+                  final usedPct = d.usedPercentage;
+                  final barColor = usedPct > 90 ? Colors.redAccent : (usedPct > 80 ? Colors.amber : const Color(0xFF00FFCC));
+                  return InkWell(
+                    onTap: () {
+                      _updateSettings(_settings.copyWith(taskbarDiskDrive: d.drive));
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 240,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isCurrentSelected
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.02),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isCurrentSelected ? const Color(0xFF38BDF8) : Colors.white.withValues(alpha: 0.06),
+                          width: isCurrentSelected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    d.type.contains('SSD') || d.type.contains('NVMe')
+                                        ? Icons.flash_on_rounded
+                                        : Icons.storage_rounded,
+                                    size: 14,
+                                    color: isCurrentSelected ? const Color(0xFF38BDF8) : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '${d.drive} ${d.label.isNotEmpty ? '[${d.label}]' : ''}',
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                              if (isCurrentSelected)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text('ACTIVE', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF38BDF8))),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(d.type, style: TextStyle(fontSize: 9.5, color: Colors.white.withValues(alpha: 0.45))),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              value: (usedPct / 100.0).clamp(0.0, 1.0),
+                              backgroundColor: Colors.white.withValues(alpha: 0.08),
+                              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                              minHeight: 5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('${d.usedFormatted} used (${usedPct.toStringAsFixed(1)}%)', style: TextStyle(fontSize: 9.5, color: Colors.white.withValues(alpha: 0.6))),
+                              Text('${d.freeFormatted} free', style: const TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 3. Sizing Studio (Icons & Typography)
+        _sectionLabel('SIZING STUDIO (ICONS & FONTS)'),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F111A),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            children: [
+              // Icon Size Slider
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Taskbar Icon Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text('${_settings.taskbarIconSize.toStringAsFixed(1)} px', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11)),
+                  ),
+                ],
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: const Color(0xFF38BDF8),
+                  thumbColor: const Color(0xFF38BDF8),
+                ),
+                child: Slider(
+                  value: _settings.taskbarIconSize.clamp(10.0, 32.0),
+                  min: 10.0,
+                  max: 32.0,
+                  divisions: 22,
+                  onChanged: (val) {
+                    _updateSettings(_settings.copyWith(taskbarIconSize: val));
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Font Size Slider
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Taskbar Typography Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF818CF8).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text('${_settings.taskbarFontSize.toStringAsFixed(1)} px', style: const TextStyle(color: Color(0xFF818CF8), fontWeight: FontWeight.bold, fontSize: 11)),
+                  ),
+                ],
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: const Color(0xFF818CF8),
+                  thumbColor: const Color(0xFF818CF8),
+                ),
+                child: Slider(
+                  value: _settings.taskbarFontSize.clamp(8.0, 22.0),
+                  min: 8.0,
+                  max: 22.0,
+                  divisions: 28,
+                  onChanged: (val) {
+                    _updateSettings(_settings.copyWith(taskbarFontSize: val));
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 4. Glass Aesthetics & Color Studio
+        _sectionLabel('GLASS AESTHETICS & COLOR STUDIO'),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F111A),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Color category selector tabs
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildTaskbarColorTab('bg', 'Glass Background', Color(_settings.taskbarBgColor)),
+                    const SizedBox(width: 8),
+                    _buildTaskbarColorTab('border', 'Glass Border', Color(_settings.taskbarBorderColor)),
+                    const SizedBox(width: 8),
+                    _buildTaskbarColorTab('accent', 'Accent & Waves', Color(_settings.taskbarAccentColor)),
+                    const SizedBox(width: 8),
+                    _buildTaskbarColorTab('text', 'Text & Labels', Color(_settings.taskbarTextColor)),
+                    const SizedBox(width: 8),
+                    _buildTaskbarColorTab('icon', 'Icon Colors', Color(_settings.taskbarIconColor)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // ColorPicker for selected mode
+              ColorPickerWidget(
+                initialColor: _getTaskbarActiveColor(),
+                paletteColors: _settings.colorPalette.map((v) => Color(v)).toList(),
+                enableAlpha: true,
+                onColorChanged: (c) {
+                  _setTaskbarActiveColor(c);
+                },
+                onSaveTopalette: () => _saveColorToPalette(_getTaskbarActiveColor()),
+              ),
+              const SizedBox(height: 16),
+              // Presets Strip
+              const Text('Quick Aesthetic Presets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildTaskbarThemePreset('Cyber Cyan', 0xE6080A12, 0x3338BDF8, 0xFF38BDF8, 0xFFFFFFFF, 0xFF38BDF8),
+                  _buildTaskbarThemePreset('Emerald Pro', 0xE606140E, 0x3310B981, 0xFF10B981, 0xFFFFFFFF, 0xFF10B981),
+                  _buildTaskbarThemePreset('Neon Magenta', 0xE6140813, 0x33EC4899, 0xFFEC4899, 0xFFFFFFFF, 0xFFEC4899),
+                  _buildTaskbarThemePreset('Stealth Slate', 0xF0000000, 0x22FFFFFF, 0xFF94A3B8, 0xFFE2E8F0, 0xFF94A3B8),
+                  _buildTaskbarThemePreset('Solar Amber', 0xE6141006, 0x33F59E0B, 0xFFF59E0B, 0xFFFFFFFF, 0xFFF59E0B),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 5. Telemetry Modules & Visibility Toggles
+        _sectionLabel('TELEMETRY MODULES & ELEMENT VISIBILITY'),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F111A),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            children: [
+              _buildTaskbarSwitchTile('CPU Telemetry Module', 'Real-time CPU workload percentage', _settings.taskbarShowCpu, (v) => _updateSettings(_settings.copyWith(taskbarShowCpu: v))),
+              _buildTaskbarSwitchTile('RAM Memory Module', 'Windows system memory utilization percentage', _settings.taskbarShowRam, (v) => _updateSettings(_settings.copyWith(taskbarShowRam: v))),
+              _buildTaskbarSwitchTile('Disk / Storage Activity', 'Selected storage capacity & activity monitoring', _settings.taskbarShowDisk, (v) => _updateSettings(_settings.copyWith(taskbarShowDisk: v))),
+              _buildTaskbarSwitchTile('Clock & Calendar Date', 'Live digital time and day badge', _settings.taskbarShowTime, (v) => _updateSettings(_settings.copyWith(taskbarShowTime: v))),
+              _buildTaskbarSwitchTile('Ambient Weather Pill', 'Local temperature and weather status', _settings.taskbarShowWeather, (v) => _updateSettings(_settings.copyWith(taskbarShowWeather: v))),
+              _buildTaskbarSwitchTile('WASAPI Media Player', 'Live audio controller and spectrum visualizer', _settings.taskbarShowMedia, (v) => _updateSettings(_settings.copyWith(taskbarShowMedia: v))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  Widget _buildTaskbarColorTab(String mode, String label, Color color) {
+    final isSelected = _taskbarColorMode == mode;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _taskbarColorMode = mode;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF38BDF8).withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF38BDF8) : Colors.white.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white54, width: 0.8),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getTaskbarActiveColor() {
+    switch (_taskbarColorMode) {
+      case 'border':
+        return Color(_settings.taskbarBorderColor);
+      case 'accent':
+        return Color(_settings.taskbarAccentColor);
+      case 'text':
+        return Color(_settings.taskbarTextColor);
+      case 'icon':
+        return Color(_settings.taskbarIconColor);
+      case 'bg':
+      default:
+        return Color(_settings.taskbarBgColor);
+    }
+  }
+
+  void _setTaskbarActiveColor(Color c) {
+    switch (_taskbarColorMode) {
+      case 'border':
+        _updateSettings(_settings.copyWith(taskbarBorderColor: c.toARGB32()));
+        break;
+      case 'accent':
+        _updateSettings(_settings.copyWith(taskbarAccentColor: c.toARGB32()));
+        break;
+      case 'text':
+        _updateSettings(_settings.copyWith(taskbarTextColor: c.toARGB32()));
+        break;
+      case 'icon':
+        _updateSettings(_settings.copyWith(taskbarIconColor: c.toARGB32()));
+        break;
+      case 'bg':
+      default:
+        _updateSettings(_settings.copyWith(taskbarBgColor: c.toARGB32()));
+        break;
+    }
+  }
+
+  Widget _buildTaskbarThemePreset(String name, int bg, int border, int accent, int text, int icon) {
+    return InkWell(
+      onTap: () {
+        _updateSettings(
+          _settings.copyWith(
+            taskbarBgColor: bg,
+            taskbarBorderColor: border,
+            taskbarAccentColor: accent,
+            taskbarTextColor: text,
+            taskbarIconColor: icon,
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Color(bg),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Color(border)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: Color(accent), shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Text(name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(text))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskbarSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
+    return SwitchListTile(
+      value: value,
+      onChanged: onChanged,
+      title: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.5))),
+      activeColor: const Color(0xFF38BDF8),
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+    );
   }
 
   // ── 1. OBJECT IDENTIFICATION DECK (Overview) ─────────────────────────────
@@ -19272,8 +20150,238 @@ class _DashboardViewState extends State<DashboardView>
     final activeKey = _settings.widgetTemplate;
     final isTaskbar = activeKey.startsWith('taskbar_');
     final activeTitle = _getWidgetTitle(activeKey);
-    final isRunning = _isOverlayRunning;
+    final hasActiveWidgets = _activeRunningWidgetIds.isNotEmpty;
 
+    if (hasActiveWidgets) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(24, 12, 24, 6),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D101C),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: const Color(0xFF10B981).withValues(alpha: 0.5),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF10B981).withValues(alpha: 0.16),
+              blurRadius: 24,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Top Bar: Active status & Stop All button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF10B981),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0xFF10B981),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  'ACTIVE CONCURRENT WIDGETS',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                                  ),
+                                  child: Text(
+                                    '${_activeRunningWidgetIds.length} RUNNING',
+                                    style: const TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Windows Core Synced • Zero-CPU Background Execution • Independent Controls',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 10.5, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: _stopAllRunningWidgets,
+                  icon: const Icon(Icons.power_settings_new_rounded, size: 14),
+                  label: const Text('Turn Off All', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent.withValues(alpha: 0.2),
+                    foregroundColor: Colors.redAccent,
+                    side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.4)),
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // Horizontal list of active widgets
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _activeRunningWidgetIds.map((id) {
+                  final title = _getWidgetTitle(id);
+                  final isTb = id.startsWith('taskbar_');
+                  return Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF07090F),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: (isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8)).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            isTb ? Icons.dock_rounded : Icons.desktop_windows_rounded,
+                            size: 16,
+                            color: isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Colors.white),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: (isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8)).withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    isTb ? 'TASKBAR' : 'DESKTOP',
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      color: isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.circle, size: 6, color: Color(0xFF10B981)),
+                                SizedBox(width: 4),
+                                Text('Running Live', style: TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 14),
+                        // Actions: Customize & Turn OFF
+                        OutlinedButton.icon(
+                          onPressed: () => _customizeWidget(id),
+                          icon: const Icon(Icons.tune_rounded, size: 12, color: Color(0xFF38BDF8)),
+                          label: const Text('Customize', style: TextStyle(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                            backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.08),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: const Size(0, 0),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        ElevatedButton.icon(
+                          onPressed: () => _closeWidgetOverlay(id),
+                          icon: const Icon(Icons.stop_circle_rounded, size: 13),
+                          label: const Text('Turn OFF', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: const Size(0, 0),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default standby showcase when no widgets running
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 12, 24, 6),
       height: 168,
@@ -19281,15 +20389,12 @@ class _DashboardViewState extends State<DashboardView>
         color: const Color(0xFF0D101C),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: isRunning
-              ? const Color(0xFF10B981).withValues(alpha: 0.5)
-              : const Color(0xFF38BDF8).withValues(alpha: 0.25),
+          color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
           width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: (isRunning ? const Color(0xFF10B981) : const Color(0xFF38BDF8))
-                .withValues(alpha: 0.16),
+            color: const Color(0xFF38BDF8).withValues(alpha: 0.16),
             blurRadius: 24,
             offset: const Offset(0, 4),
           ),
@@ -19299,7 +20404,6 @@ class _DashboardViewState extends State<DashboardView>
         borderRadius: BorderRadius.circular(21),
         child: Stack(
           children: [
-            // Ambient background glow
             Positioned(
               left: -40,
               top: -40,
@@ -19308,8 +20412,7 @@ class _DashboardViewState extends State<DashboardView>
                 height: 220,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: (isRunning ? const Color(0xFF10B981) : const Color(0xFF38BDF8))
-                      .withValues(alpha: 0.08),
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.08),
                 ),
               ),
             ),
@@ -19317,7 +20420,6 @@ class _DashboardViewState extends State<DashboardView>
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
-                  // Live Mini Preview Box
                   Container(
                     width: 200,
                     height: 128,
@@ -19344,14 +20446,11 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   ),
                   const SizedBox(width: 24),
-
-                  // Metadata & Actions
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Status pill
                         Row(
                           children: [
                             Container(
@@ -19359,41 +20458,28 @@ class _DashboardViewState extends State<DashboardView>
                               height: 8,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: isRunning
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFF38BDF8),
+                                color: const Color(0xFF38BDF8),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: (isRunning
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFF38BDF8))
-                                        .withValues(alpha: 0.6),
+                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.6),
                                     blurRadius: 6,
                                   ),
                                 ],
                               ),
                             ),
                             const SizedBox(width: 7),
-                            Text(
-                              isRunning
-                                  ? (isTaskbar
-                                      ? 'ACTIVE & DOCKED ON TASKBAR'
-                                      : 'RUNNING LIVE ON DESKTOP')
-                                  : 'READY FOR LAUNCH • STANDBY',
+                            const Text(
+                              'MULTI-WIDGET ENGINE READY • STANDBY',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 0.8,
-                                color: isRunning
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFF38BDF8),
+                                color: Color(0xFF38BDF8),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 6),
-
-                        // Title
                         Text(
                           activeTitle,
                           maxLines: 1,
@@ -19406,17 +20492,12 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                         ),
                         const SizedBox(height: 6),
-
-                        // Badges
                         Wrap(
                           spacing: 8,
                           runSpacing: 4,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(6),
@@ -19432,16 +20513,13 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.08),
+                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Text(
-                                'ZERO-CPU RUNTIME',
+                                'RUN MULTIPLE SIMULTANEOUSLY',
                                 style: TextStyle(
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w800,
@@ -19450,102 +20528,39 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text(
-                                'HARDWARE ACCELERATED',
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white70,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
-
-                        // Action Buttons
                         Row(
                           children: [
                             ElevatedButton.icon(
-                              onPressed: () {
-                                if (isRunning) {
-                                  _closeOverlay();
-                                } else {
-                                  _launchOverlay();
-                                }
-                              },
-                              icon: Icon(
-                                isRunning
-                                    ? Icons.stop_circle_rounded
-                                    : Icons.play_arrow_rounded,
-                                size: 16,
-                              ),
-                              label: Text(
-                                isRunning ? 'Stop Overlay' : 'Launch Overlay',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
+                              onPressed: () => _launchWidgetOverlay(activeKey),
+                              icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                              label: const Text(
+                                'Launch Widget',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isRunning
-                                    ? Colors.redAccent.withValues(alpha: 0.85)
-                                    : const Color(0xFF10B981),
+                                backgroundColor: const Color(0xFF10B981),
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 9,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(9),
-                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                               ),
                             ),
                             const SizedBox(width: 10),
                             OutlinedButton.icon(
-                              onPressed: () {
-                                setState(() {
-                                  _editingWidget = true;
-                                });
-                              },
-                              icon: const Icon(
-                                Icons.tune_rounded,
-                                size: 15,
-                                color: Color(0xFF38BDF8),
-                              ),
+                              onPressed: () => _customizeWidget(activeKey),
+                              icon: const Icon(Icons.tune_rounded, size: 15, color: Color(0xFF38BDF8)),
                               label: const Text(
-                                'Customize 3D Layout',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                ),
+                                'Customize Widget',
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
                               ),
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(
-                                  color: const Color(0xFF38BDF8)
-                                      .withValues(alpha: 0.4),
-                                ),
-                                backgroundColor: const Color(0xFF38BDF8)
-                                    .withValues(alpha: 0.07),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 9,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(9),
-                                ),
+                                side: BorderSide(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                                backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.07),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                               ),
                             ),
                           ],
@@ -19893,42 +20908,30 @@ class _DashboardViewState extends State<DashboardView>
               final desc = item['desc'] as String;
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
-              final isSelected = _settings.widgetTemplate == key;
-
-              void applyTemplate() {
-                final defaults = WidgetSettings.templateDefaults[key] ?? {
-                  'width': 360.0,
-                  'height': 200.0,
-                  'sizeFactor': 1.0,
-                };
-                final newSettings = _settings.copyWith(
-                  widgetTemplate: key,
-                  width: defaults['width'],
-                  height: defaults['height'],
-                  sizeFactor: defaults['sizeFactor'],
-                );
-                _updateSettings(newSettings);
-                if (_isOverlayRunning) {
-                  _launchOverlay();
-                }
-              }
+              final isRunning = _activeRunningWidgetIds.contains(key) || (_isOverlayRunning && _settings.widgetTemplate == key);
 
               return SizedBox(
                 width: 320,
                 child: HoverCard(
-                  onTap: applyTemplate,
+                  onTap: () {
+                    if (isRunning) {
+                      _closeWidgetOverlay(key);
+                    } else {
+                      _launchWidgetOverlay(key);
+                    }
+                  },
                   borderRadius: BorderRadius.circular(18),
-                  glowColor: isSelected ? const Color(0xFF38BDF8) : tagColor,
-                  maxGlowOpacity: isSelected ? 0.35 : 0.15,
+                  glowColor: isRunning ? const Color(0xFF10B981) : tagColor,
+                  maxGlowOpacity: isRunning ? 0.35 : 0.15,
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFF111422).withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF38BDF8)
+                        color: isRunning
+                            ? const Color(0xFF10B981)
                             : Colors.white.withValues(alpha: 0.08),
-                        width: isSelected ? 1.6 : 1.0,
+                        width: isRunning ? 1.6 : 1.0,
                       ),
                     ),
                     padding: const EdgeInsets.all(16),
@@ -19980,7 +20983,7 @@ class _DashboardViewState extends State<DashboardView>
                                   ),
                                 ),
                               ),
-                              if (isSelected)
+                              if (isRunning)
                                 Positioned(
                                   top: 8,
                                   left: 8,
@@ -19991,19 +20994,19 @@ class _DashboardViewState extends State<DashboardView>
                                     ),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.2),
+                                          .withValues(alpha: 0.25),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
                                         color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.6),
+                                            .withValues(alpha: 0.7),
                                       ),
                                     ),
                                     child: const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
-                                          Icons.check_circle_rounded,
-                                          size: 10,
+                                          Icons.circle,
+                                          size: 7,
                                           color: Color(0xFF10B981),
                                         ),
                                         SizedBox(width: 4),
@@ -20050,61 +21053,46 @@ class _DashboardViewState extends State<DashboardView>
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton(
-                                onPressed: applyTemplate,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isSelected
-                                      ? const Color(0xFF10B981)
-                                          .withValues(alpha: 0.2)
-                                      : const Color(0xFF38BDF8),
-                                  foregroundColor: isSelected
-                                      ? const Color(0xFF10B981)
-                                      : Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    side: isSelected
-                                        ? const BorderSide(
-                                            color: Color(0xFF10B981),
-                                          )
-                                        : BorderSide.none,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  if (isRunning) {
+                                    _closeWidgetOverlay(key);
+                                  } else {
+                                    _launchWidgetOverlay(key);
+                                  }
+                                },
+                                icon: Icon(
+                                  isRunning ? Icons.stop_circle_rounded : Icons.play_arrow_rounded,
+                                  size: 14,
                                 ),
-                                child: Text(
-                                  isSelected ? 'Selected' : 'Apply Widget',
+                                label: Text(
+                                  isRunning ? 'Turn OFF' : 'Turn ON',
                                   style: const TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isRunning
+                                      ? Colors.redAccent.withValues(alpha: 0.85)
+                                      : const Color(0xFF10B981),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             IconButton(
-                              tooltip: 'Customize 3D Layout',
+                              tooltip: 'Customize Layout & 3D',
                               icon: const Icon(Icons.tune_rounded, size: 16),
                               color: Colors.white70,
-                              onPressed: () {
-                                final defaults = WidgetSettings.templateDefaults[key] ?? {
-                                  'width': 360.0,
-                                  'height': 200.0,
-                                  'sizeFactor': 1.0,
-                                };
-                                setState(() {
-                                  _editingWidget = true;
-                                });
-                                _updateSettings(
-                                  _settings.copyWith(
-                                    widgetTemplate: key,
-                                    width: _settings.widgetTemplate == key ? _settings.width : defaults['width'],
-                                    height: _settings.widgetTemplate == key ? _settings.height : defaults['height'],
-                                    sizeFactor: _settings.widgetTemplate == key ? _settings.sizeFactor : defaults['sizeFactor'],
-                                  ),
-                                );
-                              },
+                              onPressed: () => _customizeWidget(key),
                               style: IconButton.styleFrom(
                                 backgroundColor:
                                     Colors.white.withValues(alpha: 0.05),
@@ -20208,42 +21196,30 @@ class _DashboardViewState extends State<DashboardView>
               final desc = item['desc'] as String;
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
-              final isSelected = _settings.widgetTemplate == key;
-
-              void applyTaskbarTemplate() {
-                final defaults = WidgetSettings.templateDefaults[key] ?? {
-                  'width': 340.0,
-                  'height': 44.0,
-                  'sizeFactor': 0.85,
-                };
-                final newSettings = _settings.copyWith(
-                  widgetTemplate: key,
-                  width: defaults['width'],
-                  height: defaults['height'],
-                  sizeFactor: defaults['sizeFactor'],
-                );
-                _updateSettings(newSettings);
-                if (_isOverlayRunning) {
-                  _launchOverlay();
-                }
-              }
+              final isRunning = _activeRunningWidgetIds.contains(key) || (_isOverlayRunning && _settings.widgetTemplate == key);
 
               return SizedBox(
                 width: 320,
                 child: HoverCard(
-                  onTap: applyTaskbarTemplate,
+                  onTap: () {
+                    if (isRunning) {
+                      _closeWidgetOverlay(key);
+                    } else {
+                      _launchWidgetOverlay(key);
+                    }
+                  },
                   borderRadius: BorderRadius.circular(18),
-                  glowColor: isSelected ? const Color(0xFF818CF8) : tagColor,
-                  maxGlowOpacity: isSelected ? 0.35 : 0.15,
+                  glowColor: isRunning ? const Color(0xFF10B981) : tagColor,
+                  maxGlowOpacity: isRunning ? 0.35 : 0.15,
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFF111422).withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF818CF8)
+                        color: isRunning
+                            ? const Color(0xFF10B981)
                             : Colors.white.withValues(alpha: 0.08),
-                        width: isSelected ? 1.6 : 1.0,
+                        width: isRunning ? 1.6 : 1.0,
                       ),
                     ),
                     padding: const EdgeInsets.all(16),
@@ -20297,7 +21273,7 @@ class _DashboardViewState extends State<DashboardView>
                                   ),
                                 ),
                               ),
-                              if (isSelected)
+                              if (isRunning)
                                 Positioned(
                                   top: 8,
                                   left: 8,
@@ -20308,19 +21284,19 @@ class _DashboardViewState extends State<DashboardView>
                                     ),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.2),
+                                          .withValues(alpha: 0.25),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
                                         color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.6),
+                                            .withValues(alpha: 0.7),
                                       ),
                                     ),
                                     child: const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
-                                          Icons.check_circle_rounded,
-                                          size: 10,
+                                          Icons.circle,
+                                          size: 7,
                                           color: Color(0xFF10B981),
                                         ),
                                         SizedBox(width: 4),
@@ -20367,61 +21343,46 @@ class _DashboardViewState extends State<DashboardView>
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton(
-                                onPressed: applyTaskbarTemplate,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isSelected
-                                      ? const Color(0xFF10B981)
-                                          .withValues(alpha: 0.2)
-                                      : const Color(0xFF818CF8),
-                                  foregroundColor: isSelected
-                                      ? const Color(0xFF10B981)
-                                      : Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    side: isSelected
-                                        ? const BorderSide(
-                                            color: Color(0xFF10B981),
-                                          )
-                                        : BorderSide.none,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  if (isRunning) {
+                                    _closeWidgetOverlay(key);
+                                  } else {
+                                    _launchWidgetOverlay(key);
+                                  }
+                                },
+                                icon: Icon(
+                                  isRunning ? Icons.stop_circle_rounded : Icons.play_arrow_rounded,
+                                  size: 14,
                                 ),
-                                child: Text(
-                                  isSelected ? 'Selected' : 'Dock to Taskbar',
+                                label: Text(
+                                  isRunning ? 'Turn OFF' : 'Turn ON',
                                   style: const TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isRunning
+                                      ? Colors.redAccent.withValues(alpha: 0.85)
+                                      : const Color(0xFF818CF8),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             IconButton(
-                              tooltip: 'Customize 3D Layout',
+                              tooltip: 'Customize Taskbar Studio',
                               icon: const Icon(Icons.tune_rounded, size: 16),
                               color: Colors.white70,
-                              onPressed: () {
-                                final defaults = WidgetSettings.templateDefaults[key] ?? {
-                                  'width': 340.0,
-                                  'height': 44.0,
-                                  'sizeFactor': 0.85,
-                                };
-                                setState(() {
-                                  _editingWidget = true;
-                                });
-                                _updateSettings(
-                                  _settings.copyWith(
-                                    widgetTemplate: key,
-                                    width: _settings.widgetTemplate == key ? _settings.width : defaults['width'],
-                                    height: _settings.widgetTemplate == key ? _settings.height : defaults['height'],
-                                    sizeFactor: _settings.widgetTemplate == key ? _settings.sizeFactor : defaults['sizeFactor'],
-                                  ),
-                                );
-                              },
+                              onPressed: () => _customizeWidget(key),
                               style: IconButton.styleFrom(
                                 backgroundColor:
                                     Colors.white.withValues(alpha: 0.05),

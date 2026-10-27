@@ -806,6 +806,26 @@ class WidgetSettings {
   List<CustomWidgetElement> customElements;
   List<SavedCustomWidget> savedCustomWidgets;
 
+  // Multi-widget tracking
+  List<String> activeWidgetIds;
+  Map<String, Map<String, dynamic>> widgetConfigurations;
+
+  // Taskbar comprehensive A-to-Z customization
+  double taskbarIconSize;
+  double taskbarFontSize;
+  int taskbarBgColor;
+  int taskbarBorderColor;
+  int taskbarAccentColor;
+  int taskbarTextColor;
+  int taskbarIconColor;
+  String taskbarDiskDrive;
+  bool taskbarShowCpu;
+  bool taskbarShowRam;
+  bool taskbarShowDisk;
+  bool taskbarShowTime;
+  bool taskbarShowWeather;
+  bool taskbarShowMedia;
+
   double? separatorWidth;
   double? separatorHeight;
 
@@ -912,11 +932,29 @@ class WidgetSettings {
     this.showCpu = true,
     this.showRam = true,
     this.showNeonBadge = true,
+    List<String>? activeWidgetIds,
+    Map<String, Map<String, dynamic>>? widgetConfigurations,
+    this.taskbarIconSize = 14.0,
+    this.taskbarFontSize = 11.0,
+    this.taskbarBgColor = 0xDD16181F,
+    this.taskbarBorderColor = 0x22FFFFFF,
+    this.taskbarAccentColor = 0xFF38BDF8,
+    this.taskbarTextColor = 0xFFFFFFFF,
+    this.taskbarIconColor = 0xFF38BDF8,
+    this.taskbarDiskDrive = 'Auto',
+    this.taskbarShowCpu = true,
+    this.taskbarShowRam = true,
+    this.taskbarShowDisk = true,
+    this.taskbarShowTime = true,
+    this.taskbarShowWeather = true,
+    this.taskbarShowMedia = true,
     List<int>? customGradientColors,
     List<RecentWallpaperItem>? recentWallpapers,
     List<CustomWidgetElement>? customElements,
     List<SavedCustomWidget>? savedCustomWidgets,
-  }) : elementColors = elementColors ?? {},
+  }) : activeWidgetIds = activeWidgetIds ?? [widgetTemplate],
+       widgetConfigurations = widgetConfigurations ?? {},
+       elementColors = elementColors ?? {},
        elementGradients = elementGradients ?? {},
        globalGradientColors = globalGradientColors ?? [0xFF00F0FF, 0xFFD946EF],
        elementFonts = elementFonts ?? {},
@@ -1396,6 +1434,31 @@ class WidgetSettings {
       showCpu: json['showCpu'] ?? true,
       showRam: json['showRam'] ?? true,
       showNeonBadge: json['showNeonBadge'] ?? true,
+      activeWidgetIds: (json['activeWidgetIds'] is List)
+          ? (json['activeWidgetIds'] as List).whereType<String>().toList()
+          : [(json['widgetTemplate'] ?? 'classic').toString()],
+      widgetConfigurations: (json['widgetConfigurations'] is Map)
+          ? (json['widgetConfigurations'] as Map).map(
+              (k, v) => MapEntry(
+                k.toString(),
+                v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{},
+              ),
+            )
+          : {},
+      taskbarIconSize: (json['taskbarIconSize'] ?? 14.0).toDouble(),
+      taskbarFontSize: (json['taskbarFontSize'] ?? 11.0).toDouble(),
+      taskbarBgColor: json['taskbarBgColor'] ?? 0xDD16181F,
+      taskbarBorderColor: json['taskbarBorderColor'] ?? 0x22FFFFFF,
+      taskbarAccentColor: json['taskbarAccentColor'] ?? 0xFF38BDF8,
+      taskbarTextColor: json['taskbarTextColor'] ?? 0xFFFFFFFF,
+      taskbarIconColor: json['taskbarIconColor'] ?? 0xFF38BDF8,
+      taskbarDiskDrive: json['taskbarDiskDrive'] ?? 'Auto',
+      taskbarShowCpu: json['taskbarShowCpu'] ?? true,
+      taskbarShowRam: json['taskbarShowRam'] ?? true,
+      taskbarShowDisk: json['taskbarShowDisk'] ?? true,
+      taskbarShowTime: json['taskbarShowTime'] ?? true,
+      taskbarShowWeather: json['taskbarShowWeather'] ?? true,
+      taskbarShowMedia: json['taskbarShowMedia'] ?? true,
     );
   }
 
@@ -1468,6 +1531,22 @@ class WidgetSettings {
       'showCpu': showCpu,
       'showRam': showRam,
       'showNeonBadge': showNeonBadge,
+      'activeWidgetIds': activeWidgetIds,
+      'widgetConfigurations': widgetConfigurations,
+      'taskbarIconSize': taskbarIconSize,
+      'taskbarFontSize': taskbarFontSize,
+      'taskbarBgColor': taskbarBgColor,
+      'taskbarBorderColor': taskbarBorderColor,
+      'taskbarAccentColor': taskbarAccentColor,
+      'taskbarTextColor': taskbarTextColor,
+      'taskbarIconColor': taskbarIconColor,
+      'taskbarDiskDrive': taskbarDiskDrive,
+      'taskbarShowCpu': taskbarShowCpu,
+      'taskbarShowRam': taskbarShowRam,
+      'taskbarShowDisk': taskbarShowDisk,
+      'taskbarShowTime': taskbarShowTime,
+      'taskbarShowWeather': taskbarShowWeather,
+      'taskbarShowMedia': taskbarShowMedia,
       'customElements': customElements.map((e) => e.toJson()).toList(),
       'savedCustomWidgets': savedCustomWidgets.map((w) => w.toJson()).toList(),
       'recentWallpapers': recentWallpapers.map((r) => r.toJson()).toList(),
@@ -1543,6 +1622,22 @@ class WidgetSettings {
     bool? showCpu,
     bool? showRam,
     bool? showNeonBadge,
+    List<String>? activeWidgetIds,
+    Map<String, Map<String, dynamic>>? widgetConfigurations,
+    double? taskbarIconSize,
+    double? taskbarFontSize,
+    int? taskbarBgColor,
+    int? taskbarBorderColor,
+    int? taskbarAccentColor,
+    int? taskbarTextColor,
+    int? taskbarIconColor,
+    String? taskbarDiskDrive,
+    bool? taskbarShowCpu,
+    bool? taskbarShowRam,
+    bool? taskbarShowDisk,
+    bool? taskbarShowTime,
+    bool? taskbarShowWeather,
+    bool? taskbarShowMedia,
     List<RecentWallpaperItem>? recentWallpapers,
     List<CustomWidgetElement>? customElements,
     List<SavedCustomWidget>? savedCustomWidgets,
@@ -1628,6 +1723,22 @@ class WidgetSettings {
       showCpu: showCpu ?? this.showCpu,
       showRam: showRam ?? this.showRam,
       showNeonBadge: showNeonBadge ?? this.showNeonBadge,
+      activeWidgetIds: activeWidgetIds ?? List.from(this.activeWidgetIds),
+      widgetConfigurations: widgetConfigurations ?? Map.from(this.widgetConfigurations),
+      taskbarIconSize: taskbarIconSize ?? this.taskbarIconSize,
+      taskbarFontSize: taskbarFontSize ?? this.taskbarFontSize,
+      taskbarBgColor: taskbarBgColor ?? this.taskbarBgColor,
+      taskbarBorderColor: taskbarBorderColor ?? this.taskbarBorderColor,
+      taskbarAccentColor: taskbarAccentColor ?? this.taskbarAccentColor,
+      taskbarTextColor: taskbarTextColor ?? this.taskbarTextColor,
+      taskbarIconColor: taskbarIconColor ?? this.taskbarIconColor,
+      taskbarDiskDrive: taskbarDiskDrive ?? this.taskbarDiskDrive,
+      taskbarShowCpu: taskbarShowCpu ?? this.taskbarShowCpu,
+      taskbarShowRam: taskbarShowRam ?? this.taskbarShowRam,
+      taskbarShowDisk: taskbarShowDisk ?? this.taskbarShowDisk,
+      taskbarShowTime: taskbarShowTime ?? this.taskbarShowTime,
+      taskbarShowWeather: taskbarShowWeather ?? this.taskbarShowWeather,
+      taskbarShowMedia: taskbarShowMedia ?? this.taskbarShowMedia,
       recentWallpapers: recentWallpapers ?? List.from(this.recentWallpapers),
       customElements:
           customElements ??
@@ -1701,6 +1812,9 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
 }
 
 class SettingsService {
+  final String? instanceId;
+  SettingsService({this.instanceId});
+
   static Future<void> _settingsWriteQueue = Future<void>.value();
 
   Future<T> _serializeSettingsWrite<T>(Future<T> Function() operation) {
@@ -1744,22 +1858,34 @@ class SettingsService {
 
   Future<File> get settingsFile async {
     final directory = await getAppDirectory();
-    return File('${directory.path}/overlay_settings.json');
+    final name = (instanceId != null && instanceId!.isNotEmpty)
+        ? 'overlay_settings_$instanceId.json'
+        : 'overlay_settings.json';
+    return File('${directory.path}/$name');
   }
 
   Future<File> get lockFile async {
     final directory = await getAppDirectory();
-    return File('${directory.path}/overlay.lock');
+    final name = (instanceId != null && instanceId!.isNotEmpty)
+        ? 'overlay_$instanceId.lock'
+        : 'overlay.lock';
+    return File('${directory.path}/$name');
   }
 
   Future<File> get pidFile async {
     final directory = await getAppDirectory();
-    return File('${directory.path}/overlay.pid');
+    final name = (instanceId != null && instanceId!.isNotEmpty)
+        ? 'overlay_$instanceId.pid'
+        : 'overlay.pid';
+    return File('${directory.path}/$name');
   }
 
   Future<File> get _settingsLockFile async {
     final directory = await getAppDirectory();
-    return File('${directory.path}/overlay_settings.lock');
+    final name = (instanceId != null && instanceId!.isNotEmpty)
+        ? 'overlay_settings_$instanceId.lock'
+        : 'overlay_settings.lock';
+    return File('${directory.path}/$name');
   }
 
   WidgetSettings _cachedSettings = WidgetSettings();
@@ -1767,6 +1893,9 @@ class SettingsService {
   bool _settingsLoadSucceeded = false;
 
   bool get settingsLoadSucceeded => _settingsLoadSucceeded;
+
+  Future<WidgetSettings> load() => loadSettings();
+  Future<void> save(WidgetSettings settings) => saveSettings(settings);
 
   Future<WidgetSettings> loadSettings() async {
     _settingsLoadSucceeded = false;
