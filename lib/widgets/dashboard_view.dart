@@ -903,6 +903,10 @@ class _DashboardViewState extends State<DashboardView>
 
   // Multi-widget simultaneous instances tracking
   Set<String> _activeRunningWidgetIds = {};
+  final Set<String> _launchingWidgetIds = {};
+  final Map<String, DateTime> _widgetLaunchedAt = {};
+  final Map<String, OverlayRecoveryPolicy> _widgetRecoveryPolicies = {};
+  final Map<String, Timer?> _widgetRecoveryTimers = {};
   List<DiskSnapshot> _cachedDisks = [];
   String _taskbarColorMode = 'bg'; // 'bg' | 'border' | 'accent' | 'text' | 'icon'
 
@@ -1865,19 +1869,29 @@ class _DashboardViewState extends State<DashboardView>
 
       // Verify all active simultaneous widget instances
       final runningWidgetIds = <String>{};
+      final now = DateTime.now();
       for (final widgetId in _settings.activeWidgetIds) {
         try {
           final instService = SettingsService(instanceId: widgetId);
           final instPidFile = await instService.pidFile;
           final instContent = (await _safeReadPidFile(instPidFile)).trim();
           final instRecord = OverlayProcessRecord.tryParse(instContent);
-          if (instRecord != null && instRecord.ready) {
+          if (instRecord != null) {
             final instInspection = await inspectWindowsProcess(instRecord.pid);
             if (instInspection != null && instInspection.isRunning && instInspection.matches(instRecord)) {
               runningWidgetIds.add(widgetId);
+              if (instRecord.ready) {
+                _widgetLaunchedAt.remove(widgetId);
+              }
             }
           }
         } catch (_) {}
+
+        // Check if this widget is within its 15-second startup grace period
+        final launchedAt = _widgetLaunchedAt[widgetId];
+        if (launchedAt != null && now.difference(launchedAt) < const Duration(seconds: 15)) {
+          runningWidgetIds.add(widgetId);
+        }
       }
       if (isRunning && _settings.widgetTemplate.isNotEmpty) {
         runningWidgetIds.add(_settings.widgetTemplate);
@@ -1895,6 +1909,21 @@ class _DashboardViewState extends State<DashboardView>
           _updateTrayMenu();
         }
       }
+      for (final widgetId in _settings.activeWidgetIds) {
+        if (runningWidgetIds.contains(widgetId)) {
+          _widgetRecoveryPolicies[widgetId]?.reset();
+          _widgetRecoveryTimers[widgetId]?.cancel();
+          _widgetRecoveryTimers[widgetId] = null;
+        } else if (!_isOverlayExplicitlyClosed &&
+            !_launchingWidgetIds.contains(widgetId) &&
+            _widgetRecoveryTimers[widgetId] == null) {
+          final launchedAt = _widgetLaunchedAt[widgetId];
+          if (launchedAt == null || now.difference(launchedAt) >= const Duration(seconds: 15)) {
+            _scheduleWidgetRecovery(widgetId);
+          }
+        }
+      }
+
       if (mounted && anyRunning) {
         _isOverlayExplicitlyClosed = false;
         _overlayRecoveryTimer?.cancel();
@@ -1903,9 +1932,6 @@ class _DashboardViewState extends State<DashboardView>
       } else if (mounted && wasRunning) {
         _overlayRecoveryStabilityTimer?.cancel();
         _overlayRecoveryStabilityTimer = null;
-        if (!_isOverlayExplicitlyClosed) {
-          _scheduleOverlayRecovery();
-        }
       }
     } catch (e, st) {
       logError(
@@ -1941,6 +1967,23 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _launchWidgetOverlay(String widgetId) async {
+    if (_launchingWidgetIds.contains(widgetId)) {
+      logInfo(
+        'DashboardView',
+        'Launch for widget "$widgetId" is already in progress; duplicate launch request ignored.',
+      );
+      return;
+    }
+    if (_activeRunningWidgetIds.contains(widgetId)) {
+      logInfo(
+        'DashboardView',
+        'Widget "$widgetId" is already running live; duplicate launch ignored.',
+      );
+      return;
+    }
+    _launchingWidgetIds.add(widgetId);
+    _widgetLaunchedAt[widgetId] = DateTime.now();
+    final launchStopwatch = Stopwatch()..start();
     try {
       final defaults = WidgetSettings.templateDefaults[widgetId] ?? {
         'width': widgetId.startsWith('taskbar_') ? 340.0 : 360.0,
@@ -2098,6 +2141,13 @@ class _DashboardViewState extends State<DashboardView>
         _isOverlayRunning = true;
       });
       _updateTrayMenu();
+      _widgetRecoveryPolicies[widgetId]?.reset();
+      _widgetRecoveryTimers[widgetId]?.cancel();
+      _widgetRecoveryTimers[widgetId] = null;
+      logInfo(
+        'DashboardView',
+        'Widget "$widgetId" launch completed: launched=$launched, duration=${launchStopwatch.elapsedMilliseconds}ms.',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2116,11 +2166,18 @@ class _DashboardViewState extends State<DashboardView>
       }
     } catch (e, st) {
       logError('DashboardView', 'Error launching widget overlay $widgetId', e, st);
+    } finally {
+      _launchingWidgetIds.remove(widgetId);
     }
   }
 
   Future<void> _closeWidgetOverlay(String widgetId) async {
     try {
+      _widgetLaunchedAt.remove(widgetId);
+      _widgetRecoveryTimers[widgetId]?.cancel();
+      _widgetRecoveryTimers.remove(widgetId);
+      _widgetRecoveryPolicies.remove(widgetId);
+
       final instService = SettingsService(instanceId: widgetId);
       try {
         final cur = await instService.load();
@@ -2161,6 +2218,7 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _stopAllRunningWidgets() async {
+    _widgetLaunchedAt.clear();
     final toStop = Set<String>.from(_activeRunningWidgetIds);
     for (final id in _settings.activeWidgetIds) {
       toStop.add(id);
@@ -2205,40 +2263,55 @@ class _DashboardViewState extends State<DashboardView>
     });
   }
 
-  void _scheduleOverlayRecovery() {
+  void _scheduleWidgetRecovery(String widgetId) {
     if (!mounted ||
         _isOverlayExplicitlyClosed ||
-        _isLaunching ||
-        _overlayCloseOperation != null ||
-        _overlayRecoveryTimer != null) {
+        _launchingWidgetIds.contains(widgetId) ||
+        _activeRunningWidgetIds.contains(widgetId) ||
+        _widgetRecoveryTimers[widgetId] != null) {
       return;
     }
-    final delay = _overlayRecoveryPolicy.nextDelay();
+    final launchedAt = _widgetLaunchedAt[widgetId];
+    if (launchedAt != null && DateTime.now().difference(launchedAt) < const Duration(seconds: 15)) {
+      return;
+    }
+    final policy = _widgetRecoveryPolicies.putIfAbsent(
+      widgetId,
+      () => OverlayRecoveryPolicy(),
+    );
+    final delay = policy.nextDelay();
     if (delay == null) {
       logError(
         'DashboardView',
-        'Overlay recovery stopped after the bounded retry limit '
-            '(${_overlayRecoveryPolicy.attempts} attempts).',
+        'Widget recovery stopped for "$widgetId" after bounded retry limit '
+        '(${policy.attempts} attempts).',
       );
       return;
     }
     logWarning(
       'DashboardView',
-      'Scheduling overlay recovery; source=recovery, '
-          'attempt=${_overlayRecoveryPolicy.attempts}, '
-          'delay=${delay.inMilliseconds}ms.',
+      'Scheduling recovery for widget "$widgetId"; attempt=${policy.attempts}, '
+      'delay=${delay.inMilliseconds}ms.',
     );
-    _overlayRecoveryTimer = Timer(delay, () {
-      _overlayRecoveryTimer = null;
+    _widgetRecoveryTimers[widgetId] = Timer(delay, () {
+      _widgetRecoveryTimers[widgetId] = null;
       if (!mounted ||
           _isOverlayExplicitlyClosed ||
-          _isLaunching ||
-          _overlayCloseOperation != null ||
-          _isOverlayRunning) {
+          _launchingWidgetIds.contains(widgetId) ||
+          _activeRunningWidgetIds.contains(widgetId)) {
         return;
       }
-      unawaited(_recoverOverlay());
+      unawaited(_launchWidgetOverlay(widgetId));
     });
+  }
+
+  void _scheduleOverlayRecovery() {
+    if (!mounted || _isOverlayExplicitlyClosed) return;
+    for (final widgetId in _settings.activeWidgetIds) {
+      if (!_activeRunningWidgetIds.contains(widgetId)) {
+        _scheduleWidgetRecovery(widgetId);
+      }
+    }
   }
 
   Future<void> _recoverOverlay() async {
@@ -2251,9 +2324,6 @@ class _DashboardViewState extends State<DashboardView>
       if (!_activeRunningWidgetIds.contains(id)) {
         await _launchWidgetOverlay(id);
       }
-    }
-    if (mounted && !_isOverlayRunning && !_isOverlayExplicitlyClosed) {
-      _scheduleOverlayRecovery();
     }
   }
 
@@ -4590,114 +4660,129 @@ class _DashboardViewState extends State<DashboardView>
             ),
           ],
         ),
-        child: Row(
-          children: [
-            // Left Sub-navigation Pills
-            Row(
-              mainAxisSize: MainAxisSize.min,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 920;
+            final isUltraCompact = constraints.maxWidth < 750;
+
+            return Row(
               children: [
-                _buildWallpaperSubTabChip(
-                  id: 'live',
-                  label: 'Live Video Engine',
-                  icon: Icons.videocam_rounded,
-                  activeColor: const Color(0xFF818CF8),
-                  count: liveCount > 0 ? liveCount : null,
+                // Left Sub-navigation Pills (scrollable so horizontal overflow is impossible)
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildWallpaperSubTabChip(
+                          id: 'live',
+                          label: isUltraCompact ? 'Live' : 'Live Video Engine',
+                          icon: Icons.videocam_rounded,
+                          activeColor: const Color(0xFF818CF8),
+                          count: liveCount > 0 ? liveCount : null,
+                        ),
+                        const SizedBox(width: 6),
+                        _buildWallpaperSubTabChip(
+                          id: 'static',
+                          label: isUltraCompact ? 'Static' : 'Static 4K Gallery',
+                          icon: Icons.photo_library_rounded,
+                          activeColor: const Color(0xFF38BDF8),
+                          count: staticCount > 0 ? staticCount : null,
+                        ),
+                        const SizedBox(width: 6),
+                        _buildWallpaperSubTabChip(
+                          id: 'recent',
+                          label: isUltraCompact ? 'Recent' : 'Recent History',
+                          icon: Icons.history_rounded,
+                          activeColor: const Color(0xFFEC4899),
+                          count: recentCount > 0 ? recentCount : null,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 6),
-                _buildWallpaperSubTabChip(
-                  id: 'static',
-                  label: 'Static 4K Gallery',
-                  icon: Icons.photo_library_rounded,
-                  activeColor: const Color(0xFF38BDF8),
-                  count: staticCount > 0 ? staticCount : null,
+                const SizedBox(width: 10),
+                // Instant Search Input Box
+                Container(
+                  width: isUltraCompact ? 130 : (isCompact ? 170 : 220),
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _wallpaperSearchQuery.isNotEmpty
+                          ? const Color(0xFF38BDF8).withValues(alpha: 0.6)
+                          : Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _wallpaperSearchCtrl,
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: isUltraCompact ? 'Search' : (isCompact ? 'Search...' : 'Search wallpapers...'),
+                      hintStyle: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.4),
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        size: 16,
+                        color: Color(0xFF38BDF8),
+                      ),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 32),
+                      suffixIcon: _wallpaperSearchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                size: 14,
+                                color: Colors.white60,
+                              ),
+                              padding: EdgeInsets.zero,
+                              onPressed: () {
+                                setState(() {
+                                  _wallpaperSearchCtrl.clear();
+                                  _wallpaperSearchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                    ),
+                    onChanged: (val) {
+                      setState(() => _wallpaperSearchQuery = val);
+                    },
+                  ),
                 ),
-                const SizedBox(width: 6),
-                _buildWallpaperSubTabChip(
-                  id: 'recent',
-                  label: 'Recent History',
-                  icon: Icons.history_rounded,
-                  activeColor: const Color(0xFFEC4899),
-                  count: recentCount > 0 ? recentCount : null,
+                const SizedBox(width: 8),
+                // Custom Import Action
+                ElevatedButton.icon(
+                  onPressed: _showCustomImportModal,
+                  icon: const Icon(Icons.add_rounded, size: 15),
+                  label: Text(
+                    isUltraCompact ? '+' : (isCompact ? 'Custom' : '+ Custom'),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                    foregroundColor: const Color(0xFF38BDF8),
+                    side: BorderSide(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                    ),
+                    elevation: 0,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isUltraCompact ? 8 : (isCompact ? 10 : 12),
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
               ],
-            ),
-            const Spacer(),
-            // Instant Search Input Box
-            Container(
-              width: 220,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _wallpaperSearchQuery.isNotEmpty
-                      ? const Color(0xFF38BDF8).withValues(alpha: 0.6)
-                      : Colors.white.withValues(alpha: 0.1),
-                ),
-              ),
-              child: TextField(
-                controller: _wallpaperSearchCtrl,
-                style: const TextStyle(fontSize: 12, color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Search wallpapers...',
-                  hintStyle: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withValues(alpha: 0.4),
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    size: 16,
-                    color: Color(0xFF38BDF8),
-                  ),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 32),
-                  suffixIcon: _wallpaperSearchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            size: 14,
-                            color: Colors.white60,
-                          ),
-                          padding: EdgeInsets.zero,
-                          onPressed: () {
-                            setState(() {
-                              _wallpaperSearchCtrl.clear();
-                              _wallpaperSearchQuery = '';
-                            });
-                          },
-                        )
-                      : null,
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 9),
-                ),
-                onChanged: (val) {
-                  setState(() => _wallpaperSearchQuery = val);
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            // Custom Import Action
-            ElevatedButton.icon(
-              onPressed: _showCustomImportModal,
-              icon: const Icon(Icons.add_rounded, size: 15),
-              label: const Text(
-                '+ Custom',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.18),
-                foregroundColor: const Color(0xFF38BDF8),
-                side: BorderSide(
-                  color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                ),
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -12677,12 +12762,16 @@ class _DashboardViewState extends State<DashboardView>
                   children: [
                     Row(
                       children: [
-                        Text(
-                          templateTitle,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                        Flexible(
+                          child: Text(
+                            templateTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -12857,22 +12946,29 @@ class _DashboardViewState extends State<DashboardView>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    d.type.contains('SSD') || d.type.contains('NVMe')
-                                        ? Icons.flash_on_rounded
-                                        : Icons.storage_rounded,
-                                    size: 14,
-                                    color: isCurrentSelected ? const Color(0xFF38BDF8) : Colors.white70,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '${d.drive} ${d.label.isNotEmpty ? '[${d.label}]' : ''}',
-                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white),
-                                  ),
-                                ],
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      d.type.contains('SSD') || d.type.contains('NVMe')
+                                          ? Icons.flash_on_rounded
+                                          : Icons.storage_rounded,
+                                      size: 14,
+                                      color: isCurrentSelected ? const Color(0xFF38BDF8) : Colors.white70,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        '${d.drive} ${d.label.isNotEmpty ? '[${d.label}]' : ''}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               if (isCurrentSelected)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
@@ -21682,6 +21778,14 @@ class _DashboardViewState extends State<DashboardView>
 
   // ── Helper Mini Widget Preview Renderer ─────────────────────────────────────
   Widget _buildMiniWidgetPreview(String key) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.center,
+      child: _buildRawMiniWidgetPreview(key),
+    );
+  }
+
+  Widget _buildRawMiniWidgetPreview(String key) {
     switch (key) {
       case 'classic':
         return Column(

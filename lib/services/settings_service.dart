@@ -1765,13 +1765,45 @@ class _SettingsFileWritePayload {
 }
 
 Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async {
-  final lock = File(payload.lockFilePath);
   final file = File(payload.settingsFilePath);
-  RandomAccessFile? raf;
-  try {
-    raf = await lock.open(mode: FileMode.append);
-    await raf.lock(FileLock.exclusive).timeout(const Duration(seconds: 3));
 
+  // Fast check: if the settings file already has the exact same content, skip lock & write completely
+  if (await file.exists()) {
+    try {
+      final existing = await file.readAsString();
+      if (existing == payload.jsonStr) {
+        return false;
+      }
+    } catch (_) {}
+  }
+
+  final lock = File(payload.lockFilePath);
+  RandomAccessFile? raf;
+  bool lockAcquired = false;
+
+  // Try to acquire lock with retry on Windows ERROR_LOCK_VIOLATION (errno 33/32)
+  for (int attempt = 0; attempt < 6; attempt++) {
+    try {
+      raf ??= await lock.open(mode: FileMode.append);
+      await raf.lock(FileLock.exclusive).timeout(const Duration(milliseconds: 1200));
+      lockAcquired = true;
+      break;
+    } on PathAccessException catch (e) {
+      if (e.osError?.errorCode == 33 || e.osError?.errorCode == 32) {
+        try {
+          await raf?.close();
+        } catch (_) {}
+        raf = null;
+        await Future.delayed(Duration(milliseconds: 40 + (attempt * 30)));
+        continue;
+      }
+      break;
+    } catch (_) {
+      break;
+    }
+  }
+
+  try {
     if (await file.exists()) {
       try {
         final existing = await file.readAsString();
@@ -1801,9 +1833,11 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
     }
   } finally {
     if (raf != null) {
-      try {
-        await raf.unlock();
-      } catch (_) {}
+      if (lockAcquired) {
+        try {
+          await raf.unlock();
+        } catch (_) {}
+      }
       try {
         await raf.close();
       } catch (_) {}

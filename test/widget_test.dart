@@ -20,7 +20,7 @@ void main() {
     expect(find.byType(DashboardApp), findsOneWidget);
   });
 
-  for (final size in <Size>[const Size(700, 500), const Size(850, 600)]) {
+  for (final size in <Size>[const Size(640, 480), const Size(700, 500), const Size(850, 600)]) {
     testWidgets(
       'Dashboard fits supported ${size.width.toInt()}x${size.height.toInt()} window',
       (WidgetTester tester) async {

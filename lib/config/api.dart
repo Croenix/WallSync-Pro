@@ -96,7 +96,7 @@ class ApiConfig {
       await fetchServerUrlFromDatabase(
         rtdbBaseUrl: rtdbBaseUrl,
         force: true,
-      ).timeout(const Duration(seconds: 4));
+      ).timeout(const Duration(milliseconds: 1500));
       debugPrint('[ApiConfig] Resolved live server URL from RTDB: $_serverUrl');
     } catch (e) {
       debugPrint('[ApiConfig] RTDB fetch timeout/fallback: $_serverUrl ($e)');

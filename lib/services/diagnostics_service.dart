@@ -431,12 +431,14 @@ class DiagnosticsService {
   final List<double> _recentFrameDurations = [];
   final List<String> _recentRawFrameSamples = [];
   int? _overlayPid;
+  List<int> _overlayPids = const [];
   String _overlayProcessStatus = 'not-checked';
   DateTime? _overlayLaunchRequestedAt;
 
   void markOverlayLaunchRequested() {
     _overlayLaunchRequestedAt = DateTime.now();
     _overlayPid = null;
+    _overlayPids = const [];
     _overlayProcessStatus = 'launch-requested';
   }
 
@@ -653,9 +655,24 @@ class DiagnosticsService {
   Future<void> _refreshOverlayPid() async {
     if (!Platform.isWindows) return;
     try {
-      final pidFile = await SettingsService().pidFile;
-      if (!await pidFile.exists()) {
+      final appDir = await SettingsService().getAppDirectory();
+      if (!await appDir.exists()) {
         _overlayPid = null;
+        _overlayPids = const [];
+        _overlayProcessStatus = 'pid-file-missing';
+        return;
+      }
+
+      final pidFiles = appDir.listSync().whereType<File>().where((f) {
+        final name = f.uri.pathSegments.isNotEmpty
+            ? f.uri.pathSegments.last.toLowerCase()
+            : '';
+        return name.startsWith('overlay') && name.endsWith('.pid');
+      }).toList();
+
+      if (pidFiles.isEmpty) {
+        _overlayPid = null;
+        _overlayPids = const [];
         final launchRequestedAt = _overlayLaunchRequestedAt;
         if (launchRequestedAt != null &&
             DateTime.now().difference(launchRequestedAt) <
@@ -667,39 +684,46 @@ class DiagnosticsService {
         }
         return;
       }
-      final record = OverlayProcessRecord.tryParse(
-        (await pidFile.readAsString()).trim(),
-      );
-      if (record == null) {
-        _overlayPid = null;
-        _overlayProcessStatus = 'invalid-pid-file';
-        return;
+
+      final activePids = <int>[];
+      for (final pidFile in pidFiles) {
+        try {
+          final content = (await pidFile.readAsString()).trim();
+          final record = OverlayProcessRecord.tryParse(content);
+          if (record != null && record.ready && record.creationTime != null) {
+            final inspection = await inspectWindowsProcess(record.pid);
+            if (inspection != null &&
+                inspection.isRunning &&
+                inspection.matches(record)) {
+              activePids.add(record.pid);
+            }
+          }
+        } catch (_) {}
       }
-      if (record.creationTime == null) {
-        _overlayPid = null;
-        _overlayProcessStatus = 'identity-unverified';
-        return;
-      }
-      final inspection = await inspectWindowsProcess(record.pid);
-      if (inspection == null) {
-        _overlayPid = null;
-        _overlayProcessStatus = 'liveness-query-failed';
-      } else if (!inspection.isRunning && inspection.creationTime == 0) {
-        _overlayPid = null;
-        _overlayProcessStatus = 'stopped';
-      } else if (!inspection.matches(record)) {
-        _overlayPid = null;
-        _overlayProcessStatus = 'process-identity-mismatch';
-      } else if (!inspection.isRunning) {
-        _overlayPid = null;
-        _overlayProcessStatus = 'stopped';
-      } else {
+
+      if (activePids.isNotEmpty) {
         _overlayLaunchRequestedAt = null;
-        _overlayPid = record.pid;
-        _overlayProcessStatus = record.ready ? 'running' : 'starting';
+        _overlayPids = activePids;
+        _overlayPid = activePids.first;
+        _overlayProcessStatus = activePids.length == 1
+            ? 'running'
+            : 'running (${activePids.length} active)';
+      } else {
+        _overlayPids = const [];
+        _overlayPid = null;
+        final launchRequestedAt = _overlayLaunchRequestedAt;
+        if (launchRequestedAt != null &&
+            DateTime.now().difference(launchRequestedAt) <
+                const Duration(seconds: 30)) {
+          _overlayProcessStatus = 'launch-requested';
+        } else {
+          _overlayLaunchRequestedAt = null;
+          _overlayProcessStatus = 'stopped';
+        }
       }
     } catch (error, stackTrace) {
       _overlayPid = null;
+      _overlayPids = const [];
       _overlayProcessStatus = 'liveness-query-failed';
       logWarning(
         'DiagnosticsService',
@@ -820,11 +844,29 @@ class DiagnosticsService {
         mpvPrivate = mpvSample.privateBytes;
         mpvCommitCharge = mpvSample.commitChargeBytes;
       }
-      final overlaySample = queryPid(overlayPid);
-      if (overlaySample != null) {
-        overlayRss = overlaySample.workingSetBytes;
-        overlayPrivate = overlaySample.privateBytes;
-        overlayCommitCharge = overlaySample.commitChargeBytes;
+      if (_overlayPids.isNotEmpty) {
+        int totalOverlayRss = 0;
+        int totalOverlayPrivate = 0;
+        int totalOverlayCommit = 0;
+        for (final p in _overlayPids) {
+          final s = queryPid(p);
+          if (s != null) {
+            totalOverlayRss += s.workingSetBytes;
+            totalOverlayPrivate += s.privateBytes;
+            totalOverlayCommit += s.commitChargeBytes;
+          }
+        }
+        overlayRss = totalOverlayRss > 0 ? totalOverlayRss : null;
+        overlayPrivate = totalOverlayPrivate > 0 ? totalOverlayPrivate : null;
+        overlayCommitCharge =
+            totalOverlayCommit > 0 ? totalOverlayCommit : null;
+      } else {
+        final overlaySample = queryPid(overlayPid);
+        if (overlaySample != null) {
+          overlayRss = overlaySample.workingSetBytes;
+          overlayPrivate = overlaySample.privateBytes;
+          overlayCommitCharge = overlaySample.commitChargeBytes;
+        }
       }
     }
 

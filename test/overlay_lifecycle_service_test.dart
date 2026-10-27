@@ -739,6 +739,26 @@ void main() {
     expect(result.status, OverlayReadinessStatus.ready);
     expect(result.isReady, isTrue);
   });
+
+  test('per-widget recovery policies operate independently without cross-exhaustion', () {
+    final policyA = OverlayRecoveryPolicy();
+    final policyB = OverlayRecoveryPolicy();
+
+    // Policy A attempts fail and increment
+    expect(policyA.nextDelay(), const Duration(seconds: 1));
+    expect(policyA.nextDelay(), const Duration(seconds: 3));
+    expect(policyA.attempts, 2);
+
+    // Policy B should be completely fresh and unaffected by Policy A
+    expect(policyB.attempts, 0);
+    expect(policyB.nextDelay(), const Duration(seconds: 1));
+    expect(policyB.attempts, 1);
+
+    // Resetting Policy A does not change Policy B
+    policyA.reset();
+    expect(policyA.attempts, 0);
+    expect(policyB.attempts, 1);
+  });
 }
 
 OverlayProcessInspection _inspection(bool running) => OverlayProcessInspection(

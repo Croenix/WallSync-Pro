@@ -586,12 +586,12 @@ void main(List<String> args) async {
         if (cleanSettings.posX != null && cleanSettings.posY != null) {
           requestedPosition = Offset(cleanSettings.posX!, cleanSettings.posY!);
           try {
-            final displays = await ScreenRetriever.instance
-                .getAllDisplays()
-                .timeout(const Duration(milliseconds: 500));
-            final primaryDisplay = await ScreenRetriever.instance
-                .getPrimaryDisplay()
-                .timeout(const Duration(milliseconds: 500));
+            final results = await Future.wait([
+              ScreenRetriever.instance.getAllDisplays(),
+              ScreenRetriever.instance.getPrimaryDisplay(),
+            ]).timeout(const Duration(milliseconds: 200));
+            final displays = results[0] as List<Display>;
+            final primaryDisplay = results[1] as Display;
             final displayBounds = displays
                 .map((display) {
                   final origin =
@@ -649,7 +649,9 @@ void main(List<String> args) async {
           );
         } else if (isTaskbar) {
           try {
-            final primaryDisplay = await ScreenRetriever.instance.getPrimaryDisplay();
+            final primaryDisplay = await ScreenRetriever.instance
+                .getPrimaryDisplay()
+                .timeout(const Duration(milliseconds: 200));
             final screenSize = primaryDisplay.size;
             final taskbarPos = Offset(
               (screenSize.width - cleanSettings.width) / 2,
