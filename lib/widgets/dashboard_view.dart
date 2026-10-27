@@ -22150,86 +22150,115 @@ class _DashboardViewState extends State<DashboardView>
   // ── Helper Mini Widget Preview Renderer ─────────────────────────────────────
   Widget _buildMiniWidgetPreview(String key) {
     switch (key) {
+      case 'classic':
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              '12 : 00',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Georgia',
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Container(
+              width: 36,
+              height: 2,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+            const SizedBox(height: 3),
+            const Text(
+              'SUNDAY, 21 JUNE 2026',
+              style: TextStyle(
+                color: Color(0xFFFFD700),
+                fontSize: 6.5,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Georgia',
+                letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        );
+
       case 'minimal':
         return const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '12:00',
+              '12:00:45',
               style: TextStyle(
-                color: Colors.white70,
+                color: Color(0xFFF1F5F9),
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
+                fontFamily: 'Consolas',
+                letterSpacing: -0.5,
               ),
             ),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 6),
               child: Text(
                 '|',
-                style: TextStyle(color: Colors.white24, fontSize: 13),
+                style: TextStyle(
+                  color: Color(0x6694A3B8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w200,
+                ),
               ),
             ),
             Text(
-              'SUN JUN 21',
-              style: TextStyle(color: Colors.white38, fontSize: 8.5),
+              'SUN 21 JUN',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 8,
+                fontFamily: 'Consolas',
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         );
 
       case 'cyber':
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: const Color(0xFF00FFCC).withValues(alpha: 0.3),
+        return const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '12',
+              style: TextStyle(
+                color: Color(0xFFFACC15),
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'Impact',
+                height: 0.95,
+              ),
             ),
-            borderRadius: BorderRadius.circular(8),
-            color: const Color(0xFF00FFCC).withValues(alpha: 0.04),
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '// CYBER',
-                    style: TextStyle(
-                      color: Color(0xFF00FFCC),
-                      fontSize: 6.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    '2026',
-                    style: TextStyle(color: Colors.white54, fontSize: 6.5),
-                  ),
-                ],
+            Text(
+              '00',
+              style: TextStyle(
+                color: Color(0xFF06B6D4),
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'Impact',
+                height: 0.95,
               ),
-              SizedBox(height: 2),
-              Text(
-                '12:00',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  fontFamily: 'Segoe UI',
-                  letterSpacing: -0.5,
-                ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'SUN JUN 21',
+              style: TextStyle(
+                color: Color(0xFF10B981),
+                fontSize: 7.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.0,
               ),
-              SizedBox(height: 2),
-              Text(
-                'SYS_ACTIVE • 100%',
-                style: TextStyle(
-                  color: Color(0xFF00FFCC),
-                  fontSize: 6,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         );
 
       case 'split':
@@ -22262,15 +22291,21 @@ class _DashboardViewState extends State<DashboardView>
             ),
             const SizedBox(width: 8),
             Container(
-              width: 2,
-              height: 32,
+              width: 2.5,
+              height: 34,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
-                borderRadius: BorderRadius.circular(1),
+                borderRadius: BorderRadius.circular(1.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x66EC4899),
+                    blurRadius: 6,
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 8),
@@ -22309,77 +22344,288 @@ class _DashboardViewState extends State<DashboardView>
 
       case 'neon':
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          width: 172,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF3B82F6), width: 1.2),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
-                blurRadius: 10,
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.35),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+              BoxShadow(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                blurRadius: 36,
+                spreadRadius: 2,
               ),
             ],
           ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '12:00',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.10),
+                  const Color(0xFF3B82F6).withValues(alpha: 0.16),
+                  const Color(0xFF3B82F6).withValues(alpha: 0.05),
+                  Colors.black.withValues(alpha: 0.3),
+                ],
+                stops: const [0.0, 0.25, 0.7, 1.0],
               ),
-              SizedBox(height: 2),
-              Text(
-                'GLASS NEON',
-                style: TextStyle(
-                  color: Color(0xFF38BDF8),
-                  fontSize: 6.5,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
-                ),
+              border: Border.all(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.85),
+                width: 1.4,
               ),
-            ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Top Row: Day Pill + Neon Dot
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                          width: 0.6,
+                        ),
+                      ),
+                      child: const Text(
+                        'SUNDAY',
+                        style: TextStyle(
+                          color: Color(0xFF38BDF8),
+                          fontSize: 6.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 4,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF00FFCC),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        const Text(
+                          'NEON',
+                          style: TextStyle(
+                            fontSize: 6,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF38BDF8),
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                // Hero Time Row
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '12',
+                      style: TextStyle(
+                        color: Color(0xFFD946EF),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Montserrat',
+                        letterSpacing: -0.5,
+                        shadows: [
+                          Shadow(
+                            color: Color(0xBFD946EF),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 2),
+                      child: Text(
+                        ':',
+                        style: TextStyle(
+                          color: Color(0xFF00F0FF),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w300,
+                          shadows: [
+                            Shadow(
+                              color: Color(0xB300F0FF),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '00',
+                      style: TextStyle(
+                        color: Color(0xFFD946EF),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Montserrat',
+                        letterSpacing: -0.5,
+                        shadows: [
+                          Shadow(
+                            color: Color(0xBFD946EF),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                // Glowing Laser Divider
+                Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(vertical: 3),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        Color(0xFF38BDF8),
+                        Color(0xFFD946EF),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+                // Bottom Date Row
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '21 OCTOBER',
+                      style: TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 6.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    Text(
+                      '2026',
+                      style: TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 6.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
 
       case 'animated_neon':
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF00FFCC), width: 1.2),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF00FFCC).withValues(alpha: 0.3),
-                blurRadius: 10,
-              ),
-            ],
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        return SizedBox(
+          width: 126,
+          height: 76,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Text(
-                '12:00:45',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
+              // Outer ring
+              Container(
+                width: 126,
+                height: 74,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.all(
+                    Radius.elliptical(63, 37),
+                  ),
+                  border: Border.all(
+                    color: const Color(0xFF1A23F2),
+                    width: 3,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF1A23F2).withValues(alpha: 0.4),
+                      blurRadius: 8,
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(height: 2),
-              Text(
-                'NEON RING • GPU',
-                style: TextStyle(
-                  color: Color(0xFF00FFCC),
-                  fontSize: 6.5,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
+              // Inner ring with plate
+              Container(
+                width: 98,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: const Color(0x331A23F2),
+                  borderRadius: const BorderRadius.all(
+                    Radius.elliptical(49, 27),
+                  ),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8),
+                    width: 1.2,
+                  ),
                 ),
+              ),
+              // Clock text
+              const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '12',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        ':',
+                        style: TextStyle(
+                          color: Color(0xFF8DCAED),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        '00',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 1),
+                  Text(
+                    'SUN  |  21 JUN',
+                    style: TextStyle(
+                      color: Color(0xFF8DCAED),
+                      fontSize: 6,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -22387,59 +22633,248 @@ class _DashboardViewState extends State<DashboardView>
 
       case 'sleep_weather':
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFF141721),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          width: 154,
+          height: 92,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Stack(
             children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '12:00',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text(
-                    'Sunday, Jun 21',
-                    style: TextStyle(color: Colors.white54, fontSize: 6.5),
-                  ),
-                ],
-              ),
-              SizedBox(width: 10),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.wb_sunny_rounded,
-                        size: 10,
-                        color: Color(0xFFFBBF24),
+              // Left: Date & Time
+              const Positioned(
+                top: 8,
+                left: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Saturday 17',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 5.5,
+                        fontWeight: FontWeight.bold,
                       ),
+                    ),
+                    SizedBox(height: 1),
+                    Text(
+                      '09:34',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -1.0,
+                        height: 0.95,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Right: WiFi & Bluetooth mini icons
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Icon(
+                        Icons.wifi_rounded,
+                        size: 6,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00FF55).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Icon(
+                        Icons.bluetooth_rounded,
+                        size: 6,
+                        color: Color(0xFF00FF55),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Middle: Neon green media bar
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 14,
+                child: Container(
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00FF55),
+                    borderRadius: BorderRadius.circular(3.5),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.skip_previous_rounded, size: 7, color: Colors.black),
+                      Icon(Icons.pause_rounded, size: 8, color: Colors.black),
+                      Icon(Icons.skip_next_rounded, size: 7, color: Colors.black),
                       SizedBox(width: 3),
+                      Expanded(
+                        child: Text(
+                          'Midnight City',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 5.5,
+                            fontWeight: FontWeight.w900,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       Text(
-                        '24°C',
+                        '02:40',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
+                          color: Colors.black87,
+                          fontSize: 5,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
                   ),
-                  Text(
-                    '♪ Nightcall',
-                    style: TextStyle(color: Color(0xFFEC4899), fontSize: 7),
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case 'robik':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Left: Day header, Montserrat Clock, Orange pill, Date
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'SUNDAY',
+                    style: TextStyle(
+                      color: Color(0xFFF18734),
+                      fontSize: 6.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                      fontFamily: 'Product Sans',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    '12.00',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Montserrat',
+                      letterSpacing: -0.5,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Container(
+                    width: 26,
+                    height: 2.5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF18734),
+                      borderRadius: BorderRadius.circular(1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  const Text(
+                    '21 JUN 2026',
+                    style: TextStyle(
+                      color: Color(0xFFCBD5E1),
+                      fontSize: 6.5,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Product Sans',
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 10),
+              // Vertical divider
+              Container(
+                width: 1,
+                height: 46,
+                color: Colors.white12,
+              ),
+              const SizedBox(width: 10),
+              // Right: CPU & RAM indicators
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'CPU: 18%',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 6.5,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Product Sans',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Container(
+                    width: 36,
+                    height: 3.5,
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        width: 14,
+                        height: 3.5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF18734),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'RAM: 42%',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 6.5,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Product Sans',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Container(
+                    width: 36,
+                    height: 3.5,
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        width: 22,
+                        height: 3.5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF18734),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -22450,27 +22885,119 @@ class _DashboardViewState extends State<DashboardView>
       case 'atomic_clock':
         return const Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              '12:00',
+              'SATURDAY',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 13,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 2.0,
+                fontFamily: 'Anurati',
+                letterSpacing: 2.2,
+                shadows: [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 4,
+                    offset: Offset(0.5, 1),
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: 2),
+            SizedBox(height: 3),
             Text(
-              'ATOMIC • ANURATI',
+              '27 MARCH, 2026.',
               style: TextStyle(
-                color: Color(0xFF818CF8),
-                fontSize: 6.5,
-                fontWeight: FontWeight.w900,
+                color: Colors.white70,
+                fontSize: 7.5,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Anurati',
                 letterSpacing: 1.2,
+                shadows: [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 3,
+                    offset: Offset(0.5, 1),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 3),
+            Text(
+              '- 00:15 -',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 7,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Anurati',
+                letterSpacing: 1.0,
+                shadows: [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 3,
+                    offset: Offset(0.5, 1),
+                  ),
+                ],
               ),
             ),
           ],
+        );
+
+      case 'custom':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.dashboard_customize_rounded,
+                    size: 13,
+                    color: Color(0xFF38BDF8),
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'CUSTOM STUDIO',
+                    style: TextStyle(
+                      color: Color(0xFF38BDF8),
+                      fontSize: 7.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '12:45',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Montserrat',
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF18734).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'DRAG & DROP CANVAS',
+                  style: TextStyle(
+                    fontSize: 6.0,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFF18734),
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
 
       case 'taskbar_dock':
@@ -22482,13 +23009,12 @@ class _DashboardViewState extends State<DashboardView>
       case 'taskbar_parking_lot':
         return _buildEmbeddedTaskbarPreview(key);
 
-      case 'classic':
       default:
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              '12:00',
+              '12 : 00',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -22521,6 +23047,7 @@ class _DashboardViewState extends State<DashboardView>
         );
     }
   }
+
 
   Widget _buildActiveTemplateLayoutTile() {
     final templates = {
