@@ -10799,2354 +10799,464 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               );
 
-            case 'neon':
+            case 'cyber_hud':
               final boxColor = Color(_settings.colorFor(ElementKey.neonBox));
-              final timeColor = Color(_settings.colorFor(ElementKey.hours));
-              final dateColor = Color(_settings.colorFor(ElementKey.date));
               final sepColor = Color(_settings.colorFor(ElementKey.separator));
-              final badgeColor = Color(
-                _settings.colorFor(ElementKey.neonBadge),
-              );
-              final dividerColor = Color(
-                _settings.colorFor(ElementKey.neonDivider),
-              );
-              final cpuColor = Color(_settings.colorFor(ElementKey.cpu));
-              final ramColor = Color(_settings.colorFor(ElementKey.ram));
+              final dateColor = Color(_settings.colorFor(ElementKey.date));
+              final badgeColor = Color(_settings.colorFor(ElementKey.day));
 
               return _applyPreview3D(
                 ElementKey.neonBox,
                 tappable(
                   ElementKey.neonBox,
                   Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
+                      color: const Color(0xFF070B12).withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: boxColor, width: 1.4),
                       boxShadow: [
-                        // Wide atmospheric neon aura
                         BoxShadow(
-                          color: boxColor.withValues(alpha: 0.35),
-                          blurRadius: 28,
-                          spreadRadius: 1,
-                        ),
-                        // Core bright neon glow
-                        BoxShadow(
-                          color: boxColor.withValues(alpha: 0.55),
-                          blurRadius: 14,
-                          spreadRadius: 0,
-                        ),
-                        // Spatial shadow
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.45),
+                          color: boxColor.withValues(alpha: 0.3),
                           blurRadius: 18,
-                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.white.withValues(alpha: 0.14),
-                              boxColor.withValues(alpha: 0.16),
-                              boxColor.withValues(alpha: 0.05),
-                              Colors.black.withValues(alpha: 0.35),
-                            ],
-                            stops: const [0.0, 0.25, 0.7, 1.0],
-                          ),
-                          border: Border.all(
-                            color: boxColor.withValues(alpha: 0.85),
-                            width: 1.6,
-                          ),
-                        ),
-                        child: Column(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // 1. Top Header Row: Day Capsule Badge + Neon Status
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _applyPreview3D(
-                                  ElementKey.day,
-                                  tappable(
-                                    ElementKey.day,
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2.5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: dateColor.withValues(
-                                          alpha: 0.12,
-                                        ),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: dateColor.withValues(
-                                            alpha: 0.45,
-                                          ),
-                                          width: 0.8,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: dateColor.withValues(
-                                              alpha: 0.25,
-                                            ),
-                                            blurRadius: 5,
-                                          ),
-                                        ],
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.calendar_today_rounded,
-                                            size: 8 * mul,
-                                            color: dateColor,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            dayStr,
-                                            style:
-                                                styleFor(
-                                                  ElementKey.day,
-                                                  8,
-                                                  FontWeight.w800,
-                                                ).copyWith(
-                                                  color: dateColor,
-                                                  letterSpacing: 1.5,
-                                                  shadows: [
-                                                    Shadow(
-                                                      color: dateColor
-                                                          .withValues(
-                                                            alpha: 0.6,
-                                                          ),
-                                                      blurRadius: 6,
-                                                    ),
-                                                  ],
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (_settings.showNeonBadge)
-                                  _applyPreview3D(
-                                    ElementKey.neonBadge,
-                                    tappable(
-                                      ElementKey.neonBadge,
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: badgeColor.withValues(
-                                            alpha: 0.12,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          border: Border.all(
-                                            color: badgeColor.withValues(
-                                              alpha: 0.45,
-                                            ),
-                                            width: 0.7,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: badgeColor.withValues(
-                                                alpha: 0.25,
-                                              ),
-                                              blurRadius: 6,
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Container(
-                                              width: 5,
-                                              height: 5,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: badgeColor,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: badgeColor
-                                                        .withValues(alpha: 0.8),
-                                                    blurRadius: 5,
-                                                    spreadRadius: 1,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'GLASS NEON',
-                                              style:
-                                                  styleFor(
-                                                    ElementKey.neonBadge,
-                                                    7,
-                                                    FontWeight.w900,
-                                                  ).copyWith(
-                                                    color: badgeColor,
-                                                    letterSpacing: 1.2,
-                                                    shadows: [
-                                                      Shadow(
-                                                        color: badgeColor
-                                                            .withValues(
-                                                              alpha: 0.6,
-                                                            ),
-                                                        blurRadius: 5,
-                                                      ),
-                                                    ],
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-
-                            // 2. Hero Center Clock Row
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                children: [
-                                  _applyPreview3D(
-                                    ElementKey.hours,
-                                    tappable(
-                                      ElementKey.hours,
-                                      Text(
-                                        hourStr,
-                                        style:
-                                            styleFor(
-                                              ElementKey.hours,
-                                              40,
-                                              FontWeight.w900,
-                                            ).copyWith(
-                                              color: timeColor,
-                                              letterSpacing: -0.8,
-                                              shadows: [
-                                                Shadow(
-                                                  color: timeColor.withValues(
-                                                    alpha: 0.75,
-                                                  ),
-                                                  blurRadius: 14,
-                                                ),
-                                                Shadow(
-                                                  color: timeColor.withValues(
-                                                    alpha: 0.35,
-                                                  ),
-                                                  blurRadius: 26,
-                                                ),
-                                              ],
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  _applyPreview3D(
-                                    ElementKey.separator,
-                                    tappable(
-                                      ElementKey.separator,
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 2,
-                                        ),
-                                        child: Text(
-                                          ':',
-                                          style:
-                                              styleFor(
-                                                ElementKey.separator,
-                                                34,
-                                                FontWeight.w300,
-                                              ).copyWith(
-                                                color: sepColor,
-                                                shadows: [
-                                                  Shadow(
-                                                    color: sepColor.withValues(
-                                                      alpha: 0.8,
-                                                    ),
-                                                    blurRadius: 12,
-                                                  ),
-                                                  Shadow(
-                                                    color: sepColor.withValues(
-                                                      alpha: 0.4,
-                                                    ),
-                                                    blurRadius: 22,
-                                                  ),
-                                                ],
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  _applyPreview3D(
-                                    ElementKey.minutes,
-                                    tappable(
-                                      ElementKey.minutes,
-                                      Text(
-                                        minStr,
-                                        style:
-                                            styleFor(
-                                              ElementKey.minutes,
-                                              40,
-                                              FontWeight.w900,
-                                            ).copyWith(
-                                              color: timeColor,
-                                              letterSpacing: -0.8,
-                                              shadows: [
-                                                Shadow(
-                                                  color: timeColor.withValues(
-                                                    alpha: 0.75,
-                                                  ),
-                                                  blurRadius: 14,
-                                                ),
-                                                Shadow(
-                                                  color: timeColor.withValues(
-                                                    alpha: 0.35,
-                                                  ),
-                                                  blurRadius: 26,
-                                                ),
-                                              ],
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                  if (showSec || !use24h) ...[
-                                    const SizedBox(width: 8),
-                                    Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        if (!use24h)
-                                          _applyPreview3D(
-                                            ElementKey.ampm,
-                                            tappable(
-                                              ElementKey.ampm,
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 5,
-                                                      vertical: 1.5,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: timeColor.withValues(
-                                                    alpha: 0.15,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(5),
-                                                  border: Border.all(
-                                                    color: timeColor.withValues(
-                                                      alpha: 0.5,
-                                                    ),
-                                                    width: 0.6,
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  ampmStr,
-                                                  style:
-                                                      styleFor(
-                                                        ElementKey.ampm,
-                                                        8,
-                                                        FontWeight.w800,
-                                                      ).copyWith(
-                                                        color: timeColor,
-                                                        letterSpacing: 0.8,
-                                                        shadows: [
-                                                          Shadow(
-                                                            color: timeColor
-                                                                .withValues(
-                                                                  alpha: 0.6,
-                                                                ),
-                                                            blurRadius: 6,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        if (showSec) ...[
-                                          if (!use24h)
-                                            const SizedBox(height: 3),
-                                          _applyPreview3D(
-                                            ElementKey.seconds,
-                                            tappable(
-                                              ElementKey.seconds,
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 5,
-                                                      vertical: 1.5,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: sepColor.withValues(
-                                                    alpha: 0.15,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(5),
-                                                  border: Border.all(
-                                                    color: sepColor.withValues(
-                                                      alpha: 0.5,
-                                                    ),
-                                                    width: 0.6,
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    Text(
-                                                      secStr,
-                                                      style:
-                                                          styleFor(
-                                                            ElementKey.seconds,
-                                                            9,
-                                                            FontWeight.w900,
-                                                          ).copyWith(
-                                                            color: sepColor,
-                                                            shadows: [
-                                                              Shadow(
-                                                                color: sepColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.7,
-                                                                    ),
-                                                                blurRadius: 6,
-                                                              ),
-                                                            ],
-                                                          ),
-                                                    ),
-                                                    const SizedBox(width: 1.5),
-                                                    Text(
-                                                      'S',
-                                                      style: TextStyle(
-                                                        fontSize: 5.5,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color: sepColor
-                                                            .withValues(
-                                                              alpha: 0.7,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-
-                            // 3. Glowing Laser Divider Line
                             _applyPreview3D(
-                              ElementKey.neonDivider,
+                              ElementKey.separator,
                               tappable(
-                                ElementKey.neonDivider,
-                                Container(
-                                  height: 1.2,
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.transparent,
-                                        dividerColor.withValues(alpha: 0.2),
-                                        dividerColor.withValues(alpha: 0.8),
-                                        boxColor.withValues(alpha: 0.8),
-                                        boxColor.withValues(alpha: 0.2),
-                                        Colors.transparent,
-                                      ],
-                                      stops: const [
-                                        0.0,
-                                        0.2,
-                                        0.45,
-                                        0.55,
-                                        0.8,
-                                        1.0,
-                                      ],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: dividerColor.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                        blurRadius: 5,
-                                        spreadRadius: 0.5,
-                                      ),
-                                    ],
+                                ElementKey.separator,
+                                Text(
+                                  '// CYBER',
+                                  style: TextStyle(
+                                    color: sepColor,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.2,
+                                    fontFamily: _settings.fontFor(ElementKey.separator),
                                   ),
                                 ),
                               ),
                             ),
-
-                            // 4. Hardware Telemetry Deck (CPU & RAM Monitors)
-                            if (_settings.showCpu || _settings.showRam) ...[
-                              Row(
-                                children: [
-                                  if (_settings.showCpu)
-                                    Expanded(
-                                      child: _applyPreview3D(
-                                        ElementKey.cpu,
-                                        tappable(
-                                          ElementKey.cpu,
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: cpuColor.withValues(
-                                                alpha: 0.08,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: cpuColor.withValues(
-                                                  alpha: 0.3,
-                                                ),
-                                                width: 0.6,
-                                              ),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceBetween,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        Icon(
-                                                          Icons.memory_rounded,
-                                                          size: 8 * mul,
-                                                          color: cpuColor,
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 3,
-                                                        ),
-                                                        Text(
-                                                          'CPU',
-                                                          style:
-                                                              styleFor(
-                                                                ElementKey.cpu,
-                                                                7,
-                                                                FontWeight.w800,
-                                                              ).copyWith(
-                                                                color: cpuColor,
-                                                                letterSpacing:
-                                                                    0.6,
-                                                              ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    Text(
-                                                      '${_cpuUsage.toStringAsFixed(0)}%',
-                                                      style:
-                                                          styleFor(
-                                                            ElementKey.cpu,
-                                                            7,
-                                                            FontWeight.w900,
-                                                          ).copyWith(
-                                                            color: cpuColor,
-                                                            shadows: [
-                                                              Shadow(
-                                                                color: cpuColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.7,
-                                                                    ),
-                                                                blurRadius: 5,
-                                                              ),
-                                                            ],
-                                                          ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Container(
-                                                  width: double.infinity,
-                                                  height: 2.8,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white
-                                                        .withValues(alpha: 0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          1.5,
-                                                        ),
-                                                  ),
-                                                  child: FractionallySizedBox(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    widthFactor:
-                                                        (_cpuUsage / 100.0)
-                                                            .clamp(0.02, 1.0),
-                                                    child: Container(
-                                                      decoration: BoxDecoration(
-                                                        color: cpuColor,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              1.5,
-                                                            ),
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: cpuColor
-                                                                .withValues(
-                                                                  alpha: 0.8,
-                                                                ),
-                                                            blurRadius: 3,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  if (_settings.showCpu && _settings.showRam)
-                                    const SizedBox(width: 6),
-                                  if (_settings.showRam)
-                                    Expanded(
-                                      child: _applyPreview3D(
-                                        ElementKey.ram,
-                                        tappable(
-                                          ElementKey.ram,
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: ramColor.withValues(
-                                                alpha: 0.08,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: ramColor.withValues(
-                                                  alpha: 0.3,
-                                                ),
-                                                width: 0.6,
-                                              ),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceBetween,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        Icon(
-                                                          Icons
-                                                              .developer_board_rounded,
-                                                          size: 8 * mul,
-                                                          color: ramColor,
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 3,
-                                                        ),
-                                                        Text(
-                                                          'RAM',
-                                                          style:
-                                                              styleFor(
-                                                                ElementKey.ram,
-                                                                7,
-                                                                FontWeight.w800,
-                                                              ).copyWith(
-                                                                color: ramColor,
-                                                                letterSpacing:
-                                                                    0.6,
-                                                              ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    Text(
-                                                      '${_ramUsage.toStringAsFixed(0)}%',
-                                                      style:
-                                                          styleFor(
-                                                            ElementKey.ram,
-                                                            7,
-                                                            FontWeight.w900,
-                                                          ).copyWith(
-                                                            color: ramColor,
-                                                            shadows: [
-                                                              Shadow(
-                                                                color: ramColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.7,
-                                                                    ),
-                                                                blurRadius: 5,
-                                                              ),
-                                                            ],
-                                                          ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Container(
-                                                  width: double.infinity,
-                                                  height: 2.8,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white
-                                                        .withValues(alpha: 0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          1.5,
-                                                        ),
-                                                  ),
-                                                  child: FractionallySizedBox(
-                                                    alignment:
-                                                        Alignment.centerLeft,
-                                                    widthFactor:
-                                                        (_ramUsage / 100.0)
-                                                            .clamp(0.02, 1.0),
-                                                    child: Container(
-                                                      decoration: BoxDecoration(
-                                                        color: ramColor,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              1.5,
-                                                            ),
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: ramColor
-                                                                .withValues(
-                                                                  alpha: 0.8,
-                                                                ),
-                                                            blurRadius: 3,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                            const SizedBox(width: 5),
+                            _applyPreview3D(
+                              ElementKey.date,
+                              tappable(
+                                ElementKey.date,
+                                Text(
+                                  yearStr,
+                                  style: TextStyle(
+                                    color: dateColor,
+                                    fontSize: 9,
+                                    fontFamily: _settings.fontFor(ElementKey.date),
+                                  ),
+                                ),
                               ),
-                              const SizedBox(height: 5),
-                            ],
-
-                            // 5. Bottom Deck: Date & Year
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _applyPreview3D(
-                                  ElementKey.date,
-                                  tappable(
-                                    ElementKey.date,
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.access_time_rounded,
-                                          size: 9 * mul,
-                                          color: dateColor.withValues(
-                                            alpha: 0.8,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          dateStr,
-                                          style:
-                                              styleFor(
-                                                ElementKey.date,
-                                                9,
-                                                FontWeight.w700,
-                                              ).copyWith(
-                                                color: dateColor,
-                                                letterSpacing: 1.3,
-                                                shadows: [
-                                                  Shadow(
-                                                    color: dateColor.withValues(
-                                                      alpha: 0.6,
-                                                    ),
-                                                    blurRadius: 6,
-                                                  ),
-                                                ],
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  width: 3.5,
-                                  height: 3.5,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: dateColor.withValues(alpha: 0.6),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: dateColor.withValues(alpha: 0.8),
-                                        blurRadius: 3,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                _applyPreview3D(
-                                  ElementKey.year,
-                                  tappable(
-                                    ElementKey.year,
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 1.5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: dateColor.withValues(
-                                          alpha: 0.08,
-                                        ),
-                                        borderRadius: BorderRadius.circular(5),
-                                        border: Border.all(
-                                          color: dateColor.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                          width: 0.6,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        yearStr,
-                                        style:
-                                            styleFor(
-                                              ElementKey.year,
-                                              8.5,
-                                              FontWeight.w800,
-                                            ).copyWith(
-                                              color: dateColor,
-                                              letterSpacing: 1.2,
-                                              shadows: [
-                                                Shadow(
-                                                  color: dateColor.withValues(
-                                                    alpha: 0.6,
-                                                  ),
-                                                  blurRadius: 5,
-                                                ),
-                                              ],
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _applyPreview3D(
+                              ElementKey.hours,
+                              tappable(
+                                ElementKey.hours,
+                                Text(
+                                  hourStr,
+                                  style: styleFor(ElementKey.hours, 36, FontWeight.w900),
+                                ),
+                              ),
+                            ),
+                            _applyPreview3D(
+                              ElementKey.separator,
+                              tappable(
+                                ElementKey.separator,
+                                Text(':', style: styleFor(ElementKey.separator, 32, FontWeight.w700)),
+                              ),
+                            ),
+                            _applyPreview3D(
+                              ElementKey.minutes,
+                              tappable(
+                                ElementKey.minutes,
+                                Text(
+                                  minStr,
+                                  style: styleFor(ElementKey.minutes, 36, FontWeight.w900),
+                                ),
+                              ),
+                            ),
+                            if (showSec) ...[
+                              const SizedBox(width: 3),
+                              _applyPreview3D(
+                                ElementKey.seconds,
+                                tappable(
+                                  ElementKey.seconds,
+                                  Text(
+                                    secStr,
+                                    style: styleFor(ElementKey.seconds, 14, FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _applyPreview3D(
+                          ElementKey.day,
+                          tappable(
+                            ElementKey.day,
+                            Text(
+                              'SYS_ACTIVE • 100%',
+                              style: TextStyle(
+                                color: badgeColor,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
+                                fontFamily: _settings.fontFor(ElementKey.day),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               );
 
-            case 'animated_neon':
-              final Color outerColor = Color(
-                _settings.colorFor(ElementKey.glowOuter),
-              );
-              final Color innerColor = Color(
-                _settings.colorFor(ElementKey.glowInner),
-              );
+            case 'atomic_clean':
+              final subColor = Color(_settings.colorFor(ElementKey.day));
 
-              return AnimatedBuilder(
-                animation: _backgroundFlowController,
-                builder: (context, child) {
-                  final double progress =
-                      (1.0 -
-                          math.cos(
-                            _backgroundFlowController.value * 2 * math.pi,
-                          )) /
-                      2.0;
-
-                  final double outerHeight = 120.0 + 220.0 * progress;
-                  final double outerTop = 110.0 - 110.0 * progress;
-
-                  final double innerHeight = 80.0 + 180.0 * progress;
-                  final double innerTop = 130.0 - 90.0 * progress;
-
-                  final double textTop = 145.0 - 15.0 * progress;
-                  final double textScaleY = 0.4 + 0.6 * progress;
-
-                  final isTransparent =
-                      _settings.backgroundType == 'none' ||
-                      _settings.opacity == 0.0;
-
-                  return FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: 340,
-                      height: 340,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Outer Ring
-                          Positioned(
-                            top: outerTop,
-                            left: 0,
-                            width: 340,
-                            height: outerHeight,
-                            child: _applyPreview3D(
-                              ElementKey.glowOuter,
-                              tappable(
-                                ElementKey.glowOuter,
-                                Container(
-                                  key: const Key('glow-outer'),
-                                  decoration: BoxDecoration(
-                                    gradient: isTransparent
-                                        ? null
-                                        : const LinearGradient(
-                                            colors: [
-                                              Color(0xFF050528),
-                                              Color(0xFF0A0A55),
-                                            ],
-                                            begin: Alignment.topCenter,
-                                            end: Alignment.bottomCenter,
-                                          ),
-                                    color: isTransparent
-                                        ? Colors.transparent
-                                        : null,
-                                    border: Border.all(
-                                      color: outerColor,
-                                      width: 10,
-                                    ),
-                                    borderRadius: BorderRadius.all(
-                                      Radius.elliptical(170, outerHeight / 2),
-                                    ),
-                                    boxShadow: null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // Inner Ring
-                          Positioned(
-                            top: innerTop,
-                            left: 40,
-                            width: 260,
-                            height: innerHeight,
-                            child: _applyPreview3D(
-                              ElementKey.glowInner,
-                              tappable(
-                                ElementKey.glowInner,
-                                Container(
-                                  key: const Key('glow-inner'),
-                                  decoration: BoxDecoration(
-                                    gradient: isTransparent
-                                        ? null
-                                        : const LinearGradient(
-                                            colors: [
-                                              Color(0xFF0A0A3C),
-                                              Color(0xFF000000),
-                                            ],
-                                            begin: Alignment.topCenter,
-                                            end: Alignment.bottomCenter,
-                                          ),
-                                    color: isTransparent
-                                        ? Colors.transparent
-                                        : null,
-                                    border: Border.all(
-                                      color: innerColor,
-                                      width: 6,
-                                    ),
-                                    borderRadius: BorderRadius.all(
-                                      Radius.elliptical(130, innerHeight / 2),
-                                    ),
-                                    boxShadow: null,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // Inner Background
-                          Positioned(
-                            top: innerTop + 6,
-                            left: 46,
-                            width: 248,
-                            height: innerHeight - 12,
-                            child: _applyPreview3D(
-                              ElementKey.innerBackground,
-                              tappable(
-                                ElementKey.innerBackground,
-                                Container(
-                                  key: const Key('glow-bg'),
-                                  decoration: BoxDecoration(
-                                    color: Color(
-                                      _settings.colorFor(
-                                        ElementKey.innerBackground,
-                                      ),
-                                    ),
-                                    borderRadius: BorderRadius.all(
-                                      Radius.elliptical(
-                                        124,
-                                        (innerHeight - 12) / 2,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // Clock Text Wrapper
-                          Positioned(
-                            top: textTop,
-                            left: 0,
-                            right: 0,
-                            child: Transform(
-                              transform: Matrix4.identity()
-                                ..scaleByDouble(1.0, textScaleY, 1.0, 1.0),
-                              alignment: Alignment.center,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Time display
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        buildHoursPart(size: 28),
-                                        buildSeparatorPart(size: 24),
-                                        buildMinutesPart(size: 28),
-                                        if (showSec) ...[
-                                          buildSeparatorPart(size: 24),
-                                          buildSecondsPart(size: 24),
-                                        ],
-                                        if (!use24h) ...[
-                                          const SizedBox(width: 4),
-                                          buildAmPmPart(size: 20),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  // Date display
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        buildDayPart(size: 13),
-                                        Text(
-                                          ' | ',
-                                          style: TextStyle(
-                                            color: Color(
-                                              _settings.colorFor(
-                                                ElementKey.seconds,
-                                              ),
-                                            ),
-                                            fontSize: 13 * mul,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        buildDatePart(size: 13),
-                                        const SizedBox(width: 4),
-                                        buildYearPart(size: 13),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-
-            case 'sleep_weather':
-              final tempText = _settings.weatherTemp.isNotEmpty
-                  ? '${_settings.weatherTemp} °C'
-                  : '-- °C';
-              final resolvedLoc = _settings.weatherLocationResolved.isNotEmpty
-                  ? _settings.weatherLocationResolved
-                  : 'Auto-detecting...';
-
-              IconData weatherIcon = Icons.wb_cloudy_rounded;
-              if (_settings.weatherStatus.isNotEmpty) {
-                final statusLower = _settings.weatherStatus.toLowerCase();
-                if (statusLower.contains('clear') ||
-                    statusLower.contains('sunny')) {
-                  weatherIcon = Icons.wb_sunny_rounded;
-                } else if (statusLower.contains('drizzle') ||
-                    statusLower.contains('rain')) {
-                  weatherIcon = Icons.water_drop_rounded;
-                } else if (statusLower.contains('fog')) {
-                  weatherIcon = Icons.filter_drama_rounded;
-                } else if (statusLower.contains('snow')) {
-                  weatherIcon = Icons.ac_unit_rounded;
-                } else if (statusLower.contains('thunderstorm')) {
-                  weatherIcon = Icons.thunderstorm_rounded;
-                }
-              }
-
-              String formatTime(int secs) {
-                final h = secs ~/ 3600;
-                final m = (secs % 3600) ~/ 60;
-                final s = secs % 60;
-                if (h > 0) {
-                  return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-                } else {
-                  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-                }
-              }
-
-              return CustomPaint(
-                painter: FolderTabPainter(
-                  color: const Color(0xFF0F0F11),
-                  shadowColor: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 16,
-                ),
-                child: ClipPath(
-                  clipper: FolderTabClipper(),
-                  child: Stack(
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Preview background for this widget
-                      Positioned.fill(
-                        child: _buildPreviewBg(
-                          borderRadius: BorderRadius.circular(24),
+                      _applyPreview3D(
+                        ElementKey.hours,
+                        tappable(
+                          ElementKey.hours,
+                          Text(
+                            hourStr,
+                            style: styleFor(ElementKey.hours, 40, FontWeight.w900),
+                          ),
                         ),
                       ),
-                      // Left: Date & Time
-                      Positioned(
-                        top: 44,
-                        left: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _applyPreview3D(
-                                  ElementKey.day,
-                                  tappable(
-                                    ElementKey.day,
-                                    Text(
-                                      DateFormat('EEEE').format(now),
-                                      style: styleFor(
-                                        ElementKey.day,
-                                        16,
-                                        FontWeight.w600,
-                                      ).copyWith(letterSpacing: -0.5),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: _applyPreview3D(
-                                    ElementKey.date,
-                                    tappable(
-                                      ElementKey.date,
-                                      Text(
-                                        DateFormat('d').format(now),
-                                        style: styleFor(
-                                          ElementKey.date,
-                                          10,
-                                          FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _applyPreview3D(
-                                  ElementKey.hours,
-                                  tappable(
-                                    ElementKey.hours,
-                                    Text(
-                                      hourStr,
-                                      style:
-                                          styleFor(
-                                            ElementKey.hours,
-                                            54,
-                                            FontWeight.w700,
-                                          ).copyWith(
-                                            height: 0.9,
-                                            letterSpacing: -2.0,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                                _applyPreview3D(
-                                  ElementKey.separator,
-                                  tappable(
-                                    ElementKey.separator,
-                                    Text(
-                                      ':',
-                                      style: styleFor(
-                                        ElementKey.separator,
-                                        50,
-                                        FontWeight.w300,
-                                      ).copyWith(height: 0.9),
-                                    ),
-                                  ),
-                                ),
-                                _applyPreview3D(
-                                  ElementKey.minutes,
-                                  tappable(
-                                    ElementKey.minutes,
-                                    Text(
-                                      minStr,
-                                      style:
-                                          styleFor(
-                                            ElementKey.minutes,
-                                            54,
-                                            FontWeight.w700,
-                                          ).copyWith(
-                                            height: 0.9,
-                                            letterSpacing: -2.0,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                                if (_settings.showSeconds) ...[
-                                  const SizedBox(width: 4),
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: _applyPreview3D(
-                                      ElementKey.seconds,
-                                      tappable(
-                                        ElementKey.seconds,
-                                        Text(
-                                          secStr,
-                                          style: styleFor(
-                                            ElementKey.seconds,
-                                            18,
-                                            FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                if (!_settings.use24HourFormat) ...[
-                                  const SizedBox(width: 4),
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: _applyPreview3D(
-                                      ElementKey.ampm,
-                                      tappable(
-                                        ElementKey.ampm,
-                                        Text(
-                                          ampmStr,
-                                          style: styleFor(
-                                            ElementKey.ampm,
-                                            12,
-                                            FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
+                      _applyPreview3D(
+                        ElementKey.separator,
+                        tappable(
+                          ElementKey.separator,
+                          Text(':', style: styleFor(ElementKey.separator, 36, FontWeight.w700)),
                         ),
                       ),
-                      // Right: WiFi & Bluetooth
-                      if (_settings.showWifi || _settings.showBluetooth)
-                        Positioned(
-                          top: 12,
-                          right: 16,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_settings.showWifi)
-                                _applyPreview3D(
-                                  ElementKey.wifiIcon,
-                                  tappable(
-                                    ElementKey.wifiIcon,
-                                    Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: _settings.wifiEnabled
-                                            ? Color(
-                                                _settings.colorFor(
-                                                  ElementKey.wifiIcon,
-                                                ),
-                                              ).withValues(alpha: 0.08)
-                                            : Colors.white.withValues(
-                                                alpha: 0.03,
-                                              ),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: _settings.wifiEnabled
-                                              ? Color(
-                                                  _settings.colorFor(
-                                                    ElementKey.wifiIcon,
-                                                  ),
-                                                ).withValues(alpha: 0.15)
-                                              : Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                ),
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        Icons.wifi_rounded,
-                                        size: _settings.sizeFor(
-                                          ElementKey.wifiIcon,
-                                          16,
-                                        ),
-                                        color: _settings.wifiEnabled
-                                            ? Color(
-                                                _settings.colorFor(
-                                                  ElementKey.wifiIcon,
-                                                ),
-                                              )
-                                            : Color(
-                                                _settings.colorFor(
-                                                  ElementKey.wifiIcon,
-                                                ),
-                                              ).withValues(alpha: 0.24),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (_settings.showWifi && _settings.showBluetooth)
-                                const SizedBox(width: 8),
-                              if (_settings.showBluetooth)
-                                _applyPreview3D(
-                                  ElementKey.bluetoothIcon,
-                                  tappable(
-                                    ElementKey.bluetoothIcon,
-                                    Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: _settings.bluetoothEnabled
-                                            ? Color(
-                                                _settings.colorFor(
-                                                  ElementKey.bluetoothIcon,
-                                                ),
-                                              ).withValues(alpha: 0.12)
-                                            : Colors.white.withValues(
-                                                alpha: 0.03,
-                                              ),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: _settings.bluetoothEnabled
-                                              ? Color(
-                                                  _settings.colorFor(
-                                                    ElementKey.bluetoothIcon,
-                                                  ),
-                                                ).withValues(alpha: 0.4)
-                                              : Colors.white.withValues(
-                                                  alpha: 0.05,
-                                                ),
-                                        ),
-                                        boxShadow: _settings.bluetoothEnabled
-                                            ? [
-                                                BoxShadow(
-                                                  color: Color(
-                                                    _settings.colorFor(
-                                                      ElementKey.bluetoothIcon,
-                                                    ),
-                                                  ).withValues(alpha: 0.15),
-                                                  blurRadius: 6,
-                                                  spreadRadius: 1,
-                                                ),
-                                              ]
-                                            : null,
-                                      ),
-                                      child: Icon(
-                                        Icons.bluetooth_rounded,
-                                        size: _settings.sizeFor(
-                                          ElementKey.bluetoothIcon,
-                                          16,
-                                        ),
-                                        color: _settings.bluetoothEnabled
-                                            ? Color(
-                                                _settings.colorFor(
-                                                  ElementKey.bluetoothIcon,
-                                                ),
-                                              )
-                                            : Color(
-                                                _settings.colorFor(
-                                                  ElementKey.bluetoothIcon,
-                                                ),
-                                              ).withValues(alpha: 0.24),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
+                      _applyPreview3D(
+                        ElementKey.minutes,
+                        tappable(
+                          ElementKey.minutes,
+                          Text(
+                            minStr,
+                            style: styleFor(ElementKey.minutes, 40, FontWeight.w900),
                           ),
                         ),
-
-                      // Large Media Cover Image on the right of the clock (green box space)
-                      if (_mediaInfo.thumbnail.isNotEmpty &&
-                          _thumbnailBytes != null)
-                        Positioned(
-                          top: 56,
-                          right: 16,
-                          child: _applyPreview3D(
-                            ElementKey.mediaIcon,
-                            tappable(
-                              ElementKey.mediaIcon,
-                              Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.1),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                  image: DecorationImage(
-                                    image: MemoryImage(_thumbnailBytes!),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ),
+                      ),
+                      if (showSec) ...[
+                        const SizedBox(width: 3),
+                        _applyPreview3D(
+                          ElementKey.seconds,
+                          tappable(
+                            ElementKey.seconds,
+                            Text(secStr, style: styleFor(ElementKey.seconds, 14, FontWeight.bold)),
                           ),
                         ),
-
-                      // Middle: Media controls bar
-                      if (_settings.showMediaControl)
-                        Positioned(
-                          left: 16,
-                          right: 16,
-                          bottom: 52,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'MEDIA CONTROL',
-                                style: TextStyle(
-                                  color: Colors.white38,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.2,
-                                  fontFamily: 'Segoe UI',
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              _applyPreview3D(
-                                ElementKey.mediaBg,
-                                tappable(
-                                  ElementKey.mediaBg,
-                                  CustomPaint(
-                                    painter: SleepTrackerPainter(
-                                      color: Color(
-                                        _settings.colorFor(ElementKey.mediaBg),
-                                      ),
-                                    ),
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 48,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 4,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const SizedBox(width: 6),
-                                          _applyPreview3D(
-                                            ElementKey.mediaIcon,
-                                            tappable(
-                                              ElementKey.mediaIcon,
-                                              Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  GestureDetector(
-                                                    behavior:
-                                                        HitTestBehavior.opaque,
-                                                    onTap: () {
-                                                      MediaSessionService()
-                                                          .previous();
-                                                    },
-                                                    child: Icon(
-                                                      Icons
-                                                          .skip_previous_rounded,
-                                                      color: Color(
-                                                        _settings.colorFor(
-                                                          ElementKey.mediaIcon,
-                                                        ),
-                                                      ),
-                                                      size: _settings.sizeFor(
-                                                        ElementKey.mediaIcon,
-                                                        20,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  GestureDetector(
-                                                    behavior:
-                                                        HitTestBehavior.opaque,
-                                                    onTap: () {
-                                                      if (_mediaInfo
-                                                          .isPlaying) {
-                                                        MediaSessionService()
-                                                            .pause();
-                                                      } else {
-                                                        MediaSessionService()
-                                                            .play();
-                                                      }
-                                                    },
-                                                    child: Icon(
-                                                      _mediaInfo.isPlaying
-                                                          ? Icons.pause_rounded
-                                                          : Icons
-                                                                .play_arrow_rounded,
-                                                      color: Color(
-                                                        _settings.colorFor(
-                                                          ElementKey.mediaIcon,
-                                                        ),
-                                                      ),
-                                                      size: _settings.sizeFor(
-                                                        ElementKey.mediaIcon,
-                                                        22,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  GestureDetector(
-                                                    behavior:
-                                                        HitTestBehavior.opaque,
-                                                    onTap: () {
-                                                      MediaSessionService()
-                                                          .next();
-                                                    },
-                                                    child: Icon(
-                                                      Icons.skip_next_rounded,
-                                                      color: Color(
-                                                        _settings.colorFor(
-                                                          ElementKey.mediaIcon,
-                                                        ),
-                                                      ),
-                                                      size: _settings.sizeFor(
-                                                        ElementKey.mediaIcon,
-                                                        20,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            flex: 72,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                if (_mediaInfo.source.isEmpty &&
-                                                    _mediaInfo.title.isEmpty)
-                                                  _applyPreview3D(
-                                                    ElementKey.mediaTitle,
-                                                    tappable(
-                                                      ElementKey.mediaTitle,
-                                                      Text(
-                                                        'No Active Session',
-                                                        style: styleFor(
-                                                          ElementKey.mediaTitle,
-                                                          10,
-                                                          FontWeight.w900,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                    ),
-                                                  )
-                                                else ...[
-                                                  _applyPreview3D(
-                                                    ElementKey.mediaTitle,
-                                                    tappable(
-                                                      ElementKey.mediaTitle,
-                                                      Text(
-                                                        _mediaInfo
-                                                                .title
-                                                                .isNotEmpty
-                                                            ? _mediaInfo.title
-                                                            : _mediaInfo.source,
-                                                        style: styleFor(
-                                                          ElementKey.mediaTitle,
-                                                          10,
-                                                          FontWeight.w900,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  _applyPreview3D(
-                                                    ElementKey.mediaArtist,
-                                                    tappable(
-                                                      ElementKey.mediaArtist,
-                                                      Text(
-                                                        _mediaInfo
-                                                                .artist
-                                                                .isNotEmpty
-                                                            ? '${_mediaInfo.artist} • ${_mediaInfo.source}'
-                                                            : _mediaInfo.source,
-                                                        style: styleFor(
-                                                          ElementKey
-                                                              .mediaArtist,
-                                                          8,
-                                                          FontWeight.w500,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 28,
-                                            child: Center(
-                                              child: _applyPreview3D(
-                                                ElementKey.mediaTime,
-                                                tappable(
-                                                  ElementKey.mediaTime,
-                                                  ValueListenableBuilder<int>(
-                                                    valueListenable:
-                                                        _playbackPositionNotifier,
-                                                    builder: (context, pos, _) {
-                                                      final text =
-                                                          _mediaInfo.duration <=
-                                                              0
-                                                          ? _mediaInfo.status
-                                                                .toUpperCase()
-                                                          : '${formatTime(pos)} / ${formatTime(_mediaInfo.duration)}';
-                                                      return Text(
-                                                        text,
-                                                        style: styleFor(
-                                                          ElementKey.mediaTime,
-                                                          9,
-                                                          FontWeight.w900,
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      // Bottom: Weather
-                      if (_settings.showWeather)
-                        Positioned(
-                          left: 16,
-                          bottom: 12,
-                          child: Tooltip(
-                            message: resolvedLoc,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _applyPreview3D(
-                                  ElementKey.weatherIcon,
-                                  tappable(
-                                    ElementKey.weatherIcon,
-                                    Icon(
-                                      weatherIcon,
-                                      color: Color(
-                                        _settings.colorFor(
-                                          ElementKey.weatherIcon,
-                                        ),
-                                      ),
-                                      size: _settings.sizeFor(
-                                        ElementKey.weatherIcon,
-                                        14,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                _applyPreview3D(
-                                  ElementKey.weatherTemp,
-                                  tappable(
-                                    ElementKey.weatherTemp,
-                                    Text(
-                                      tempText,
-                                      style: styleFor(
-                                        ElementKey.weatherTemp,
-                                        13,
-                                        FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (_settings.weatherStatus.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
-                                  _applyPreview3D(
-                                    ElementKey.weatherStatus,
-                                    tappable(
-                                      ElementKey.weatherStatus,
-                                      Text(
-                                        _settings.weatherStatus,
-                                        style: styleFor(
-                                          ElementKey.weatherStatus,
-                                          11,
-                                          FontWeight.w400,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
+                      ],
                     ],
                   ),
-                ),
-              );
-
-            case 'robik':
-              // 1. Weather Icon & Text
-              IconData weatherIcon = Icons.wb_cloudy_rounded;
-              if (_settings.weatherStatus.isNotEmpty) {
-                final statusLower = _settings.weatherStatus.toLowerCase();
-                if (statusLower.contains('clear') ||
-                    statusLower.contains('sunny')) {
-                  weatherIcon = Icons.wb_sunny_rounded;
-                } else if (statusLower.contains('drizzle') ||
-                    statusLower.contains('rain')) {
-                  weatherIcon = Icons.water_drop_rounded;
-                } else if (statusLower.contains('fog')) {
-                  weatherIcon = Icons.filter_drama_rounded;
-                } else if (statusLower.contains('snow')) {
-                  weatherIcon = Icons.ac_unit_rounded;
-                } else if (statusLower.contains('thunderstorm')) {
-                  weatherIcon = Icons.thunderstorm_rounded;
-                }
-              }
-              final tempText = _settings.weatherTemp.isNotEmpty
-                  ? '${_settings.weatherTemp}°C'
-                  : '--°C';
-              final condText = _settings.weatherStatus.isNotEmpty
-                  ? _settings.weatherStatus.toUpperCase()
-                  : 'UNKNOWN';
-
-              // 2. Date string (Format: DD MONTH YYYY)
-              final dayNum = DateFormat('d').format(now);
-              final monthName = DateFormat('MMMM').format(now).toUpperCase();
-              final yearNum = DateFormat('yyyy').format(now);
-              final dateString = '$dayNum $monthName $yearNum';
-
-              // 4. Accent Color & Text Color
-              final accentColor = Color(_settings.colorFor(ElementKey.day));
-
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // Left Column: Clock & Date
-                          Expanded(
-                            flex: 58,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                // Day Header (Robik signature)
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: _applyPreview3D(
-                                    ElementKey.day,
-                                    tappable(
-                                      ElementKey.day,
-                                      Text(
-                                        DateFormat(
-                                          'EEEE',
-                                        ).format(now).toUpperCase(),
-                                        style:
-                                            styleFor(
-                                              ElementKey.day,
-                                              13,
-                                              FontWeight.w800,
-                                            ).copyWith(
-                                              fontFamily: _settings.fontFor(
-                                                ElementKey.day,
-                                              ),
-                                              color: accentColor,
-                                              letterSpacing: 2.0,
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                // Decomposed Time Row (Hours, Separator dot, Minutes, Seconds)
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.baseline,
-                                    textBaseline: TextBaseline.alphabetic,
-                                    children: [
-                                      _applyPreview3D(
-                                        ElementKey.hours,
-                                        tappable(
-                                          ElementKey.hours,
-                                          Text(
-                                            hourStr,
-                                            style:
-                                                styleFor(
-                                                  ElementKey.hours,
-                                                  68,
-                                                  FontWeight.w700,
-                                                ).copyWith(
-                                                  letterSpacing: -1.0,
-                                                  height: 1.0,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                      _applyPreview3D(
-                                        ElementKey.separator,
-                                        tappable(
-                                          ElementKey.separator,
-                                          Text(
-                                            '.',
-                                            style:
-                                                styleFor(
-                                                  ElementKey.separator,
-                                                  68,
-                                                  FontWeight.w700,
-                                                ).copyWith(
-                                                  letterSpacing: -1.0,
-                                                  height: 1.0,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                      _applyPreview3D(
-                                        ElementKey.minutes,
-                                        tappable(
-                                          ElementKey.minutes,
-                                          Text(
-                                            minStr,
-                                            style:
-                                                styleFor(
-                                                  ElementKey.minutes,
-                                                  68,
-                                                  FontWeight.w700,
-                                                ).copyWith(
-                                                  letterSpacing: -1.0,
-                                                  height: 1.0,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                      if (showSec) ...[
-                                        const SizedBox(width: 4),
-                                        _applyPreview3D(
-                                          ElementKey.seconds,
-                                          tappable(
-                                            ElementKey.seconds,
-                                            Text(
-                                              secStr,
-                                              style: styleFor(
-                                                ElementKey.seconds,
-                                                22,
-                                                FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                // Custom line / Separator (Accent pill)
-                                _applyPreview3D(
-                                  ElementKey.separator,
-                                  tappable(
-                                    ElementKey.separator,
-                                    Container(
-                                      width: 72,
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: Color(
-                                          _settings.colorFor(
-                                            ElementKey.separator,
-                                          ),
-                                        ),
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                // Date (Product Sans)
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: _applyPreview3D(
-                                    ElementKey.date,
-                                    tappable(
-                                      ElementKey.date,
-                                      Text(
-                                        dateString,
-                                        style: styleFor(
-                                          ElementKey.date,
-                                          13,
-                                          FontWeight.w600,
-                                        ).copyWith(letterSpacing: 1.0),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Divider between columns
-                          Container(
-                            width: 1,
-                            height: 160,
-                            color: Colors.white.withValues(alpha: 0.08),
-                          ),
-                          const SizedBox(width: 12),
-
-                          // Right Column: Weather & System Resource Indicators (inspired by Robik)
-                          Expanded(
-                            flex: 42,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Weather indicator row
-                                if (_settings.showWeather) ...[
-                                  Row(
-                                    children: [
-                                      _applyPreview3D(
-                                        ElementKey.weatherIcon,
-                                        tappable(
-                                          ElementKey.weatherIcon,
-                                          Icon(
-                                            weatherIcon,
-                                            color: Color(
-                                              _settings.colorFor(
-                                                ElementKey.weatherIcon,
-                                              ),
-                                            ),
-                                            size: _settings.sizeFor(
-                                              ElementKey.weatherIcon,
-                                              24,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _applyPreview3D(
-                                              ElementKey.weatherStatus,
-                                              tappable(
-                                                ElementKey.weatherStatus,
-                                                Text(
-                                                  condText,
-                                                  style:
-                                                      styleFor(
-                                                        ElementKey
-                                                            .weatherStatus,
-                                                        10,
-                                                        FontWeight.bold,
-                                                      ).copyWith(
-                                                        letterSpacing: 0.5,
-                                                        height: 1.1,
-                                                      ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ),
-                                            _applyPreview3D(
-                                              ElementKey.weatherTemp,
-                                              tappable(
-                                                ElementKey.weatherTemp,
-                                                Text(
-                                                  tempText,
-                                                  style:
-                                                      styleFor(
-                                                        ElementKey.weatherTemp,
-                                                        10,
-                                                        FontWeight.bold,
-                                                      ).copyWith(
-                                                        letterSpacing: 0.5,
-                                                        height: 1.1,
-                                                      ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                ],
-
-                                // CPU usage indicator
-                                if (_settings.showCpu) ...[
-                                  _applyPreview3D(
-                                    ElementKey.cpu,
-                                    tappable(
-                                      ElementKey.cpu,
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            'CPU: ${_cpuUsage.toStringAsFixed(0)}%',
-                                            style:
-                                                styleFor(
-                                                  ElementKey.cpu,
-                                                  10,
-                                                  FontWeight.bold,
-                                                ).copyWith(
-                                                  letterSpacing: 0.5,
-                                                  fontFamily: _settings.fontFor(
-                                                    ElementKey.cpu,
-                                                  ),
-                                                ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          // CPU progress bar
-                                          Container(
-                                            width: double.infinity,
-                                            height: 5,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.08,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(2.5),
-                                            ),
-                                            child: FractionallySizedBox(
-                                              alignment: Alignment.centerLeft,
-                                              widthFactor: (_cpuUsage / 100.0)
-                                                  .clamp(0.02, 1.0),
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  color: Color(
-                                                    _settings.colorFor(
-                                                      ElementKey.cpu,
-                                                    ),
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        2.5,
-                                                      ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-
-                                // RAM usage indicator
-                                if (_settings.showRam) ...[
-                                  _applyPreview3D(
-                                    ElementKey.ram,
-                                    tappable(
-                                      ElementKey.ram,
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            'RAM: ${_ramUsage.toStringAsFixed(0)}%',
-                                            style:
-                                                styleFor(
-                                                  ElementKey.ram,
-                                                  10,
-                                                  FontWeight.bold,
-                                                ).copyWith(
-                                                  letterSpacing: 0.5,
-                                                  fontFamily: _settings.fontFor(
-                                                    ElementKey.ram,
-                                                  ),
-                                                ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          // RAM progress bar
-                                          Container(
-                                            width: double.infinity,
-                                            height: 5,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.08,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(2.5),
-                                            ),
-                                            child: FractionallySizedBox(
-                                              alignment: Alignment.centerLeft,
-                                              widthFactor: (_ramUsage / 100.0)
-                                                  .clamp(0.02, 1.0),
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  color: Color(
-                                                    _settings.colorFor(
-                                                      ElementKey.ram,
-                                                    ),
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        2.5,
-                                                      ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
+                  const SizedBox(height: 6),
+                  _applyPreview3D(
+                    ElementKey.day,
+                    tappable(
+                      ElementKey.day,
+                      Text(
+                        'ATOMIC • ANURATI',
+                        style: TextStyle(
+                          color: subColor,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2.8,
+                          fontFamily: _settings.fontFor(ElementKey.day),
+                        ),
                       ),
                     ),
                   ),
                 ],
               );
 
-            case 'atomic_clock':
-              final dayStr = DateFormat('EEEE').format(now).toUpperCase();
-              final monthName = DateFormat('MMMM').format(now).toUpperCase();
-              final dateStr = '${now.day} $monthName, ${now.year}.';
-              String timeStr;
-              if (_settings.use24HourFormat) {
-                timeStr = _settings.showSeconds
-                    ? '- $hourStr:$minStr:$secStr -'
-                    : '- $hourStr:$minStr -';
-              } else {
-                timeStr = _settings.showSeconds
-                    ? '- $hourStr:$minStr:$secStr $ampmStr -'
-                    : '- $hourStr:$minStr $ampmStr -';
-              }
+            case 'arc_clock':
+              final arcStart = Color(_settings.colorFor(ElementKey.minutes));
+              final arcEnd = Color(_settings.colorFor(ElementKey.seconds));
+              final digitalColor = Color(_settings.colorFor(ElementKey.minutes));
+              final dateColor = Color(_settings.colorFor(ElementKey.day));
 
-              Widget buildPreviewAtomicText({
-                required String text,
-                required String elementKey,
-                required double baseSize,
-                required double letterSpacing,
-                required FontWeight weight,
-              }) {
-                final size =
-                    _settings.sizeFor(elementKey, baseSize) *
-                    _settings.fontSizeMultiplier;
-                final font = _settings.fontFor(elementKey);
-                final hasOverride = _settings.elementColors.containsKey(
-                  elementKey,
-                );
-                final col = Color(_settings.colorFor(elementKey));
-
-                final textWidget = Text(
-                  text,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: font == 'Segoe UI' ? 'Anurati' : font,
-                    fontSize: size,
-                    fontWeight: weight,
-                    letterSpacing: letterSpacing,
-                    color:
-                        hasOverride || _settings.customGradientColors.length < 2
-                        ? col
-                        : Colors.white,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.75),
-                        blurRadius: 6,
-                        offset: const Offset(1, 2),
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _applyPreview3D(
+                    ElementKey.hours,
+                    tappable(
+                      ElementKey.hours,
+                      SizedBox(
+                        width: 110,
+                        height: 110,
+                        child: CustomPaint(
+                          painter: ArcClockDialPainter(
+                            dateTime: now,
+                            arcStartColor: arcStart,
+                            arcEndColor: arcEnd,
+                            hourHandColor: const Color(0xFF555B66),
+                            minuteHandColor: arcStart,
+                            secondHandColor: arcEnd,
+                          ),
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                );
-
-                if (!hasOverride &&
-                    _settings.customGradientColors.length >= 2) {
-                  return ShaderMask(
-                    blendMode: BlendMode.srcIn,
-                    shaderCallback: (bounds) => LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: _settings.customGradientColors
-                          .map((c) => Color(c))
-                          .toList(),
-                    ).createShader(bounds),
-                    child: textWidget,
-                  );
-                }
-
-                return textWidget;
-              }
-
-              return FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
+                  const SizedBox(height: 8),
+                  _applyPreview3D(
+                    ElementKey.minutes,
+                    tappable(
+                      ElementKey.minutes,
+                      Text(
+                        showSec ? '$hourStr:$minStr:$secStr' : '$hourStr:$minStr',
+                        style: TextStyle(
+                          color: digitalColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w300,
+                          fontFamily: _settings.fontFor(ElementKey.minutes),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _applyPreview3D(
-                        ElementKey.day,
-                        tappable(
-                          ElementKey.day,
-                          buildPreviewAtomicText(
-                            text: dayStr,
-                            elementKey: ElementKey.day,
-                            baseSize: 42,
-                            letterSpacing: 4.5,
-                            weight: FontWeight.w900,
-                          ),
+                  const SizedBox(height: 2),
+                  _applyPreview3D(
+                    ElementKey.day,
+                    tappable(
+                      ElementKey.day,
+                      Text(
+                        DateFormat('EEEE d MMMM').format(now),
+                        style: TextStyle(
+                          color: dateColor,
+                          fontSize: 8.5,
+                          fontFamily: _settings.fontFor(ElementKey.day),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      _applyPreview3D(
-                        ElementKey.date,
-                        tappable(
-                          ElementKey.date,
-                          buildPreviewAtomicText(
-                            text: dateStr,
-                            elementKey: ElementKey.date,
-                            baseSize: 20,
-                            letterSpacing: 2.2,
-                            weight: FontWeight.w700,
-                          ),
+                    ),
+                  ),
+                ],
+              );
+
+            case 'flip_clock':
+              final frameColor = Color(_settings.colorFor(ElementKey.neonBox));
+
+              return _applyPreview3D(
+                ElementKey.neonBox,
+                tappable(
+                  ElementKey.neonBox,
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF13161C),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: frameColor, width: 2.0),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _applyPreview3D(
+                              ElementKey.hours,
+                              tappable(
+                                ElementKey.hours,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildMiniFlipDigit(hourStr.isNotEmpty ? hourStr[0] : '1'),
+                                    const SizedBox(width: 4),
+                                    _buildMiniFlipDigit(hourStr.length > 1 ? hourStr[1] : '2'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _applyPreview3D(
+                              ElementKey.minutes,
+                              tappable(
+                                ElementKey.minutes,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildMiniFlipDigit(minStr.isNotEmpty ? minStr[0] : '4'),
+                                    const SizedBox(width: 4),
+                                    _buildMiniFlipDigit(minStr.length > 1 ? minStr[1] : '5'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      _applyPreview3D(
-                        ElementKey.hours,
-                        tappable(
-                          ElementKey.hours,
-                          buildPreviewAtomicText(
-                            text: timeStr,
-                            elementKey: ElementKey.hours,
-                            baseSize: 15,
-                            letterSpacing: 2.0,
-                            weight: FontWeight.w600,
-                          ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _applyPreview3D(
+                              ElementKey.day,
+                              tappable(
+                                ElementKey.day,
+                                _buildMiniFlipTag(DateFormat('EEE').format(now).toUpperCase()),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _applyPreview3D(
+                              ElementKey.date,
+                              tappable(
+                                ElementKey.date,
+                                _buildMiniFlipTag(now.day.toString().padLeft(2, '0')),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _applyPreview3D(
+                              ElementKey.year,
+                              tappable(
+                                ElementKey.year,
+                                _buildMiniFlipTag(DateFormat('MMM').format(now).toUpperCase()),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
 
-            case 'taskbar_dock':
+            case 'station_weather':
+              final pillBg = Color(_settings.colorFor(ElementKey.neonBox));
+              final handCol = Color(_settings.colorFor(ElementKey.hours));
+              final secCol = Color(_settings.colorFor(ElementKey.seconds));
+              final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '12°C';
+
+              return _applyPreview3D(
+                ElementKey.neonBox,
+                tappable(
+                  ElementKey.neonBox,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: pillBg,
+                      borderRadius: BorderRadius.circular(32),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _applyPreview3D(
+                          ElementKey.hours,
+                          tappable(
+                            ElementKey.hours,
+                            Container(
+                              width: 80,
+                              height: 80,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                              ),
+                              child: ClipOval(
+                                child: CustomPaint(
+                                  painter: StationClockDialPainter(
+                                    dateTime: now,
+                                    dialColor: Colors.white,
+                                    handColor: handCol,
+                                    secondColor: secCol,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _applyPreview3D(
+                              ElementKey.day,
+                              tappable(
+                                ElementKey.day,
+                                Text(
+                                  DateFormat('EEEE').format(now),
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 9,
+                                    fontFamily: _settings.fontFor(ElementKey.day),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            _applyPreview3D(
+                              ElementKey.date,
+                              tappable(
+                                ElementKey.date,
+                                Text(
+                                  '${DateFormat('MMMM').format(now)} ${now.day}th',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: _settings.fontFor(ElementKey.date),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 120,
+                              height: 1,
+                              color: Colors.white24,
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                            ),
+                            _applyPreview3D(
+                              ElementKey.weatherTemp,
+                              tappable(
+                                ElementKey.weatherTemp,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.thunderstorm_rounded, size: 12, color: Colors.white),
+                                    const SizedBox(width: 3),
+                                    Text(tempStr, style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.cloud_queue_rounded, size: 12, color: Colors.white),
+                                    const SizedBox(width: 3),
+                                    const Text('11°C', style: TextStyle(color: Colors.white, fontSize: 8.5)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+
+      case 'taskbar_dock':
               return Container(
                 height: 48,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -13837,6 +11947,60 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.minutes,
           ElementKey.seconds,
           ElementKey.ampm,
+        ].contains(key);
+
+      case 'cyber_hud':
+        return [
+          ElementKey.hours,
+          ElementKey.separator,
+          ElementKey.minutes,
+          ElementKey.seconds,
+          ElementKey.day,
+          ElementKey.date,
+          ElementKey.neonBox,
+        ].contains(key);
+
+      case 'atomic_clean':
+        return [
+          ElementKey.hours,
+          ElementKey.separator,
+          ElementKey.minutes,
+          ElementKey.seconds,
+          ElementKey.day,
+        ].contains(key);
+
+      case 'arc_clock':
+        return [
+          ElementKey.hours,
+          ElementKey.minutes,
+          ElementKey.seconds,
+          ElementKey.separator,
+          ElementKey.day,
+          ElementKey.date,
+        ].contains(key);
+
+      case 'flip_clock':
+        return [
+          ElementKey.hours,
+          ElementKey.minutes,
+          ElementKey.seconds,
+          ElementKey.ampm,
+          ElementKey.day,
+          ElementKey.date,
+          ElementKey.year,
+          ElementKey.neonBox,
+        ].contains(key);
+
+      case 'station_weather':
+        return [
+          ElementKey.hours,
+          ElementKey.minutes,
+          ElementKey.seconds,
+          ElementKey.day,
+          ElementKey.date,
+          ElementKey.weatherIcon,
+          ElementKey.weatherTemp,
+          ElementKey.neonBox,
         ].contains(key);
 
       case 'taskbar_dock':
@@ -19057,6 +17221,11 @@ class _DashboardViewState extends State<DashboardView>
                   'taskbar_discord': ['TASKBAR', 'DISCORD', 'VOICE PING'],
                   'taskbar_weather': ['TASKBAR', 'FORECAST', 'PILL'],
                   'taskbar_parking_lot': ['TASKBAR', 'QUICK DROP', 'STASH'],
+                  'cyber_hud': ['CYBERPUNK', 'TERMINAL', 'TELEMETRY'],
+                  'atomic_clean': ['MINIMAL', 'ANURATI', 'TYPOGRAPHY'],
+                  'arc_clock': ['RADIAL ARC', 'ANALOG & DIGITAL', 'GAUGE'],
+                  'flip_clock': ['RETRO', 'SPLIT-FLAP', 'MECHANICAL'],
+                  'station_weather': ['SWISS RAILWAY', 'ANALOG CLOCK', 'WEATHER FORECAST'],
                 };
                 final currentTags = tags[key] ?? ['WIDGET'];
 
@@ -20350,6 +18519,157 @@ class _DashboardViewState extends State<DashboardView>
                         ),
                       );
 
+                    case 'cyber_hud':
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF070B12),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF00FFCC), width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF00FFCC).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('// CYBER', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+                                SizedBox(width: 4),
+                                Text('2026', style: TextStyle(color: Colors.white54, fontSize: 7, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                            SizedBox(height: 4),
+                            Text('12:00', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.0)),
+                            SizedBox(height: 5),
+                            Text('SYS_ACTIVE • 100%', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 6.5, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
+                          ],
+                        ),
+                      );
+
+                    case 'atomic_clean':
+                      return const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('12:00', style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: -1.0, height: 1.0)),
+                          SizedBox(height: 5),
+                          Text('ATOMIC • ANURATI', style: TextStyle(color: Color(0xFF818CF8), fontSize: 7.5, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontFamily: 'Anurati')),
+                        ],
+                      );
+
+                    case 'arc_clock':
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 58,
+                            height: 58,
+                            child: CustomPaint(
+                              painter: ArcClockDialPainter(
+                                dateTime: DateTime.now(),
+                                arcStartColor: const Color(0xFF00E5FF),
+                                arcEndColor: const Color(0xFFE040FB),
+                                hourHandColor: const Color(0xFF555B66),
+                                minuteHandColor: const Color(0xFF00E5FF),
+                                secondHandColor: const Color(0xFFE040FB),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text('09:25:30', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11, fontWeight: FontWeight.w400)),
+                          const Text('Saturday 15 September', style: TextStyle(color: Colors.white70, fontSize: 6)),
+                        ],
+                      );
+
+                    case 'flip_clock':
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF13161C),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD4D0C8), width: 1.5),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildMiniFlipDigit('1'),
+                                const SizedBox(width: 3),
+                                _buildMiniFlipDigit('2'),
+                                const SizedBox(width: 5),
+                                _buildMiniFlipDigit('4'),
+                                const SizedBox(width: 3),
+                                _buildMiniFlipDigit('5'),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildMiniFlipTag('TUE'),
+                                const SizedBox(width: 4),
+                                _buildMiniFlipTag('27'),
+                                const SizedBox(width: 4),
+                                _buildMiniFlipTag('OCT'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+
+                    case 'station_weather':
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB91C1C),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                              child: ClipOval(
+                                child: CustomPaint(
+                                  painter: StationClockDialPainter(
+                                    dateTime: DateTime.now(),
+                                    dialColor: Colors.white,
+                                    handColor: const Color(0xFF111827),
+                                    secondColor: const Color(0xFFEF4444),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Thursday', style: TextStyle(color: Colors.white70, fontSize: 6.5)),
+                                Text('November 5th', style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                                SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Icon(Icons.thunderstorm_rounded, size: 8, color: Colors.white),
+                                    SizedBox(width: 2),
+                                    Text('12°C', style: TextStyle(color: Colors.white, fontSize: 6.5, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+
                     case 'classic':
                     default:
                       return Column(
@@ -21111,7 +19431,7 @@ class _DashboardViewState extends State<DashboardView>
                   label: 'Desktop Widgets',
                   icon: Icons.desktop_windows_rounded,
                   activeColor: const Color(0xFF38BDF8),
-                  count: 9,
+                  count: 14,
                 ),
                 const SizedBox(width: 6),
                 _buildWidgetSubTabChip(
@@ -21344,6 +19664,41 @@ class _DashboardViewState extends State<DashboardView>
         'desc': 'Precision Anurati sci-fi geometry with clean seconds track',
         'tag': 'PRECISION',
         'tagColor': const Color(0xFF818CF8),
+      },
+      {
+        'key': 'cyber_hud',
+        'title': 'Cyber Terminal HUD',
+        'desc': 'Dark cyberpunk terminal card with neon teal border & telemetry',
+        'tag': 'HUD CARD',
+        'tagColor': const Color(0xFF00FFCC),
+      },
+      {
+        'key': 'atomic_clean',
+        'title': 'Atomic Minimal',
+        'desc': 'Ultra-clean modern bold time with Anurati sci-fi subtitle',
+        'tag': 'CLEAN',
+        'tagColor': const Color(0xFF818CF8),
+      },
+      {
+        'key': 'arc_clock',
+        'title': 'Radial Arc Clock',
+        'desc': 'Vibrant dual-color gauge arc with analog hands & digital display',
+        'tag': 'GAUGE ARC',
+        'tagColor': const Color(0xFF00E5FF),
+      },
+      {
+        'key': 'flip_clock',
+        'title': 'Mechanical Flip Clock',
+        'desc': 'Retro split-flap mechanical flip board with calendar cards',
+        'tag': 'VINTAGE FLIP',
+        'tagColor': const Color(0xFFEFEEDB),
+      },
+      {
+        'key': 'station_weather',
+        'title': 'Station Clock & Weather',
+        'desc': 'Swiss station analog dial with date & 3-step forecast pill',
+        'tag': 'STATION PILL',
+        'tagColor': const Color(0xFFEF4444),
       },
     ];
 
@@ -22126,6 +20481,16 @@ class _DashboardViewState extends State<DashboardView>
         return 'Robik Geometric Theme';
       case 'atomic_clock':
         return 'Atomic Sci-Fi Clock';
+      case 'cyber_hud':
+        return 'Cyber Terminal HUD';
+      case 'atomic_clean':
+        return 'Atomic Minimal';
+      case 'arc_clock':
+        return 'Radial Arc Clock';
+      case 'flip_clock':
+        return 'Mechanical Flip Clock';
+      case 'station_weather':
+        return 'Station Clock & Weather';
       case 'taskbar_dock':
         return 'Modular Taskbar Dock';
       case 'taskbar_media':
@@ -22882,6 +21247,246 @@ class _DashboardViewState extends State<DashboardView>
           ),
         );
 
+      case 'cyber_hud':
+        return Container(
+          width: 140,
+          height: 96,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF070B12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF00FFCC), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00FFCC).withValues(alpha: 0.25),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '// CYBER',
+                    style: TextStyle(
+                      color: Color(0xFF00FFCC),
+                      fontSize: 7.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    '2026',
+                    style: TextStyle(color: Colors.white54, fontSize: 7.5),
+                  ),
+                ],
+              ),
+              SizedBox(height: 3),
+              Text(
+                '12:00',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              SizedBox(height: 3),
+              Text(
+                'SYS_ACTIVE • 100%',
+                style: TextStyle(
+                  color: Color(0xFF00FFCC),
+                  fontSize: 6.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case 'atomic_clean':
+        return const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '12:00',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+            ),
+            SizedBox(height: 3),
+            Text(
+              'ATOMIC • ANURATI',
+              style: TextStyle(
+                color: Color(0xFF818CF8),
+                fontSize: 7.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.4,
+                fontFamily: 'Anurati',
+              ),
+            ),
+          ],
+        );
+
+      case 'arc_clock':
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 58,
+              height: 58,
+              child: CustomPaint(
+                painter: ArcClockDialPainter(
+                  dateTime: DateTime.now(),
+                  arcStartColor: const Color(0xFF00E5FF),
+                  arcEndColor: const Color(0xFFE040FB),
+                  hourHandColor: const Color(0xFF555B66),
+                  minuteHandColor: const Color(0xFF00E5FF),
+                  secondHandColor: const Color(0xFFE040FB),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '09:25:30',
+              style: TextStyle(
+                color: Color(0xFF00E5FF),
+                fontSize: 10,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const Text(
+              'Saturday 15 September',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 5.5,
+              ),
+            ),
+          ],
+        );
+
+      case 'flip_clock':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF13161C),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD4D0C8), width: 1.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildMiniFlipDigit('1'),
+                  const SizedBox(width: 3),
+                  _buildMiniFlipDigit('2'),
+                  const SizedBox(width: 5),
+                  _buildMiniFlipDigit('4'),
+                  const SizedBox(width: 3),
+                  _buildMiniFlipDigit('5'),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildMiniFlipTag('TUE'),
+                  const SizedBox(width: 4),
+                  _buildMiniFlipTag('27'),
+                  const SizedBox(width: 4),
+                  _buildMiniFlipTag('OCT'),
+                ],
+              ),
+            ],
+          ),
+        );
+
+      case 'station_weather':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFB91C1C),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFB91C1C).withValues(alpha: 0.4),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                ),
+                child: ClipOval(
+                  child: CustomPaint(
+                    painter: StationClockDialPainter(
+                      dateTime: DateTime.now(),
+                      dialColor: Colors.white,
+                      handColor: const Color(0xFF111827),
+                      secondColor: const Color(0xFFEF4444),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Thursday',
+                    style: TextStyle(color: Colors.white70, fontSize: 7),
+                  ),
+                  const Text(
+                    'November 5th',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Container(
+                    width: 90,
+                    height: 1,
+                    color: Colors.white24,
+                    margin: const EdgeInsets.symmetric(vertical: 3),
+                  ),
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.thunderstorm_rounded, size: 10, color: Colors.white),
+                      SizedBox(width: 2),
+                      Text('12°C', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+                      SizedBox(width: 6),
+                      Icon(Icons.cloud_queue_rounded, size: 10, color: Colors.white),
+                      SizedBox(width: 2),
+                      Text('11°C', style: TextStyle(color: Colors.white, fontSize: 7)),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+
       case 'atomic_clock':
         return const Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -23048,6 +21653,62 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
+
+  Widget _buildMiniFlipDigit(String text) {
+    return Container(
+      width: 22,
+      height: 32,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2229),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: const Color(0xFF2E333D), width: 0.8),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFEFEEDB),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Impact',
+              height: 1.0,
+            ),
+          ),
+          Positioned(
+            top: 15.5,
+            left: 0,
+            right: 0,
+            height: 1.0,
+            child: Container(color: Colors.black),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniFlipTag(String text) {
+    return Container(
+      width: 32,
+      height: 18,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2229),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: const Color(0xFF2E333D), width: 0.6),
+      ),
+      child: Center(
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Color(0xFFEFEEDB),
+            fontSize: 8.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildActiveTemplateLayoutTile() {
     final templates = {

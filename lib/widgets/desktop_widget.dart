@@ -161,6 +161,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     switch (_settings.widgetTemplate) {
       case 'neon':
       case 'robik':
+      case 'cyber_hud':
       case 'taskbar_dock':
       case 'taskbar_system':
         return true;
@@ -3622,6 +3623,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
         return _buildRobikLayout();
       case 'atomic_clock':
         return _buildAtomicClockLayout();
+      case 'cyber_hud':
+        return _buildCyberHudLayout();
+      case 'atomic_clean':
+        return _buildAtomicCleanLayout();
+      case 'arc_clock':
+        return _buildArcClockLayout();
+      case 'flip_clock':
+        return _buildFlipClockLayout();
+      case 'station_weather':
+        return _buildStationWeatherLayout();
       case 'taskbar_dock':
         return _buildTaskbarDockLayout();
       case 'taskbar_media':
@@ -3640,6 +3651,708 @@ class _DesktopWidgetState extends State<DesktopWidget>
       default:
         return _buildClassicLayout();
     }
+  }
+
+  String _formatWithOrdinal(DateTime dt) {
+    final day = dt.day;
+    String suffix = 'th';
+    if (day >= 11 && day <= 13) {
+      suffix = 'th';
+    } else {
+      switch (day % 10) {
+        case 1: suffix = 'st'; break;
+        case 2: suffix = 'nd'; break;
+        case 3: suffix = 'rd'; break;
+        default: suffix = 'th'; break;
+      }
+    }
+    return '${DateFormat('MMMM').format(dt)} $day$suffix';
+  }
+
+  // ── 1. Cyber HUD Terminal (Image 1) ──────────────────────────────────────────
+  Widget _buildCyberHudLayout() {
+    final boxColor = Color(_settings.colorFor(ElementKey.neonBox));
+    final sepColor = Color(_settings.colorFor(ElementKey.separator));
+    final dateColor = Color(_settings.colorFor(ElementKey.date));
+    final badgeColor = Color(_settings.colorFor(ElementKey.day));
+
+    final sepSize = _settings.sizeFor(ElementKey.separator, 10.0) * _settings.fontSizeMultiplier;
+    final dateSize = _settings.sizeFor(ElementKey.date, 10.0) * _settings.fontSizeMultiplier;
+    final badgeSize = _settings.sizeFor(ElementKey.day, 9.5) * _settings.fontSizeMultiplier;
+
+    return _apply3D(
+      ElementKey.neonBox,
+      Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: 22 * _settings.fontSizeMultiplier,
+          vertical: 18 * _settings.fontSizeMultiplier,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF070B12).withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: boxColor, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: boxColor.withValues(alpha: 0.28),
+              blurRadius: 24,
+              spreadRadius: 1,
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.6),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Top: // CYBER  2026
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _apply3D(
+                  ElementKey.separator,
+                  Text(
+                    '// CYBER',
+                    style: TextStyle(
+                      color: sepColor,
+                      fontSize: sepSize,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                      fontFamily: _settings.fontFor(ElementKey.separator),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _apply3D(
+                  ElementKey.date,
+                  Text(
+                    _year,
+                    style: TextStyle(
+                      color: dateColor,
+                      fontSize: dateSize,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: _settings.fontFor(ElementKey.date),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 10 * _settings.fontSizeMultiplier),
+
+            // Middle: Hero Bold Time
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _apply3D(
+                    ElementKey.hours,
+                    Text(
+                      _hours,
+                      style: _styleFor(
+                        ElementKey.hours,
+                        baseSize: 44,
+                        weight: FontWeight.w900,
+                      ).copyWith(letterSpacing: -1.0, height: 1.0),
+                    ),
+                  ),
+                  _apply3D(
+                    ElementKey.separator,
+                    Text(
+                      ':',
+                      style: _styleFor(
+                        ElementKey.separator,
+                        baseSize: 40,
+                        weight: FontWeight.w700,
+                      ).copyWith(height: 1.0),
+                    ),
+                  ),
+                  _apply3D(
+                    ElementKey.minutes,
+                    Text(
+                      _minutes,
+                      style: _styleFor(
+                        ElementKey.minutes,
+                        baseSize: 44,
+                        weight: FontWeight.w900,
+                      ).copyWith(letterSpacing: -1.0, height: 1.0),
+                    ),
+                  ),
+                  if (_settings.showSeconds) ...[
+                    const SizedBox(width: 3),
+                    _apply3D(
+                      ElementKey.seconds,
+                      Text(
+                        _seconds,
+                        style: _styleFor(
+                          ElementKey.seconds,
+                          baseSize: 18,
+                          weight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(height: 12 * _settings.fontSizeMultiplier),
+
+            // Bottom: SYS_ACTIVE • 100%
+            _apply3D(
+              ElementKey.day,
+              Text(
+                'SYS_ACTIVE • ${_ramUsage > 0 ? "${_ramUsage.toInt()}%" : "100%"}',
+                style: TextStyle(
+                  color: badgeColor,
+                  fontSize: badgeSize,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                  fontFamily: _settings.fontFor(ElementKey.day),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 2. Atomic Anurati Minimal (Image 2) ──────────────────────────────────────
+  Widget _buildAtomicCleanLayout() {
+    final subColor = Color(_settings.colorFor(ElementKey.day));
+    final subSize = _settings.sizeFor(ElementKey.day, 10.5) * _settings.fontSizeMultiplier;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _apply3D(
+                ElementKey.hours,
+                Text(
+                  _hours,
+                  style: _styleFor(
+                    ElementKey.hours,
+                    baseSize: 52,
+                    weight: FontWeight.w900,
+                  ).copyWith(letterSpacing: -1.2, height: 1.0),
+                ),
+              ),
+              _apply3D(
+                ElementKey.separator,
+                Text(
+                  ':',
+                  style: _styleFor(
+                    ElementKey.separator,
+                    baseSize: 46,
+                    weight: FontWeight.w700,
+                  ).copyWith(height: 1.0),
+                ),
+              ),
+              _apply3D(
+                ElementKey.minutes,
+                Text(
+                  _minutes,
+                  style: _styleFor(
+                    ElementKey.minutes,
+                    baseSize: 52,
+                    weight: FontWeight.w900,
+                  ).copyWith(letterSpacing: -1.2, height: 1.0),
+                ),
+              ),
+              if (_settings.showSeconds) ...[
+                const SizedBox(width: 4),
+                _apply3D(
+                  ElementKey.seconds,
+                  Text(
+                    _seconds,
+                    style: _styleFor(
+                      ElementKey.seconds,
+                      baseSize: 18,
+                      weight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        SizedBox(height: 8 * _settings.fontSizeMultiplier),
+        _apply3D(
+          ElementKey.day,
+          Text(
+            'ATOMIC • ANURATI',
+            style: TextStyle(
+              color: subColor,
+              fontSize: subSize,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 3.2,
+              fontFamily: _settings.fontFor(ElementKey.day),
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 4,
+                  offset: const Offset(0.5, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── 3. Radial Arc Clock & Gauge (Image 3) ───────────────────────────────────
+  Widget _buildArcClockLayout() {
+    final arcStart = Color(_settings.colorFor(ElementKey.minutes));
+    final arcEnd = Color(_settings.colorFor(ElementKey.seconds));
+    final hourHandCol = Color(_settings.colorFor(ElementKey.hours));
+
+    final dialSize = (165.0 * _settings.fontSizeMultiplier).clamp(90.0, 300.0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Analog Arc Dial Face
+        _apply3D(
+          ElementKey.hours,
+          SizedBox(
+            width: dialSize,
+            height: dialSize,
+            child: CustomPaint(
+              painter: ArcClockDialPainter(
+                dateTime: _dateTime,
+                arcStartColor: arcStart,
+                arcEndColor: arcEnd,
+                hourHandColor: hourHandCol,
+                minuteHandColor: arcStart,
+                secondHandColor: arcEnd,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 10 * _settings.fontSizeMultiplier),
+
+        // Digital Time (Electric Cyan)
+        _apply3D(
+          ElementKey.minutes,
+          Text(
+            _settings.showSeconds ? '$_hours:$_minutes:$_seconds' : '$_hours:$_minutes',
+            style: _styleFor(
+              ElementKey.minutes,
+              baseSize: 22,
+              weight: FontWeight.w300,
+            ).copyWith(letterSpacing: 1.0),
+          ),
+        ),
+        SizedBox(height: 3 * _settings.fontSizeMultiplier),
+
+        // Date Line (Saturday 15 September)
+        _apply3D(
+          ElementKey.day,
+          Text(
+            DateFormat('EEEE d MMMM').format(_dateTime),
+            style: _styleFor(
+              ElementKey.day,
+              baseSize: 11,
+              weight: FontWeight.w400,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── 4. Mechanical Split-Flap Clock (Image 4) ─────────────────────────────────
+  Widget _buildFlipTile({
+    required String text,
+    String? subTag,
+    required double width,
+    required double height,
+    required double fontSize,
+    required String fontKey,
+  }) {
+    final numColor = Color(_settings.colorFor(fontKey));
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2229),
+        borderRadius: BorderRadius.circular(6 * (width / 54.0)),
+        border: Border.all(color: const Color(0xFF2E333D), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Centered Number
+          Center(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: numColor,
+                fontSize: fontSize,
+                fontWeight: FontWeight.w900,
+                fontFamily: _settings.fontFor(fontKey),
+                height: 1.0,
+              ),
+            ),
+          ),
+          // Subtag (AM/PM) if any
+          if (subTag != null)
+            Positioned(
+              bottom: 4 * (height / 74.0),
+              left: 4 * (width / 54.0),
+              child: Text(
+                subTag,
+                style: TextStyle(
+                  color: numColor.withValues(alpha: 0.75),
+                  fontSize: 7.5 * (fontSize / 34.0),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          // Mechanical Split Crease Line
+          Positioned(
+            top: (height / 2) - 0.75,
+            left: 0,
+            right: 0,
+            height: 1.5,
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.7),
+            ),
+          ),
+          // Side mechanical hinge notches
+          Positioned(
+            top: (height / 2) - 2.5,
+            left: 0,
+            width: 3,
+            height: 5,
+            child: Container(color: Colors.black54),
+          ),
+          Positioned(
+            top: (height / 2) - 2.5,
+            right: 0,
+            width: 3,
+            height: 5,
+            child: Container(color: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlipClockLayout() {
+    final frameColor = Color(_settings.colorFor(ElementKey.neonBox));
+    final h1 = _hours.isNotEmpty ? _hours[0] : '1';
+    final h2 = _hours.length > 1 ? _hours[1] : '2';
+    final m1 = _minutes.isNotEmpty ? _minutes[0] : '4';
+    final m2 = _minutes.length > 1 ? _minutes[1] : '5';
+
+    final dayStr = DateFormat('EEE').format(_dateTime).toUpperCase();
+    final dateStr = _dateTime.day.toString().padLeft(2, '0');
+    final monthStr = DateFormat('MMM').format(_dateTime).toUpperCase();
+
+    final cardW = 54.0 * _settings.fontSizeMultiplier;
+    final cardH = 74.0 * _settings.fontSizeMultiplier;
+    final numSize = 34.0 * _settings.fontSizeMultiplier;
+
+    final dateCardW = 68.0 * _settings.fontSizeMultiplier;
+    final dateCardH = 38.0 * _settings.fontSizeMultiplier;
+    final dateNumSize = 15.0 * _settings.fontSizeMultiplier;
+
+    final gap = 6.0 * _settings.fontSizeMultiplier;
+    final midGap = 10.0 * _settings.fontSizeMultiplier;
+
+    return _apply3D(
+      ElementKey.neonBox,
+      Container(
+        padding: EdgeInsets.all(14 * _settings.fontSizeMultiplier),
+        decoration: BoxDecoration(
+          color: const Color(0xFF13161C),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: frameColor, width: 2.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Top Row: 4 Time Flip Cards
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _apply3D(
+                  ElementKey.hours,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildFlipTile(
+                        text: h1,
+                        subTag: _settings.use24HourFormat ? null : _ampm,
+                        width: cardW,
+                        height: cardH,
+                        fontSize: numSize,
+                        fontKey: ElementKey.hours,
+                      ),
+                      SizedBox(width: gap),
+                      _buildFlipTile(
+                        text: h2,
+                        width: cardW,
+                        height: cardH,
+                        fontSize: numSize,
+                        fontKey: ElementKey.hours,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: midGap),
+                _apply3D(
+                  ElementKey.minutes,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildFlipTile(
+                        text: m1,
+                        width: cardW,
+                        height: cardH,
+                        fontSize: numSize,
+                        fontKey: ElementKey.minutes,
+                      ),
+                      SizedBox(width: gap),
+                      _buildFlipTile(
+                        text: m2,
+                        width: cardW,
+                        height: cardH,
+                        fontSize: numSize,
+                        fontKey: ElementKey.minutes,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8 * _settings.fontSizeMultiplier),
+
+            // Bottom Row: 3 Date Flip Cards
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _apply3D(
+                  ElementKey.day,
+                  _buildFlipTile(
+                    text: dayStr,
+                    width: dateCardW,
+                    height: dateCardH,
+                    fontSize: dateNumSize,
+                    fontKey: ElementKey.day,
+                  ),
+                ),
+                SizedBox(width: gap),
+                _apply3D(
+                  ElementKey.date,
+                  _buildFlipTile(
+                    text: dateStr,
+                    width: dateCardW * 0.9,
+                    height: dateCardH,
+                    fontSize: dateNumSize,
+                    fontKey: ElementKey.date,
+                  ),
+                ),
+                SizedBox(width: gap),
+                _apply3D(
+                  ElementKey.year,
+                  _buildFlipTile(
+                    text: monthStr,
+                    width: dateCardW,
+                    height: dateCardH,
+                    fontSize: dateNumSize,
+                    fontKey: ElementKey.year,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 5. Swiss Station Clock & 3-Step Weather Pill (Image 5) ───────────────────
+  Widget _buildStationWeatherLayout() {
+    final pillBg = Color(_settings.colorFor(ElementKey.neonBox));
+    final handCol = Color(_settings.colorFor(ElementKey.hours));
+    final secCol = Color(_settings.colorFor(ElementKey.seconds));
+
+    final weekdayStr = DateFormat('EEEE').format(_dateTime);
+    final monthDayStr = _formatWithOrdinal(_dateTime);
+    final currentTemp = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '12°C';
+    final baseTempInt = int.tryParse(_settings.weatherTemp) ?? 12;
+
+    final clockSize = (124.0 * _settings.fontSizeMultiplier).clamp(70.0, 220.0);
+
+    return _apply3D(
+      ElementKey.neonBox,
+      Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: 20 * _settings.fontSizeMultiplier,
+          vertical: 16 * _settings.fontSizeMultiplier,
+        ),
+        decoration: BoxDecoration(
+          color: pillBg,
+          borderRadius: BorderRadius.circular(44 * _settings.fontSizeMultiplier),
+          boxShadow: [
+            BoxShadow(
+              color: pillBg.withValues(alpha: 0.4),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Left: Analog Swiss Station Clock
+            _apply3D(
+              ElementKey.hours,
+              Container(
+                width: clockSize,
+                height: clockSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: pillBg.withValues(alpha: 0.8), width: 6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: CustomPaint(
+                    painter: StationClockDialPainter(
+                      dateTime: _dateTime,
+                      dialColor: Colors.white,
+                      handColor: handCol,
+                      secondColor: secCol,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 20 * _settings.fontSizeMultiplier),
+
+            // Right: Date & 3-Step Weather Forecast
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _apply3D(
+                  ElementKey.day,
+                  Text(
+                    weekdayStr,
+                    style: _styleFor(
+                      ElementKey.day,
+                      baseSize: 12,
+                      weight: FontWeight.w400,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                _apply3D(
+                  ElementKey.date,
+                  Text(
+                    monthDayStr,
+                    style: _styleFor(
+                      ElementKey.date,
+                      baseSize: 22,
+                      weight: FontWeight.w700,
+                    ).copyWith(letterSpacing: -0.2),
+                  ),
+                ),
+                SizedBox(height: 6 * _settings.fontSizeMultiplier),
+                Container(
+                  width: 170 * _settings.fontSizeMultiplier,
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.25),
+                ),
+                SizedBox(height: 8 * _settings.fontSizeMultiplier),
+
+                // 3-step forecast columns
+                _apply3D(
+                  ElementKey.weatherTemp,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildForecastCol(Icons.thunderstorm_rounded, currentTemp, 'Now'),
+                      SizedBox(width: 18 * _settings.fontSizeMultiplier),
+                      _buildForecastCol(Icons.cloud_queue_rounded, '${baseTempInt - 1}°C', '14:00'),
+                      SizedBox(width: 18 * _settings.fontSizeMultiplier),
+                      _buildForecastCol(Icons.cloud_queue_rounded, '${baseTempInt - 2}°C', '15:00'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForecastCol(IconData icon, String temp, String time) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18 * _settings.fontSizeMultiplier, color: Colors.white),
+        const SizedBox(height: 3),
+        Text(
+          temp,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11 * _settings.fontSizeMultiplier,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          time,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 9 * _settings.fontSizeMultiplier,
+          ),
+        ),
+      ],
+    );
   }
 
   // ── Main build ────────────────────────────────────────────────────────────
@@ -5287,3 +6000,287 @@ class SleepTrackerPainter extends CustomPainter {
   bool shouldRepaint(covariant SleepTrackerPainter oldDelegate) =>
       oldDelegate.color != color;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Arc Clock Dial Painter (Image 3) ──────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ArcClockDialPainter extends CustomPainter {
+  final DateTime dateTime;
+  final Color arcStartColor;
+  final Color arcEndColor;
+  final Color hourHandColor;
+  final Color minuteHandColor;
+  final Color secondHandColor;
+
+  ArcClockDialPainter({
+    required this.dateTime,
+    this.arcStartColor = const Color(0xFF00E5FF),
+    this.arcEndColor = const Color(0xFFE040FB),
+    this.hourHandColor = const Color(0xFF555B66),
+    this.minuteHandColor = const Color(0xFF00E5FF),
+    this.secondHandColor = const Color(0xFFE040FB),
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 8;
+
+    // 1. Draw glowing gradient arc on the left side (~220 degrees)
+    final arcRect = Rect.fromCircle(center: center, radius: radius);
+    final gradient = SweepGradient(
+      startAngle: math.pi * 0.6,
+      endAngle: math.pi * 1.8,
+      colors: [arcStartColor, arcEndColor],
+      tileMode: TileMode.clamp,
+    );
+
+    final arcPaint = Paint()
+      ..shader = gradient.createShader(arcRect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5
+      ..strokeCap = StrokeCap.round;
+
+    // Sweep from ~65 degrees to ~285 degrees (around the left side)
+    const arcStartAngle = math.pi * 0.55;
+    const arcSweepAngle = math.pi * 1.25;
+    canvas.drawArc(
+      arcRect,
+      arcStartAngle,
+      arcSweepAngle,
+      false,
+      arcPaint,
+    );
+
+    // End caps markers on the arc (magenta top, cyan bottom)
+    final capPaintMagenta = Paint()
+      ..color = arcEndColor
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+    final capPaintCyan = Paint()
+      ..color = arcStartColor
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+
+    // Draw perpendicular cap notch at top end (arcStartAngle + arcSweepAngle)
+    final topCapAngle = arcStartAngle + arcSweepAngle;
+    final topP1 = Offset(center.dx + (radius - 5) * math.cos(topCapAngle), center.dy + (radius - 5) * math.sin(topCapAngle));
+    final topP2 = Offset(center.dx + (radius + 5) * math.cos(topCapAngle), center.dy + (radius + 5) * math.sin(topCapAngle));
+    canvas.drawLine(topP1, topP2, capPaintMagenta);
+
+    // Draw perpendicular cap notch at bottom end (arcStartAngle)
+    final bottomP1 = Offset(center.dx + (radius - 5) * math.cos(arcStartAngle), center.dy + (radius - 5) * math.sin(arcStartAngle));
+    final bottomP2 = Offset(center.dx + (radius + 5) * math.cos(arcStartAngle), center.dy + (radius + 5) * math.sin(arcStartAngle));
+    canvas.drawLine(bottomP1, bottomP2, capPaintCyan);
+
+    // 2. Tick marks along the circle
+    final tickPaintFaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.25)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
+    final tickPaintAccent = Paint()
+      ..color = arcEndColor.withValues(alpha: 0.8)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < 12; i++) {
+      final angle = i * (math.pi / 6) - (math.pi / 2);
+      final isAccent = (i == 9 || i == 0 || i == 3);
+      final tickLen = isAccent ? 8.0 : 5.0;
+
+      final p1 = Offset(
+        center.dx + (radius - tickLen) * math.cos(angle),
+        center.dy + (radius - tickLen) * math.sin(angle),
+      );
+      final p2 = Offset(
+        center.dx + radius * math.cos(angle),
+        center.dy + radius * math.sin(angle),
+      );
+
+      canvas.drawLine(p1, p2, isAccent ? tickPaintAccent : tickPaintFaint);
+    }
+
+    // 3. Hour Hand (Chunky charcoal/grey)
+    final hourAngle = ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) - (math.pi / 2);
+    final hourLen = radius * 0.50;
+    final hourPaint = Paint()
+      ..color = hourHandColor
+      ..strokeWidth = 4.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      center,
+      Offset(
+        center.dx + hourLen * math.cos(hourAngle),
+        center.dy + hourLen * math.sin(hourAngle),
+      ),
+      hourPaint,
+    );
+
+    // 4. Minute Hand (Cyan)
+    final minuteAngle = (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) - (math.pi / 2);
+    final minuteLen = radius * 0.78;
+    final minutePaint = Paint()
+      ..color = minuteHandColor
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      center,
+      Offset(
+        center.dx + minuteLen * math.cos(minuteAngle),
+        center.dy + minuteLen * math.sin(minuteAngle),
+      ),
+      minutePaint,
+    );
+
+    // 5. Center Pivot Hub (Cyan ring with inner white/cyan circle)
+    final hubOuterPaint = Paint()
+      ..color = minuteHandColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+    canvas.drawCircle(center, 6.0, hubOuterPaint);
+
+    final hubInnerPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, 2.5, hubInnerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant ArcClockDialPainter oldDelegate) {
+    return oldDelegate.dateTime != dateTime ||
+        oldDelegate.arcStartColor != arcStartColor ||
+        oldDelegate.arcEndColor != arcEndColor;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Swiss Station Clock Dial Painter (Image 5) ───────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+class StationClockDialPainter extends CustomPainter {
+  final DateTime dateTime;
+  final Color dialColor;
+  final Color handColor;
+  final Color secondColor;
+
+  StationClockDialPainter({
+    required this.dateTime,
+    this.dialColor = Colors.white,
+    this.handColor = const Color(0xFF111827),
+    this.secondColor = const Color(0xFFEF4444),
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2;
+
+    // Dial background
+    final bgPaint = Paint()..color = dialColor;
+    canvas.drawCircle(center, radius, bgPaint);
+
+    // Subtle concentric inner ring
+    final innerRingPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawCircle(center, radius * 0.55, innerRingPaint);
+
+    // Railroad tick marks around rim
+    for (int i = 0; i < 60; i++) {
+      final angle = i * (math.pi / 30) - (math.pi / 2);
+      final isHour = (i % 5 == 0);
+      final tickLen = isHour ? 9.0 : 4.0;
+      final tickWidth = isHour ? 2.5 : 1.0;
+
+      final p1 = Offset(
+        center.dx + (radius - 4 - tickLen) * math.cos(angle),
+        center.dy + (radius - 4 - tickLen) * math.sin(angle),
+      );
+      final p2 = Offset(
+        center.dx + (radius - 4) * math.cos(angle),
+        center.dy + (radius - 4) * math.sin(angle),
+      );
+
+      final p = Paint()
+        ..color = isHour ? handColor : handColor.withValues(alpha: 0.5)
+        ..strokeWidth = tickWidth
+        ..strokeCap = StrokeCap.square;
+
+      canvas.drawLine(p1, p2, p);
+    }
+
+    // Hour Hand
+    final hourAngle = ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) - (math.pi / 2);
+    final hourLen = radius * 0.52;
+    final hourPaint = Paint()
+      ..color = handColor
+      ..strokeWidth = 4.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      center,
+      Offset(
+        center.dx + hourLen * math.cos(hourAngle),
+        center.dy + hourLen * math.sin(hourAngle),
+      ),
+      hourPaint,
+    );
+
+    // Minute Hand
+    final minuteAngle = (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) - (math.pi / 2);
+    final minuteLen = radius * 0.76;
+    final minutePaint = Paint()
+      ..color = handColor
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      center,
+      Offset(
+        center.dx + minuteLen * math.cos(minuteAngle),
+        center.dy + minuteLen * math.sin(minuteAngle),
+      ),
+      minutePaint,
+    );
+
+    // Second Hand (Swiss Red with counterweight disk)
+    final secAngle = dateTime.second * (math.pi / 30) - (math.pi / 2);
+    final secLen = radius * 0.82;
+    final secBackLen = radius * 0.22;
+    final secPaint = Paint()
+      ..color = secondColor
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+
+    final pStart = Offset(
+      center.dx - secBackLen * math.cos(secAngle),
+      center.dy - secBackLen * math.sin(secAngle),
+    );
+    final pEnd = Offset(
+      center.dx + secLen * math.cos(secAngle),
+      center.dy + secLen * math.sin(secAngle),
+    );
+    canvas.drawLine(pStart, pEnd, secPaint);
+
+    // Counterweight circular disk on second hand
+    final diskCenter = Offset(
+      center.dx - secBackLen * 0.7 * math.cos(secAngle),
+      center.dy - secBackLen * 0.7 * math.sin(secAngle),
+    );
+    canvas.drawCircle(diskCenter, 3.5, Paint()..color = secondColor);
+
+    // Center pivot pin
+    canvas.drawCircle(center, 4.0, Paint()..color = handColor);
+  }
+
+  @override
+  bool shouldRepaint(covariant StationClockDialPainter oldDelegate) {
+    return oldDelegate.dateTime != dateTime ||
+        oldDelegate.dialColor != dialColor ||
+        oldDelegate.handColor != handColor;
+  }
+}
+

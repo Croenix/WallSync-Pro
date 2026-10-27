@@ -827,8 +827,13 @@ class WidgetSettings {
     'animated_neon': {'width': 400.0, 'height': 400.0, 'sizeFactor': 0.8},
     'sleep_weather': {'width': 420.0, 'height': 300.0, 'sizeFactor': 1.0},
     'robik': {'width': 430.0, 'height': 220.0, 'sizeFactor': 1.0},
-    'atomic_clock': {'width': 440.0, 'height': 220.0, 'sizeFactor': 1.0},
     'custom': {'width': 480.0, 'height': 260.0, 'sizeFactor': 1.0},
+    // New Highly-Requested Desktop Widget Templates
+    'cyber_hud': {'width': 260.0, 'height': 260.0, 'sizeFactor': 1.0},
+    'atomic_clean': {'width': 340.0, 'height': 180.0, 'sizeFactor': 1.0},
+    'arc_clock': {'width': 280.0, 'height': 320.0, 'sizeFactor': 1.0},
+    'flip_clock': {'width': 380.0, 'height': 210.0, 'sizeFactor': 1.0},
+    'station_weather': {'width': 440.0, 'height': 200.0, 'sizeFactor': 1.0},
     // TaskbarWidgets Add-on Templates (pfcdev/TaskbarWidgets)
     'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
     'taskbar_media': {'width': 340.0, 'height': 44.0, 'sizeFactor': 1.0},
@@ -1070,6 +1075,36 @@ class WidgetSettings {
           return 0xFFFFFFFF;
         }
         return 0xFFFFFFFF;
+      case 'cyber_hud':
+        if (key == 'hours' || key == 'minutes') return 0xFFFFFFFF;
+        if (key == 'separator' || key == 'neon_badge') return 0xFF00FFCC;
+        if (key == 'day') return 0xFF00FFCC;
+        if (key == 'date') return 0x8AFFFFFF;
+        if (key == 'neon_box') return 0xFF00FFCC;
+        return 0xFF00FFCC;
+      case 'atomic_clean':
+        if (key == 'hours' || key == 'minutes') return 0xFFFFFFFF;
+        if (key == 'separator' || key == 'day') return 0xFF818CF8;
+        return 0xFF818CF8;
+      case 'arc_clock':
+        if (key == 'hours') return 0xFF555B66;
+        if (key == 'minutes' || key == 'separator') return 0xFF00E5FF;
+        if (key == 'seconds') return 0xFFE040FB;
+        if (key == 'day' || key == 'date') return 0x99FFFFFF;
+        return 0xFF00E5FF;
+      case 'flip_clock':
+        if (key == 'hours' || key == 'minutes' || key == 'seconds') return 0xFFEFEEDB;
+        if (key == 'day' || key == 'date' || key == 'year') return 0xFFE2E8F0;
+        if (key == 'separator') return 0xFF23272E;
+        if (key == 'neon_box') return 0xFFD4D0C8;
+        return 0xFFEFEEDB;
+      case 'station_weather':
+        if (key == 'hours' || key == 'minutes') return 0xFF111827;
+        if (key == 'seconds') return 0xFFEF4444;
+        if (key == 'day' || key == 'date') return 0xFFFFFFFF;
+        if (key == 'weatherTemp' || key == 'weatherIcon') return 0xFFFFFFFF;
+        if (key == 'neon_box') return 0xFFB91C1C;
+        return 0xFFFFFFFF;
       case 'classic':
       default:
         if (key == 'hours' || key == 'minutes' || key == 'seconds') {
@@ -1115,6 +1150,18 @@ class WidgetSettings {
         return 'Product Sans';
       case 'atomic_clock':
         return 'Anurati';
+      case 'cyber_hud':
+        return 'Segoe UI';
+      case 'atomic_clean':
+        if (key == 'day') return 'Anurati';
+        return 'Segoe UI';
+      case 'arc_clock':
+        return 'Segoe UI';
+      case 'flip_clock':
+        return 'Impact';
+      case 'station_weather':
+        if (key == 'day' || key == 'date') return 'Segoe UI';
+        return 'Segoe UI';
       case 'taskbar_dock':
       case 'taskbar_media':
       case 'taskbar_system':
