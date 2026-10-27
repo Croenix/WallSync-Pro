@@ -229,7 +229,7 @@ class LiveWallpaperPlugin::Impl {
   flutter::EncodableMap GetWindowsAccentColor();
 
   std::wstring FindMpvExecutable();
-  void SendMpvCommand(const std::string& json_cmd);
+  bool SendMpvCommand(const std::string& json_cmd);
   HWND FindMpvWindow(DWORD pid, int timeout_ms);
   bool ReparentMpvWindow(HWND mpv_hwnd, int* out_width, int* out_height,
                          std::string* failure_reason,
@@ -514,8 +514,8 @@ std::wstring LiveWallpaperPlugin::Impl::FindMpvExecutable() {
   return L"";
 }
 
-void LiveWallpaperPlugin::Impl::SendMpvCommand(const std::string& json_cmd) {
-  if (mpv_pipe_name_.empty()) return;
+bool LiveWallpaperPlugin::Impl::SendMpvCommand(const std::string& json_cmd) {
+  if (mpv_pipe_name_.empty()) return false;
   std::wstring full_pipe = LR"(\\.\pipe\)" + Utf8ToWide(mpv_pipe_name_);
 
   if (mpv_pipe_handle_ == nullptr || mpv_pipe_handle_ == INVALID_HANDLE_VALUE) {
@@ -533,11 +533,14 @@ void LiveWallpaperPlugin::Impl::SendMpvCommand(const std::string& json_cmd) {
     BOOL ok = WriteFile(mpv_pipe_handle_, payload.c_str(),
                         static_cast<DWORD>(payload.length()), &written, nullptr);
     if (ok) {
+      return true;
     } else {
       CloseHandle(mpv_pipe_handle_);
       mpv_pipe_handle_ = INVALID_HANDLE_VALUE;
+      return false;
     }
   }
+  return false;
 }
 
 namespace {
@@ -668,6 +671,71 @@ bool LiveWallpaperPlugin::Impl::ReparentMpvWindow(
 }
 
 flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::EncodableMap* args) {
+  std::string video_path;
+  int volume = 100;
+  bool is_muted = false;
+  std::string fit = "fill";
+  bool is_loop = true;
+
+  if (args) {
+    auto it_path = args->find(flutter::EncodableValue("path"));
+    if (it_path != args->end()) {
+      video_path = GetStringFromEncodable(it_path->second);
+    }
+    auto it_vol = args->find(flutter::EncodableValue("volume"));
+    if (it_vol != args->end()) {
+      volume = GetIntFromEncodable(it_vol->second, 100);
+    }
+    auto it_muted = args->find(flutter::EncodableValue("muted"));
+    if (it_muted != args->end()) {
+      is_muted = GetBoolFromEncodable(it_muted->second, false);
+    }
+    auto it_fit = args->find(flutter::EncodableValue("fit"));
+    if (it_fit != args->end()) {
+      fit = GetStringFromEncodable(it_fit->second, "fill");
+    }
+    auto it_loop = args->find(flutter::EncodableValue("loop"));
+    if (it_loop != args->end()) {
+      is_loop = GetBoolFromEncodable(it_loop->second, true);
+    }
+  }
+
+  if (video_path.empty()) {
+    return {};
+  }
+
+  // Fast path: if MPV is already running, healthy, and attached to the desktop,
+  // reuse it seamlessly via IPC loadfile! This eliminates process recreation,
+  // window reparenting, and polling delays (ready in ~10ms).
+  if (mpv_process_handle_ && mpv_hwnd_ && IsWindow(mpv_hwnd_) && mpv_window_attached_) {
+    DWORD exit_code = 0;
+    if (GetExitCodeProcess(mpv_process_handle_, &exit_code) && exit_code == STILL_ACTIVE) {
+      std::wstring wide_video = Utf8ToWide(video_path);
+      std::replace(wide_video.begin(), wide_video.end(), L'\\', L'/');
+      std::string safe_video = WideToUtf8(wide_video);
+      std::string escaped;
+      for (char c : safe_video) {
+        if (c == '"') escaped += "\\\"";
+        else if (c == '\\') escaped += "\\\\";
+        else escaped += c;
+      }
+      std::string load_cmd = R"({"command":["loadfile",")" + escaped + R"("]})";
+      if (SendMpvCommand(load_cmd)) {
+        SetMpvSettings(args);
+        flutter::EncodableMap result;
+        result[flutter::EncodableValue("success")] = flutter::EncodableValue(true);
+        result[flutter::EncodableValue("pid")] = flutter::EncodableValue(static_cast<int>(mpv_pid_));
+        result[flutter::EncodableValue("width")] = flutter::EncodableValue(mpv_width_ > 0 ? mpv_width_ : 1920);
+        result[flutter::EncodableValue("height")] = flutter::EncodableValue(mpv_height_ > 0 ? mpv_height_ : 1080);
+        result[flutter::EncodableValue("frameDecoded")] = flutter::EncodableValue(true);
+        result[flutter::EncodableValue("windowAttached")] = flutter::EncodableValue(true);
+        result[flutter::EncodableValue("windowVisible")] = flutter::EncodableValue(true);
+        result[flutter::EncodableValue("reused")] = flutter::EncodableValue(true);
+        return result;
+      }
+    }
+  }
+
   const auto start_call = std::chrono::steady_clock::now();
   if (!StopMpv()) {
     flutter::EncodableMap failure;
@@ -705,39 +773,6 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
     failure[flutter::EncodableValue("cleanupMs")] = flutter::EncodableValue(mpv_previous_cleanup_ms_);
     failure[flutter::EncodableValue("lookupMs")] = flutter::EncodableValue(mpv_executable_lookup_ms_);
     return failure;
-  }
-
-  std::string video_path;
-  int volume = 100;
-  bool is_muted = false;
-  std::string fit = "fill";
-  bool is_loop = true;
-
-  if (args) {
-    auto it_path = args->find(flutter::EncodableValue("path"));
-    if (it_path != args->end()) {
-      video_path = GetStringFromEncodable(it_path->second);
-    }
-    auto it_vol = args->find(flutter::EncodableValue("volume"));
-    if (it_vol != args->end()) {
-      volume = GetIntFromEncodable(it_vol->second, 100);
-    }
-    auto it_muted = args->find(flutter::EncodableValue("muted"));
-    if (it_muted != args->end()) {
-      is_muted = GetBoolFromEncodable(it_muted->second, false);
-    }
-    auto it_fit = args->find(flutter::EncodableValue("fit"));
-    if (it_fit != args->end()) {
-      fit = GetStringFromEncodable(it_fit->second, "fill");
-    }
-    auto it_loop = args->find(flutter::EncodableValue("loop"));
-    if (it_loop != args->end()) {
-      is_loop = GetBoolFromEncodable(it_loop->second, true);
-    }
-  }
-
-  if (video_path.empty()) {
-    return {};
   }
 
   auto now = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -1194,33 +1229,34 @@ bool LiveWallpaperPlugin::Impl::StopMpv() {
         SendMpvCommand(R"({"command":["quit"]})");
       }
 
-      // Close the pipe handle promptly after sending quit so MPV detects EOF
-      // and does not block its IPC thread on active connection buffers.
       if (mpv_pipe_handle_ != INVALID_HANDLE_VALUE && mpv_pipe_handle_ != nullptr) {
         CloseHandle(mpv_pipe_handle_);
         mpv_pipe_handle_ = INVALID_HANDLE_VALUE;
       }
 
-      // Allow up to 2500ms for graceful direct3d / hardware teardown.
-      DWORD wait_status = WaitForSingleObject(mpv_process_handle_, 2500);
+      // Check briefly (up to 50ms) on the platform thread for fast shutdown;
+      // if it takes longer, offload the wait & termination to a worker thread
+      // so Flutter never stalls its event loop or frame rendering.
+      DWORD wait_status = WaitForSingleObject(mpv_process_handle_, 50);
       if (wait_status == WAIT_TIMEOUT) {
-        // Graceful shutdown timed out; forcefully terminate only this owned process.
-        TerminateProcess(mpv_process_handle_, 0);
-        wait_status = WaitForSingleObject(mpv_process_handle_, 2000);
+        HANDLE proc_to_wait = mpv_process_handle_;
+        mpv_process_handle_ = nullptr;
+        std::thread([proc_to_wait]() {
+          DWORD status = WaitForSingleObject(proc_to_wait, 1500);
+          if (status == WAIT_TIMEOUT) {
+            TerminateProcess(proc_to_wait, 0);
+            WaitForSingleObject(proc_to_wait, 1000);
+          }
+          CloseHandle(proc_to_wait);
+        }).detach();
+      } else {
+        CloseHandle(mpv_process_handle_);
+        mpv_process_handle_ = nullptr;
       }
-
-      // Verify that the process has actually terminated before confirming shutdown.
-      if (wait_status != WAIT_OBJECT_0) {
-        DWORD final_code = 0;
-        if (GetExitCodeProcess(mpv_process_handle_, &final_code) &&
-            final_code == STILL_ACTIVE) {
-          return false;
-        }
-      }
+    } else {
+      CloseHandle(mpv_process_handle_);
+      mpv_process_handle_ = nullptr;
     }
-
-    CloseHandle(mpv_process_handle_);
-    mpv_process_handle_ = nullptr;
   }
 
   if (mpv_pipe_handle_ != INVALID_HANDLE_VALUE && mpv_pipe_handle_ != nullptr) {
@@ -1476,11 +1512,6 @@ std::optional<LRESULT> LiveWallpaperPlugin::Impl::HandleWindowMessage(
 void LiveWallpaperPlugin::Impl::OptimizeMemory() {
   HANDLE current_proc = GetCurrentProcess();
   SetProcessWorkingSetSize(current_proc, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
-  EmptyWorkingSet(current_proc);
-
-  if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
-    EmptyWorkingSet(mpv_process_handle_);
-  }
 }
 
 void LiveWallpaperPlugin::Impl::SetLowPowerMode(bool enable) {
@@ -1500,7 +1531,7 @@ void LiveWallpaperPlugin::Impl::SetLowPowerMode(bool enable) {
   SetProcessInformation(current_proc, ProcessPowerThrottling, &throttling, sizeof(throttling));
 
   if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
-    SetPriorityClass(mpv_process_handle_, enable ? IDLE_PRIORITY_CLASS : BELOW_NORMAL_PRIORITY_CLASS);
+    SetPriorityClass(mpv_process_handle_, enable ? BELOW_NORMAL_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS);
   }
 }
 

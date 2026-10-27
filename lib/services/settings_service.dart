@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'overlay_startup_service.dart';
@@ -830,8 +829,9 @@ class WidgetSettings {
     'sleep_weather': {'width': 420.0, 'height': 300.0, 'sizeFactor': 1.0},
     'robik': {'width': 430.0, 'height': 220.0, 'sizeFactor': 1.0},
     'custom': {'width': 480.0, 'height': 260.0, 'sizeFactor': 1.0},
+    'atomic_clock': {'width': 440.0, 'height': 220.0, 'sizeFactor': 1.0},
     // New Highly-Requested Desktop Widget Templates
-        'cyber_hud': {'width': 280.0, 'height': 240.0, 'sizeFactor': 1.0},
+    'cyber_hud': {'width': 280.0, 'height': 240.0, 'sizeFactor': 1.0},
     'atomic_clean': {'width': 300.0, 'height': 160.0, 'sizeFactor': 1.0},
     'arc_clock': {'width': 280.0, 'height': 300.0, 'sizeFactor': 1.0},
     'flip_clock': {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0},
@@ -1653,7 +1653,7 @@ class _SettingsFileWritePayload {
   });
 }
 
-Future<bool> _executeIsolatedSettingsWrite(_SettingsFileWritePayload payload) async {
+Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async {
   final lock = File(payload.lockFilePath);
   final file = File(payload.settingsFilePath);
   RandomAccessFile? raf;
@@ -1674,19 +1674,11 @@ Future<bool> _executeIsolatedSettingsWrite(_SettingsFileWritePayload payload) as
       '${file.path}.${payload.pid}.${DateTime.now().microsecondsSinceEpoch}.tmp',
     );
     try {
-      await tempFile.writeAsString(payload.jsonStr, flush: true);
-      bool renamed = false;
-      for (int i = 0; i < 3; i++) {
-        try {
-          await tempFile.rename(file.path);
-          renamed = true;
-          break;
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 40));
-        }
-      }
-      if (!renamed) {
-        await file.writeAsString(payload.jsonStr, flush: true);
+      await tempFile.writeAsString(payload.jsonStr, flush: false);
+      try {
+        await tempFile.copy(file.path);
+      } catch (_) {
+        await file.writeAsString(payload.jsonStr, flush: false);
       }
       return true;
     } finally {
@@ -1844,7 +1836,7 @@ class SettingsService {
         );
 
         final writeSw = Stopwatch()..start();
-        await Isolate.run(() => _executeIsolatedSettingsWrite(payload));
+        await _executeSettingsFileWrite(payload);
         _cachedSettings = settings;
         _lastPersistedJsonStr = jsonStr;
         final writeMs = writeSw.elapsedMilliseconds;
@@ -1897,7 +1889,7 @@ class SettingsService {
         pid: pid,
       );
 
-      await Isolate.run(() => _executeIsolatedSettingsWrite(payload));
+      await _executeSettingsFileWrite(payload);
       _cachedSettings = updated;
       _lastPersistedJsonStr = jsonStr;
 

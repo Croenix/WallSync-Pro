@@ -1321,6 +1321,9 @@ class _DashboardViewState extends State<DashboardView>
         if (!mounted) return;
 
         if (hasUpdate) {
+          debugPrint(
+            '[UpdateCheck] Update available: remote=$dbVersionStr vs local=$currentVersionStr ($currentBuildNumber)',
+          );
           showDialog(
             context: context,
             barrierDismissible: false,
@@ -1372,8 +1375,16 @@ class _DashboardViewState extends State<DashboardView>
               ],
             ),
           );
+        } else {
+          debugPrint(
+            '[UpdateCheck] No update available. Current version $currentVersionStr ($currentBuildNumber) is up to date.',
+          );
         }
       }
+    } else {
+      debugPrint(
+        '[UpdateCheck] Update check completed: Remote manifest unavailable or not modified.',
+      );
     }
   }
 
@@ -3830,7 +3841,9 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -3851,7 +3864,6 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 7,
@@ -3871,7 +3883,6 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 7,
@@ -3895,9 +3906,11 @@ class _DashboardViewState extends State<DashboardView>
                         ),
                         const SizedBox(height: 10),
                         // Quick Action Buttons
-                        Row(
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 6,
                           children: [
-                            if (heroWp != null && heroWp.isVideo) ...[
+                            if (heroWp != null && heroWp.isVideo)
                               ElevatedButton.icon(
                                 onPressed: () => showLiveVideoPreviewDialog(
                                   context: context,
@@ -3930,9 +3943,7 @@ class _DashboardViewState extends State<DashboardView>
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 10),
-                            ],
-                            if (!isActive && heroWp != null) ...[
+                            if (!isActive && heroWp != null)
                               OutlinedButton.icon(
                                 onPressed: heroWp.isVideo
                                     ? () => _applyVideoWallpaper(heroWp!.url)
@@ -3962,8 +3973,6 @@ class _DashboardViewState extends State<DashboardView>
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 10),
-                            ],
                             OutlinedButton.icon(
                               onPressed: _showCustomImportModal,
                               icon: const Icon(Icons.add_rounded, size: 14),
@@ -7360,28 +7369,30 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Widget _buildEqualizerBars(bool isMuted) {
-    return AnimatedBuilder(
-      animation: _backgroundFlowController,
-      builder: (context, _) {
-        final t = _backgroundFlowController.value * 2 * math.pi;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(4, (i) {
-            final h = isMuted
-                ? 3.0
-                : 4.0 + 8.0 * (0.5 + 0.5 * math.sin(t * 3 + i * 1.2));
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 1.2),
-              width: 2.5,
-              height: h,
-              decoration: BoxDecoration(
-                color: const Color(0xFF38BDF8),
-                borderRadius: BorderRadius.circular(1),
-              ),
-            );
-          }),
-        );
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _backgroundFlowController,
+        builder: (context, _) {
+          final t = _backgroundFlowController.value * 2 * math.pi;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(4, (i) {
+              final h = isMuted
+                  ? 3.0
+                  : 4.0 + 8.0 * (0.5 + 0.5 * math.sin(t * 3 + i * 1.2));
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 1.2),
+                width: 2.5,
+                height: h,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF38BDF8),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              );
+            }),
+          );
+        },
+      ),
     );
   }
 

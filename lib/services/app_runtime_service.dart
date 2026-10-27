@@ -67,7 +67,7 @@ class AppRuntimeService {
     entries.sort((a, b) => a.path.compareTo(b.path));
     final listingMs = listingStopwatch.elapsedMilliseconds;
 
-    // Fast content fingerprinting
+    // Fast content fingerprinting using relative path, file size, and executable second-level mtime
     final fingerprintStopwatch = Stopwatch()..start();
     final stats = await Future.wait(entries.map((e) => e.stat()));
     final fingerprint = StringBuffer();
@@ -77,17 +77,23 @@ class AppRuntimeService {
       final entity = entries[i];
       final stat = stats[i];
       final relativePath = entity.path.substring(sourceDir.path.length);
+      final isExecutable = entity.path.endsWith(executableName);
       fingerprint
         ..write(relativePath)
         ..write('|')
         ..write(stat.type)
         ..write('|')
-        ..write(stat.size)
-        ..write('|')
-        ..write(stat.modified.microsecondsSinceEpoch)
-        ..write('\n');
+        ..write(stat.size);
+      if (isExecutable) {
+        // Only track executable timestamp at second resolution to remain stable across hot-restarts
+        fingerprint.write('|${stat.modified.millisecondsSinceEpoch ~/ 1000}');
+      }
+      fingerprint.write('\n');
+
       if (entity is File) {
-        final rel = relativePath.substring(1);
+        final rel = relativePath.startsWith('\\') || relativePath.startsWith('/')
+            ? relativePath.substring(1)
+            : relativePath;
         sourceFileSizes[rel] = stat.size;
         totalBytes += stat.size;
       }
@@ -127,29 +133,27 @@ class AppRuntimeService {
       } catch (e) {
         logWarning(
           'AppRuntimeService',
-          '$runtimeName invalid manifest in $version ($e); recreating.',
+          '$runtimeName invalid manifest in $version ($e); syncing.',
         );
       }
     }
 
-    // 4. Cold preparation: stage into an isolated temp directory to prevent partial copies
+    // 4. Incremental preparation: copy only missing or mismatched files directly into runtimeDir
     final copyStopwatch = Stopwatch()..start();
-    final stagingDir = Directory(
-      '${runtimeParent.path}\\$version.tmp_${pid}_${DateTime.now().microsecondsSinceEpoch}',
-    );
-    if (await stagingDir.exists()) await stagingDir.delete(recursive: true);
-    await stagingDir.create(recursive: true);
+    await runtimeDir.create(recursive: true);
 
     try {
-      // Create subdirectories in staging
+      // Ensure subdirectories exist
       for (final entity in entries.whereType<Directory>()) {
         final relativePath = entity.path.substring(sourceDir.path.length + 1);
-        final destination = '${stagingDir.path}\\$relativePath';
+        final destination = '${runtimeDir.path}\\$relativePath';
         await Directory(destination).create(recursive: true);
       }
 
-      // Copy files with bounded concurrency (8 parallel workers)
+      // Copy files with bounded concurrency (8 parallel workers), skipping unchanged files
       final files = entries.whereType<File>().toList();
+      var copiedCount = 0;
+      var copiedBytes = 0;
       const concurrency = 8;
       for (var i = 0; i < files.length; i += concurrency) {
         final batch = files.sublist(i, math.min(i + concurrency, files.length));
@@ -157,17 +161,24 @@ class AppRuntimeService {
           batch.map((entity) async {
             final relativePath =
                 entity.path.substring(sourceDir.path.length + 1);
-            final destination = '${stagingDir.path}\\$relativePath';
-            await Directory(
-              File(destination).parent.path,
-            ).create(recursive: true);
+            final destination = '${runtimeDir.path}\\$relativePath';
+            final destFile = File(destination);
+            final sourceSize = sourceFileSizes[relativePath] ?? 0;
+            if (await destFile.exists()) {
+              final destSize = await destFile.length();
+              if (destSize == sourceSize) {
+                return; // File is already up-to-date
+              }
+            }
+            await Directory(destFile.parent.path).create(recursive: true);
             await entity.copy(destination);
+            copiedCount++;
+            copiedBytes += sourceSize;
           }),
         );
       }
 
-      // Write completion manifest into staging directory BEFORE atomic rename
-      final stagingManifest = File('${stagingDir.path}\\runtime.manifest');
+      // Write completion manifest
       final manifestPayload = {
         'version': version,
         'executableName': executableName,
@@ -175,25 +186,16 @@ class AppRuntimeService {
         'totalBytes': totalBytes,
         'completedAt': DateTime.now().toIso8601String(),
       };
-      await stagingManifest.writeAsString(
+      await manifestFile.writeAsString(
         jsonEncode(manifestPayload),
-        flush: true,
+        flush: false,
       );
-
-      // Atomic publication: if runtimeDir exists, remove stale/incomplete folder first
-      if (await runtimeDir.exists()) {
-        try {
-          await runtimeDir.delete(recursive: true);
-        } catch (_) {}
-      }
-
-      await stagingDir.rename(runtimeDir.path);
 
       logPerf(
         'AppRuntimeService',
-        '$runtimeName cold runtime copy completed in ${copyStopwatch.elapsedMilliseconds}ms '
-        '(total ${stopwatch.elapsedMilliseconds}ms; ${files.length} files, '
-        '${(totalBytes / (1024 * 1024)).toStringAsFixed(1)}MB).',
+        '$runtimeName runtime sync completed in ${copyStopwatch.elapsedMilliseconds}ms '
+        '(total ${stopwatch.elapsedMilliseconds}ms; synced $copiedCount/${files.length} files, '
+        '${(copiedBytes / (1024 * 1024)).toStringAsFixed(1)}MB copied).',
       );
 
       _sessionPreparedRuntimes[runtimeName] = runtimeDir;
@@ -204,7 +206,8 @@ class AppRuntimeService {
         try {
           await for (final oldEntity in runtimeParent.list(followLinks: false)) {
             if (oldEntity is Directory &&
-                oldEntity.path != runtimeDir.path) {
+                oldEntity.path != runtimeDir.path &&
+                !oldEntity.path.contains('.tmp')) {
               try {
                 await oldEntity.delete(recursive: true);
               } catch (_) {}
@@ -215,11 +218,7 @@ class AppRuntimeService {
 
       return runtimeDir;
     } catch (error) {
-      if (await stagingDir.exists()) {
-        try {
-          await stagingDir.delete(recursive: true);
-        } catch (_) {}
-      }
+      logError('AppRuntimeService', 'Failed to prepare runtime: $error');
       rethrow;
     }
   }

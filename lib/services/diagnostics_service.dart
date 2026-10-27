@@ -390,6 +390,7 @@ class AsyncOperationRecord {
   final String tag;
   final String name;
   final DateTime startTime;
+  final Stopwatch stopwatch;
   final Duration warningThreshold;
   Timer? timeoutWarningTimer;
 
@@ -398,6 +399,7 @@ class AsyncOperationRecord {
     required this.tag,
     required this.name,
     required this.startTime,
+    required this.stopwatch,
     required this.warningThreshold,
   });
 }
@@ -455,8 +457,9 @@ class DiagnosticsService {
   double _cachedProcCpuPercent = 0.0;
   double _cachedSysCpuPercent = 0.0;
 
-  // Watchdog hang detection
-  DateTime _lastHeartbeat = DateTime.now();
+  // Watchdog hang detection (uses monotonic Stopwatch to avoid NTP / clock skew artifacts)
+  final Stopwatch _watchdogStopwatch = Stopwatch();
+  int _lastHeartbeatMs = 0;
   static const Duration _watchdogInterval = Duration(milliseconds: 500);
   static const Duration _hangThreshold = Duration(milliseconds: 1000);
 
@@ -616,25 +619,28 @@ class DiagnosticsService {
   }
 
   void _startWatchdog() {
-    _lastHeartbeat = DateTime.now();
+    _watchdogStopwatch.reset();
+    _watchdogStopwatch.start();
+    _lastHeartbeatMs = _watchdogStopwatch.elapsedMilliseconds;
     _watchdogHeartbeatTimer?.cancel();
     _watchdogHeartbeatTimer = Timer.periodic(_watchdogInterval, (_) {
-      final now = DateTime.now();
-      final elapsed = now.difference(_lastHeartbeat);
-      _lastHeartbeat = now;
+      final nowMs = _watchdogStopwatch.elapsedMilliseconds;
+      final elapsedMs = nowMs - _lastHeartbeatMs;
+      _lastHeartbeatMs = nowMs;
 
-      final hangDuration = elapsed - _watchdogInterval;
-      if (hangDuration >= _hangThreshold) {
+      final hangMs = elapsedMs - _watchdogInterval.inMilliseconds;
+      if (hangMs >= _hangThreshold.inMilliseconds) {
+        final now = DateTime.now();
         final activeOperationDetails = _activeOperations.values
             .map(
               (operation) =>
                   '${operation.tag}.${operation.name}:'
-                  '${now.difference(operation.startTime).inMilliseconds}ms',
+                  '${operation.stopwatch.elapsedMilliseconds}ms',
             )
             .join(', ');
         final note =
             '[EVENT LOOP GAP] pid=$pid no watchdog heartbeat for '
-            '${hangDuration.inMilliseconds} ms; this is event-loop delay / outside stages, '
+            '$hangMs ms; this is event-loop delay / outside stages, '
             'not Flutter UI build time. OS/debugger cause is unverified. Active async ops: '
             '${_activeOperations.length}'
             '${activeOperationDetails.isEmpty ? '' : ' [$activeOperationDetails]'}';
@@ -1130,12 +1136,14 @@ class DiagnosticsService {
     }
     final opId = '${name}_${++_opCounter}';
     final startTime = DateTime.now();
+    final stopwatch = Stopwatch()..start();
 
     final record = AsyncOperationRecord(
       id: opId,
       tag: tag,
       name: name,
       startTime: startTime,
+      stopwatch: stopwatch,
       warningThreshold: warningThreshold,
     );
     final timelineTask = developer.TimelineTask()
@@ -1144,10 +1152,10 @@ class DiagnosticsService {
     // Schedule over-wait warning timer
     record.timeoutWarningTimer = Timer(warningThreshold, () {
       if (_activeOperations.containsKey(opId)) {
-        final elapsed = DateTime.now().difference(startTime);
+        final elapsedMs = stopwatch.elapsedMilliseconds;
         logWarning(
           tag,
-          '[OVERWAIT WARNING] Operation "$name" is still running after ${elapsed.inMilliseconds} ms! '
+          '[OVERWAIT WARNING] Operation "$name" is still running after $elapsedMs ms! '
           'Active parallel ops: ${_activeOperations.length}',
         );
       }
@@ -1163,37 +1171,37 @@ class DiagnosticsService {
 
     try {
       final result = await operation();
-      final duration = DateTime.now().difference(startTime);
+      final durationMs = stopwatch.elapsedMilliseconds;
       record.timeoutWarningTimer?.cancel();
       _activeOperations.remove(opId);
 
-      if (duration > warningThreshold) {
+      if (durationMs > warningThreshold.inMilliseconds) {
         logInfo(
           tag,
-          '[SLOW OPERATION RESOLVED] "$name" completed in ${duration.inMilliseconds} ms',
+          '[SLOW OPERATION RESOLVED] "$name" completed in $durationMs ms',
         );
       } else {
         logDebug(
           tag,
-          '[OP COMPLETED] "$name" in ${duration.inMilliseconds} ms',
+          '[OP COMPLETED] "$name" in $durationMs ms',
         );
       }
       timelineTask.finish(
-        arguments: {'durationMs': duration.inMilliseconds, 'success': true},
+        arguments: {'durationMs': durationMs, 'success': true},
       );
       return result;
     } catch (e, st) {
-      final duration = DateTime.now().difference(startTime);
+      final durationMs = stopwatch.elapsedMilliseconds;
       record.timeoutWarningTimer?.cancel();
       _activeOperations.remove(opId);
       logError(
         tag,
-        '[OP FAILED] "$name" failed after ${duration.inMilliseconds} ms: $e',
+        '[OP FAILED] "$name" failed after $durationMs ms: $e',
         e,
         st,
       );
       timelineTask.finish(
-        arguments: {'durationMs': duration.inMilliseconds, 'success': false},
+        arguments: {'durationMs': durationMs, 'success': false},
       );
       rethrow;
     }

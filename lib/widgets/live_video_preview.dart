@@ -532,7 +532,12 @@ class _VideoThumbnailWidgetState extends State<VideoThumbnailWidget> {
     if (posterUrl != null && posterUrl.startsWith('http')) {
       final poster = FirebaseService.instance.getCachedThumbnailSync(posterUrl);
       if (poster != null) {
-        _extractedFrameFile = poster;
+        if (mounted) {
+          setState(() => _extractedFrameFile = poster);
+        } else {
+          _extractedFrameFile = poster;
+        }
+        return;
       } else {
         unawaited(
           FirebaseService.instance

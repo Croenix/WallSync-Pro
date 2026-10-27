@@ -1323,12 +1323,11 @@ class FirebaseService {
   }
 
   Future<File?> _downloadThumbnailToCache(String url) async {
-    debugPrint('[FirebaseService] ENTER downloadThumbnailToCache(url: $url)');
     try {
       final uri = Uri.tryParse(url);
       if (!FirebaseWallpaper.isValidThumbnailUrl(url) || uri == null) {
         debugPrint(
-          '[FirebaseService] EXIT downloadThumbnailToCache() - INVALID URL',
+          '[FirebaseService] Invalid thumbnail URL: $url',
         );
         return null;
       }
@@ -1351,10 +1350,6 @@ class FirebaseService {
           } catch (_) {}
         } else if (len > 0) {
           _cachedThumbnailFileMap[url] = targetFile;
-          debugPrint('[FirebaseService] STATE: Thumbnail already cached.');
-          debugPrint(
-            '[FirebaseService] EXIT downloadThumbnailToCache() - CACHED',
-          );
           return targetFile;
         }
       }
@@ -1834,7 +1829,6 @@ class FirebaseService {
   }
 
   Future<Map<String, dynamic>?> _checkUpdateInternal() async {
-    debugPrint('[FirebaseService] ENTER checkUpdate()');
     for (int i = 0; i < 2; i++) {
       try {
         final request = await _openRequestRobustly(
@@ -1848,29 +1842,55 @@ class FirebaseService {
 
         if (response.statusCode == 200) {
           final responseBody = await response.transform(utf8.decoder).join();
-          if (responseBody.trim().isNotEmpty && responseBody != 'null') {
-            final data = json.decode(responseBody);
-            if (data is Map) {
-              debugPrint('[FirebaseService] EXIT checkUpdate() - SUCCESS');
-              return Map<String, dynamic>.from(data);
-            }
+          if (responseBody.trim().isEmpty || responseBody == 'null') {
+            debugPrint(
+              '[FirebaseService] Update check: No update manifest configured on server (null/empty).',
+            );
+            return null;
           }
+          final data = json.decode(responseBody);
+          if (data is Map) {
+            final versionCode = data['versionCode'];
+            debugPrint(
+              '[FirebaseService] Update check SUCCESS: Remote version payload received (versionCode: $versionCode).',
+            );
+            return Map<String, dynamic>.from(data);
+          } else {
+            debugPrint(
+              '[FirebaseService] Update check INVALID RESPONSE: Expected JSON object but got ${data.runtimeType}.',
+            );
+            return null;
+          }
+        } else {
+          debugPrint(
+            '[FirebaseService] Update check REQUEST FAILED: HTTP ${response.statusCode} from update endpoint.',
+          );
+          return null;
         }
-        break;
-      } catch (e, st) {
+      } on TimeoutException catch (e) {
         if (i == 1) {
           debugPrint(
-            '[FirebaseService] WARNING: Update check timed out. Skipping. Error: $e\nStacktrace: $st',
+            '[FirebaseService] Update check TIMED OUT after retrying: $e',
           );
         } else {
           debugPrint(
-            '[FirebaseService] WARNING: Update check failed (Attempt ${i + 1}). Error: $e\nStacktrace: $st',
+            '[FirebaseService] Update check timed out on attempt 1. Retrying...',
+          );
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      } catch (e, st) {
+        if (i == 1) {
+          debugPrint(
+            '[FirebaseService] Update check REQUEST FAILED: $e\nStacktrace: $st',
+          );
+        } else {
+          debugPrint(
+            '[FirebaseService] Update check failed on attempt 1: $e. Retrying...',
           );
           await Future.delayed(const Duration(seconds: 1));
         }
       }
     }
-    debugPrint('[FirebaseService] EXIT checkUpdate() - NO UPDATE / FAIL');
     return null;
   }
 }
