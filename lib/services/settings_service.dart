@@ -1865,7 +1865,7 @@ class SettingsService {
     }();
   }
 
-  Directory? _cachedAppDir;
+  static Directory? _cachedAppDir;
 
   Future<Directory> getAppDirectory() async {
     final cached = _cachedAppDir;

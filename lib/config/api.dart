@@ -96,7 +96,7 @@ class ApiConfig {
       await fetchServerUrlFromDatabase(
         rtdbBaseUrl: rtdbBaseUrl,
         force: true,
-      ).timeout(const Duration(milliseconds: 1500));
+      ).timeout(const Duration(milliseconds: 2500));
       debugPrint('[ApiConfig] Resolved live server URL from RTDB: $_serverUrl');
     } catch (e) {
       debugPrint('[ApiConfig] RTDB fetch timeout/fallback: $_serverUrl ($e)');
@@ -143,7 +143,7 @@ class ApiConfig {
     Object? lastNetworkError;
     var networkFailureCount = 0;
     try {
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
 
       for (final path in rtdbCandidatePaths) {
         final uri = Uri.parse('$baseUrl/$path');
@@ -199,6 +199,12 @@ class ApiConfig {
           if (error is SocketException || error is TimeoutException) {
             lastNetworkError = error;
             networkFailureCount++;
+            if (error is SocketException) {
+              break;
+            }
+            if (networkFailureCount >= 2) {
+              break;
+            }
           }
           // Continue probing next candidate path
         }

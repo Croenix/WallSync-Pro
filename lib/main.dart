@@ -1132,6 +1132,7 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
 
   Future<void> _hideDashboard() async {
     try {
+      DiagnosticsService.instance.setWindowVisible(false);
       await windowManager.hide();
       unawaited(SystemOptimizerService.instance.optimizeMemory());
       unawaited(SystemOptimizerService.instance.setLowPowerMode(true));

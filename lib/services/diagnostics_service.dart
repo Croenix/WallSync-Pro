@@ -430,6 +430,11 @@ class DiagnosticsService {
   double _worstRasterDurationMs = 0.0;
   final List<double> _recentFrameDurations = [];
   final List<String> _recentRawFrameSamples = [];
+  bool _isWindowVisible = true;
+  bool get isWindowVisible => _isWindowVisible;
+  void setWindowVisible(bool visible) {
+    _isWindowVisible = visible;
+  }
   int? _overlayPid;
   List<int> _overlayPids = const [];
   String _overlayProcessStatus = 'not-checked';
@@ -556,6 +561,10 @@ class DiagnosticsService {
     DateTime now,
   ) {
     _totalFrames++;
+    if (!_isWindowVisible) {
+      _suspendedFrames++;
+      return;
+    }
     // Build and raster can overlap in the Flutter pipeline. Report each stage
     // separately and use the slower stage for per-frame jank classification.
     final activeMs = math.max(buildMs, rasterMs);

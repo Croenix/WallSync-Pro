@@ -1425,6 +1425,18 @@ class _DashboardViewState extends State<DashboardView>
     });
   }
 
+  bool _isWallpaperListEqual(
+    List<FirebaseWallpaper> a,
+    List<FirebaseWallpaper> b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].url != b[i].url) return false;
+    }
+    return true;
+  }
+
   Future<void> _loadWallpapers({bool forceRefresh = false}) async {
     final generation = ++_wallpaperLoadGeneration;
     final totalStopwatch = Stopwatch()..start();
@@ -1435,6 +1447,7 @@ class _DashboardViewState extends State<DashboardView>
         forceRefresh: forceRefresh,
         onRemoteUpdated: (updatedList) {
           if (!mounted || generation != _wallpaperLoadGeneration) return;
+          if (_isWallpaperListEqual(_wallpapers, updatedList)) return;
           setState(() {
             _wallpapers = updatedList;
             _rebuildWallpaperCaches();
@@ -1708,6 +1721,7 @@ class _DashboardViewState extends State<DashboardView>
       'Window close intercepted; hiding to system tray.',
     );
     _isWindowVisible = false;
+    DiagnosticsService.instance.setWindowVisible(false);
     _backgroundFlowController.stop();
     await windowManager.hide();
     unawaited(SystemOptimizerService.instance.optimizeMemory());
@@ -1717,6 +1731,7 @@ class _DashboardViewState extends State<DashboardView>
   @override
   void onWindowMinimize() {
     _isWindowVisible = false;
+    DiagnosticsService.instance.setWindowVisible(false);
     _backgroundFlowController.stop();
     unawaited(SystemOptimizerService.instance.optimizeMemory());
     unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
@@ -1725,6 +1740,7 @@ class _DashboardViewState extends State<DashboardView>
   @override
   void onWindowRestore() {
     _isWindowVisible = true;
+    DiagnosticsService.instance.setWindowVisible(true);
     if (mounted) {
       _backgroundFlowController.repeat();
     }
@@ -1767,6 +1783,7 @@ class _DashboardViewState extends State<DashboardView>
 
   Future<void> _showAndRestoreDashboard() async {
     _isWindowVisible = true;
+    DiagnosticsService.instance.setWindowVisible(true);
     final isVisible = await windowManager.isVisible();
     if (!isVisible) {
       await windowManager.show();

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
@@ -58,12 +59,26 @@ Map<String, Object?> _parseWallpaperCatalogSnapshot(String content) {
   };
 }
 
-Future<List<String>> _listCachedWallpaperFilenames(String path) async {
-  final filenames = <String>[];
-  await for (final entity in Directory(path).list(followLinks: false)) {
-    if (entity is File) filenames.add(entity.uri.pathSegments.last);
-  }
-  return filenames;
+Future<Set<String>> _listValidCachedWallpaperFilenames(String path) async {
+  return await Isolate.run(() {
+    final dir = Directory(path);
+    if (!dir.existsSync()) return <String>{};
+    final valid = <String>{};
+    for (final entity in dir.listSync(followLinks: false)) {
+      if (entity is File) {
+        try {
+          if (entity.lengthSync() > 0) {
+            final p = entity.path;
+            final sep = Platform.pathSeparator;
+            final idx = p.lastIndexOf(sep);
+            final name = idx != -1 ? p.substring(idx + 1) : p;
+            valid.add(name);
+          }
+        } catch (_) {}
+      }
+    }
+    return valid;
+  });
 }
 
 const int _catalogIsolateThresholdCharacters = 256 * 1024;
@@ -467,12 +482,14 @@ class FirebaseService {
         return;
       }
       final listingStopwatch = Stopwatch()..start();
-      final filenames = await _listCachedWallpaperFilenames(cacheDir.path);
+      final validFilenames = await _listValidCachedWallpaperFilenames(cacheDir.path);
       final listingMs = listingStopwatch.elapsedMilliseconds;
       _cachedWallpaperFilenames
         ..clear()
-        ..addAll(filenames);
-      _validatedCachedWallpapers.clear();
+        ..addAll(validFilenames);
+      _validatedCachedWallpapers
+        ..clear()
+        ..addAll(validFilenames);
       _wallpaperFileValidations.clear();
       _wallpaperCacheIndexWarmed = true;
       final totalMs = stopwatch.elapsedMilliseconds;
