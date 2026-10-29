@@ -54,3 +54,5 @@ app.*.map.json
 # Cloned reference repo and portable MPV
 /lively/
 /plugins/mpv/
+# Widget Preview related
+.widget_preview/
