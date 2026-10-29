@@ -856,10 +856,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
           child: Container(
             decoration: BoxDecoration(
               image: DecorationImage(
-                image: AssetImage(_curatedWallpaperPaths[idx]),
+                image: ResizeImage(
+                  AssetImage(_curatedWallpaperPaths[idx]),
+                  width: 1200,
+                  allowUpscaling: false,
+                ),
                 fit: _getBoxFit(_settings.wallpaperFit),
                 repeat: _getImageRepeat(_settings.wallpaperFit),
-                filterQuality: FilterQuality.high,
+                filterQuality: FilterQuality.medium,
                 colorFilter: _settings.colorBoost
                     ? const ColorFilter.matrix([
                         1.20,
@@ -5925,7 +5929,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
       );
     }
 
-    return Listener(
+    return RepaintBoundary(
+      child: Listener(
       onPointerDown: (_) => _handleInteraction(),
       onPointerMove: (_) => _handleInteraction(),
       onPointerHover: (_) => _handleInteraction(),
@@ -6007,6 +6012,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
             ],
           ),
         ),
+      ),
       ),
     );
   }

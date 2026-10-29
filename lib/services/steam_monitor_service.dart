@@ -130,9 +130,11 @@ class SteamMonitorService {
   }
 
   void _startPolling() {
-    _pollSteamStatus();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      _pollSteamStatus();
+    // Only poll when there are active stream listeners to eliminate background subprocess overhead
+    _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (_streamController.hasListener) {
+        _pollSteamStatus();
+      }
     });
   }
 

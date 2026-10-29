@@ -96,10 +96,11 @@ class DiscordIpcService {
   bool _isChecking = false;
 
   void _startPolling() {
-    // Check initially and periodically every 5 seconds
-    _pollDiscordState();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _pollDiscordState();
+    // Only poll periodically when there are active stream listeners
+    _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (_streamController.hasListener) {
+        _pollDiscordState();
+      }
     });
   }
 

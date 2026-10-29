@@ -810,10 +810,10 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
              << L" --vd-lavc-threads=2"
              << L" --scale=bilinear"
              << L" --cscale=bilinear"
-             << L" --demuxer-max-bytes=12MiB"
-             << L" --demuxer-max-back-bytes=2MiB"
+             << L" --demuxer-max-bytes=8MiB"
+             << L" --demuxer-max-back-bytes=1MiB"
              << L" --cache=no"
-             << L" --cache-secs=2"
+             << L" --cache-secs=1"
               << L" --hr-seek=no"
              << L" --priority=belownormal"
              << L" --script-opts=osc-visibility=never"
@@ -1511,7 +1511,12 @@ std::optional<LRESULT> LiveWallpaperPlugin::Impl::HandleWindowMessage(
 
 void LiveWallpaperPlugin::Impl::OptimizeMemory() {
   HANDLE current_proc = GetCurrentProcess();
+  EmptyWorkingSet(current_proc);
   SetProcessWorkingSetSize(current_proc, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+  if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
+    EmptyWorkingSet(mpv_process_handle_);
+    SetProcessWorkingSetSize(mpv_process_handle_, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+  }
 }
 
 void LiveWallpaperPlugin::Impl::SetLowPowerMode(bool enable) {

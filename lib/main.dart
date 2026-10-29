@@ -252,8 +252,8 @@ void main(List<String> args) async {
     PaintingBinding.instance.imageCache.maximumSize = 8;
   } else {
     PaintingBinding.instance.imageCache.maximumSizeBytes =
-        32 * 1024 * 1024; // 32 MB bounded cache to prevent memory bloat
-    PaintingBinding.instance.imageCache.maximumSize = 40;
+        24 * 1024 * 1024; // 24 MB bounded cache for low-end device RAM efficiency
+    PaintingBinding.instance.imageCache.maximumSize = 30;
   }
 
   // Profile dashboard and overlay frames in debug mode; avoid periodic sampling
@@ -1133,6 +1133,8 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
   Future<void> _hideDashboard() async {
     try {
       await windowManager.hide();
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
     } catch (error, stackTrace) {
       logError(
         'DashboardApp',
@@ -1215,6 +1217,9 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
                 onComplete: () {
                   setState(() {
                     _showSplash = false;
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    unawaited(SystemOptimizerService.instance.optimizeMemory());
                   });
                 },
               )

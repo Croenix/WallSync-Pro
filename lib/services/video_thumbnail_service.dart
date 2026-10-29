@@ -35,6 +35,11 @@ Future<bool> _runMpvThumbnailExtractWorker(_MpvThumbnailExtractPayload payload) 
       '--vo=image',
       '--vo-image-format=jpg',
       '--vo-image-outdir=${payload.tempOutDirPath}',
+      '--vd-lavc-threads=1',
+      '--demuxer-max-bytes=4MiB',
+      '--demuxer-max-back-bytes=0',
+      '--cache=no',
+      '--priority=belownormal',
     ]).timeout(const Duration(seconds: 12));
 
     var generated = File('${payload.tempOutDirPath}\\00000001.jpg');

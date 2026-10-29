@@ -4105,6 +4105,8 @@ class _DashboardViewState extends State<DashboardView>
                         ? Image.asset(
                             heroWp.url.replaceFirst('asset://', ''),
                             fit: BoxFit.cover,
+                            cacheWidth: 800,
+                            cacheHeight: 450,
                           )
                         : (heroWp.isVideo)
                             ? VideoThumbnailWidget(
@@ -4418,6 +4420,8 @@ class _DashboardViewState extends State<DashboardView>
                                 ? Image.asset(
                                     heroWp.url.replaceFirst('asset://', ''),
                                     fit: BoxFit.cover,
+                                    cacheWidth: 400,
+                                    cacheHeight: 225,
                                   )
                                 : (heroWp.isVideo)
                                     ? VideoThumbnailWidget(
@@ -9280,6 +9284,8 @@ class _DashboardViewState extends State<DashboardView>
                                         '',
                                       ),
                                       fit: BoxFit.cover,
+                                      cacheWidth: 160,
+                                      cacheHeight: 120,
                                       errorBuilder: (_, _, _) => const Icon(
                                         Icons.broken_image_outlined,
                                       ),
@@ -9287,6 +9293,8 @@ class _DashboardViewState extends State<DashboardView>
                                   : Image.network(
                                       wallpaper.thumbnailUrl ?? wallpaper.url,
                                       fit: BoxFit.cover,
+                                      cacheWidth: 160,
+                                      cacheHeight: 120,
                                       errorBuilder: (_, _, _) => const Icon(
                                         Icons.broken_image_outlined,
                                       ),
@@ -25201,6 +25209,8 @@ class _DashboardViewState extends State<DashboardView>
         child: Image.asset(
           'assets/redskills_studios.png',
           fit: BoxFit.contain,
+          cacheWidth: 120,
+          cacheHeight: 120,
           errorBuilder: (_, _, _) =>
               const Icon(Icons.auto_awesome_rounded, color: Color(0xFFEF4444)),
         ),

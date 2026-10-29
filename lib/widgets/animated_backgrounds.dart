@@ -31,6 +31,12 @@ class _MatrixBackgroundState extends State<MatrixBackground>
 
   @override
   void dispose() {
+    for (final map in _painterCache.values) {
+      for (final tp in map.values) {
+        tp.dispose();
+      }
+    }
+    _painterCache.clear();
     _controller.dispose();
     super.dispose();
   }
@@ -285,13 +291,15 @@ class _ParticlesBackgroundState extends State<ParticlesBackground>
 
 class _ParticlesPainter extends CustomPainter {
   final List<_Particle> particles;
+  static final Paint _bgPaint = Paint()..color = const Color(0xFF0A0A1A);
+  static final Paint _solidPaint = Paint();
   _ParticlesPainter(this.particles);
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..color = const Color(0xFF0A0A1A),
+      _bgPaint,
     );
 
     for (final p in particles) {
@@ -309,10 +317,11 @@ class _ParticlesPainter extends CustomPainter {
             )
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
       canvas.drawCircle(Offset(p.x, p.y), r * 3.5, paint);
+      _solidPaint.color = p.color.withValues(alpha: pulse);
       canvas.drawCircle(
         Offset(p.x, p.y),
         r,
-        Paint()..color = p.color.withValues(alpha: pulse),
+        _solidPaint,
       );
     }
   }

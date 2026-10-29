@@ -428,7 +428,9 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                                         child: Image.asset(
                                           'assets/wallsync_logo.png',
                                           fit: BoxFit.contain,
-                                          filterQuality: FilterQuality.high,
+                                          cacheWidth: 360,
+                                          cacheHeight: 360,
+                                          filterQuality: FilterQuality.medium,
                                         ),
                                       ),
                                     ),
@@ -483,7 +485,9 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                               child: Image.asset(
                                 'assets/redskills_studios.png',
                                 fit: BoxFit.contain,
-                                filterQuality: FilterQuality.high,
+                                cacheWidth: 200,
+                                cacheHeight: 200,
+                                filterQuality: FilterQuality.medium,
                               ),
                             ),
                           ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'settings_service.dart';
 
@@ -91,6 +92,10 @@ class SystemOptimizerService {
   /// Commands Windows to flush the process working set (`SetProcessWorkingSetSize` and `EmptyWorkingSet`).
   /// Reclaims unused virtual memory pages across WallSync Pro and background MPV video instances.
   Future<bool> optimizeMemory() async {
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    } catch (_) {}
     if (!Platform.isWindows) return false;
     try {
       final res = await _channel.invokeMethod<bool>('optimizeMemory');
@@ -271,7 +276,7 @@ class SystemOptimizerService {
   }
 
   /// Starts a periodic background memory cleanup to keep RAM overhead under 35MB.
-  void startBackgroundMemoryOptimizer({Duration interval = const Duration(minutes: 5)}) {
+  void startBackgroundMemoryOptimizer({Duration interval = const Duration(minutes: 3)}) {
     _idleOptimizerTimer?.cancel();
     _idleOptimizerTimer = Timer.periodic(interval, (_) async {
       await optimizeMemory();
