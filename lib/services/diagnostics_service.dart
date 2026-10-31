@@ -81,6 +81,35 @@ _GetProcessMemoryInfoDart? _getProcessMemoryInfoFn() {
   return _cachedGetProcessMemoryInfo;
 }
 
+/// Per-widget memory usage breakdown for an individual active overlay process.
+class WidgetOverlayMemorySnapshot {
+  final String widgetId;
+  final int pid;
+  final int workingSetBytes;
+  final int privateBytes;
+  final int commitChargeBytes;
+
+  const WidgetOverlayMemorySnapshot({
+    required this.widgetId,
+    required this.pid,
+    required this.workingSetBytes,
+    required this.privateBytes,
+    this.commitChargeBytes = 0,
+  });
+
+  double get workingSetMb => workingSetBytes / (1024 * 1024);
+  double get privateMb => privateBytes / (1024 * 1024);
+  double get commitChargeMb => commitChargeBytes / (1024 * 1024);
+
+  Map<String, dynamic> toMap() => {
+    'widgetId': widgetId,
+    'pid': pid,
+    'workingSetMb': workingSetMb.toStringAsFixed(1),
+    'privateMb': privateMb.toStringAsFixed(1),
+    'commitChargeMb': commitChargeMb.toStringAsFixed(1),
+  };
+}
+
 /// Snapshot of system and application memory usage.
 class MemorySnapshot {
   /// Physical RAM bytes currently resident in memory (Windows `workingSetSize`).
@@ -113,6 +142,7 @@ class MemorySnapshot {
   final int? overlayPrivateBytes;
   final int? overlayCommitChargeBytes;
   final String overlayProcessStatus;
+  final List<WidgetOverlayMemorySnapshot> overlayWidgets;
   final DateTime sampledAt;
   final int samplingDurationMs;
 
@@ -139,6 +169,7 @@ class MemorySnapshot {
     this.overlayPrivateBytes,
     this.overlayCommitChargeBytes,
     this.overlayProcessStatus = 'not-checked',
+    this.overlayWidgets = const [],
     required this.sampledAt,
     this.samplingDurationMs = 0,
   });
@@ -206,6 +237,8 @@ class MemorySnapshot {
       'overlayPrivateMb': (overlayPrivateBytes! / (1024 * 1024))
           .toStringAsFixed(1),
     'overlayProcessStatus': overlayProcessStatus,
+    if (overlayWidgets.isNotEmpty)
+      'overlayWidgets': overlayWidgets.map((w) => w.toMap()).toList(),
     'isSystemMemoryConstrained': isSystemMemoryConstrained,
     'isWorkingSetTrimmed': isWorkingSetTrimmed,
     'sampledAt': sampledAt.toIso8601String(),
@@ -226,10 +259,15 @@ class MemorySnapshot {
         ? ' | MPV PID $mpvProcessId RSS: ${mpvRssMb.toStringAsFixed(1)} MB'
               '${mpvPrivateMb == null ? '' : ' (Private ${mpvPrivateMb!.toStringAsFixed(1)} MB)'}'
         : '';
+    final overlaySuffix = overlayRssBytes != null
+        ? ' | Overlay (${overlayWidgets.length} active) RSS: ${(overlayRssBytes! / (1024 * 1024)).toStringAsFixed(1)} MB'
+              '${overlayPrivateBytes == null ? '' : ' (Private ${(overlayPrivateBytes! / (1024 * 1024)).toStringAsFixed(1)} MB)'}'
+              '${overlayWidgets.isNotEmpty ? ' [${overlayWidgets.map((w) => '${w.widgetId}(PID ${w.pid}): ${w.workingSetMb.toStringAsFixed(1)}MB RSS / ${w.privateMb.toStringAsFixed(1)}MB Priv').join(', ')}]' : ''}'
+        : '';
     final trimNote = isWorkingSetTrimmed
         ? ' [Note: Windows kernel trimmed working set pages under system RAM pressure ($systemMemoryLoadPercent% load, ${systemAvailPhysMb.toStringAsFixed(0)} MB free)]'
         : '';
-    return 'Sampled: ${sampledAt.toIso8601String()} | Process RSS: ${processRssMb.toStringAsFixed(1)} MB (Process Lifetime Peak RSS: ${processMaxRssMb.toStringAsFixed(1)} MB)$privateSuffix$mpvSuffix$trimNote | '
+    return 'Sampled: ${sampledAt.toIso8601String()} | Process RSS: ${processRssMb.toStringAsFixed(1)} MB (Process Lifetime Peak RSS: ${processMaxRssMb.toStringAsFixed(1)} MB)$privateSuffix$mpvSuffix$overlaySuffix$trimNote | '
         'Main PID: $processId | '
         'System RAM: ${systemAvailPhysMb.toStringAsFixed(0)} MB free / ${systemTotalPhysMb.toStringAsFixed(0)} MB ($systemMemoryLoadPercent% load) | '
         'ImageCache: ${imageCacheMb.toStringAsFixed(1)} MB (${imageCacheCount ?? 0} images)';
@@ -490,6 +528,7 @@ class DiagnosticsService {
   }
   int? _overlayPid;
   List<int> _overlayPids = const [];
+  Map<int, String> _overlayPidToWidgetId = const {};
   String _overlayProcessStatus = 'not-checked';
   DateTime? _overlayLaunchRequestedAt;
 
@@ -497,6 +536,7 @@ class DiagnosticsService {
     _overlayLaunchRequestedAt = DateTime.now();
     _overlayPid = null;
     _overlayPids = const [];
+    _overlayPidToWidgetId = const {};
     _overlayProcessStatus = 'launch-requested';
   }
 
@@ -738,6 +778,9 @@ class DiagnosticsService {
     });
   }
 
+  /// Public accessor to force immediate overlay PID and per-widget tracking refresh.
+  Future<void> refreshOverlayPid() => _refreshOverlayPid();
+
   Future<void> _refreshOverlayPid() async {
     if (!Platform.isWindows) return;
     try {
@@ -745,6 +788,7 @@ class DiagnosticsService {
       if (!await appDir.exists()) {
         _overlayPid = null;
         _overlayPids = const [];
+        _overlayPidToWidgetId = const {};
         _overlayProcessStatus = 'pid-file-missing';
         return;
       }
@@ -764,6 +808,7 @@ class DiagnosticsService {
       if (pidFiles.isEmpty) {
         _overlayPid = null;
         _overlayPids = const [];
+        _overlayPidToWidgetId = const {};
         final launchRequestedAt = _overlayLaunchRequestedAt;
         if (launchRequestedAt != null &&
             DateTime.now().difference(launchRequestedAt) <
@@ -777,7 +822,20 @@ class DiagnosticsService {
       }
 
       final activePids = <int>[];
+      final newPidToWidgetId = <int, String>{};
       for (final pidFile in pidFiles) {
+        final fileName = pidFile.uri.pathSegments.isNotEmpty
+            ? pidFile.uri.pathSegments.last.toLowerCase()
+            : '';
+        final String widgetId;
+        if (fileName == 'overlay.pid') {
+          widgetId = 'default';
+        } else if (fileName.startsWith('overlay_') && fileName.endsWith('.pid')) {
+          widgetId = fileName.substring(8, fileName.length - 4);
+        } else {
+          widgetId = 'unknown';
+        }
+
         try {
           final content = (await pidFile.readAsString()).trim();
           final record = OverlayProcessRecord.tryParse(content);
@@ -787,10 +845,23 @@ class DiagnosticsService {
                 inspection.isRunning &&
                 inspection.matches(record)) {
               activePids.add(record.pid);
+              newPidToWidgetId[record.pid] = widgetId;
+            } else {
+              // The process has stopped or identity changed: clean up dead PID record
+              try {
+                if (await pidFile.exists()) await pidFile.delete();
+              } catch (_) {}
             }
+          } else {
+            // Malformed record: clean up dead PID file
+            try {
+              if (await pidFile.exists()) await pidFile.delete();
+            } catch (_) {}
           }
         } catch (_) {}
       }
+
+      _overlayPidToWidgetId = newPidToWidgetId;
 
       if (activePids.isNotEmpty) {
         _overlayLaunchRequestedAt = null;
@@ -802,6 +873,7 @@ class DiagnosticsService {
       } else {
         _overlayPids = const [];
         _overlayPid = null;
+        _overlayPidToWidgetId = const {};
         final launchRequestedAt = _overlayLaunchRequestedAt;
         if (launchRequestedAt != null &&
             DateTime.now().difference(launchRequestedAt) <
@@ -815,6 +887,7 @@ class DiagnosticsService {
     } catch (error, stackTrace) {
       _overlayPid = null;
       _overlayPids = const [];
+      _overlayPidToWidgetId = const {};
       _overlayProcessStatus = 'liveness-query-failed';
       logWarning(
         'DiagnosticsService',
@@ -844,6 +917,7 @@ class DiagnosticsService {
     int? overlayPrivate;
     int? overlayCommitCharge;
     final int? overlayPid = _overlayPid;
+    final overlayWidgets = <WidgetOverlayMemorySnapshot>[];
 
     _ProcessMemorySample? queryMemory(HANDLE handle) {
       final getProcessMemoryInfo = _getProcessMemoryInfoFn();
@@ -942,6 +1016,16 @@ class DiagnosticsService {
         for (final p in _overlayPids) {
           final s = queryPid(p);
           if (s != null) {
+            final wId = _overlayPidToWidgetId[p] ?? 'widget';
+            overlayWidgets.add(
+              WidgetOverlayMemorySnapshot(
+                widgetId: wId,
+                pid: p,
+                workingSetBytes: s.workingSetBytes,
+                privateBytes: s.privateBytes,
+                commitChargeBytes: s.commitChargeBytes,
+              ),
+            );
             totalOverlayRss += s.workingSetBytes;
             totalOverlayPrivate += s.privateBytes;
             totalOverlayCommit += s.commitChargeBytes;
@@ -954,6 +1038,16 @@ class DiagnosticsService {
       } else {
         final overlaySample = queryPid(overlayPid);
         if (overlaySample != null) {
+          final wId = _overlayPidToWidgetId[overlayPid] ?? 'default';
+          overlayWidgets.add(
+            WidgetOverlayMemorySnapshot(
+              widgetId: wId,
+              pid: overlayPid!,
+              workingSetBytes: overlaySample.workingSetBytes,
+              privateBytes: overlaySample.privateBytes,
+              commitChargeBytes: overlaySample.commitChargeBytes,
+            ),
+          );
           overlayRss = overlaySample.workingSetBytes;
           overlayPrivate = overlaySample.privateBytes;
           overlayCommitCharge = overlaySample.commitChargeBytes;
@@ -1004,6 +1098,7 @@ class DiagnosticsService {
       overlayProcessStatus: overlayPid != null && overlayRss == null
           ? 'running-memory-query-failed'
           : _overlayProcessStatus,
+      overlayWidgets: overlayWidgets,
       sampledAt: DateTime.now(),
       samplingDurationMs: samplingStopwatch.elapsedMilliseconds,
     );
@@ -1491,6 +1586,14 @@ class DiagnosticsService {
           'Overlay Private Commit:  ${(mem.overlayPrivateBytes! / (1024 * 1024)).toStringAsFixed(2)} MB',
         );
       }
+      if (mem.overlayWidgets.isNotEmpty) {
+        buffer.writeln('Overlay Active Instances:${mem.overlayWidgets.length} processes');
+        for (final w in mem.overlayWidgets) {
+          buffer.writeln(
+            '  * [${w.widgetId}] PID ${w.pid}: Working Set ${w.workingSetMb.toStringAsFixed(1)} MB | Private Commit ${w.privateMb.toStringAsFixed(1)} MB',
+          );
+        }
+      }
     } else {
       buffer.writeln('Overlay Child Process:   Not running or not queryable');
     }
@@ -1886,6 +1989,7 @@ class DiagnosticsService {
             ? null
             : mem.overlayPrivateBytes! / (1024 * 1024),
         'overlayStatus': mem.overlayProcessStatus,
+        'overlayWidgets': mem.overlayWidgets.map((w) => w.toMap()).toList(),
       },
       'cpu': {
         'processCpuPercent': cpu.processCpuPercent,

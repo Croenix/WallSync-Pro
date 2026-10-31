@@ -1611,6 +1611,29 @@ bool LiveWallpaperPlugin::Impl::IsFullscreenForegroundWindow() const {
     return false;
   }
 
+  // Exclude WallSync's own process and any child/sibling WallSync overlay or widget processes
+  DWORD fg_pid = 0;
+  GetWindowThreadProcessId(foreground, &fg_pid);
+  if (fg_pid != 0) {
+    if (fg_pid == GetCurrentProcessId()) {
+      return false;
+    }
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, fg_pid);
+    if (hProc) {
+      wchar_t procPath[MAX_PATH]{};
+      DWORD size = MAX_PATH;
+      if (QueryFullProcessImageNameW(hProc, 0, procPath, &size)) {
+        std::wstring wsPath(procPath);
+        std::transform(wsPath.begin(), wsPath.end(), wsPath.begin(), ::towlower);
+        if (wsPath.find(L"wallsync") != std::wstring::npos) {
+          CloseHandle(hProc);
+          return false;
+        }
+      }
+      CloseHandle(hProc);
+    }
+  }
+
   // Exclude WallSync's own application window
   if (root_window_ && (foreground == root_window_ || GetAncestor(foreground, GA_ROOT) == root_window_)) {
     return false;
@@ -1621,9 +1644,22 @@ bool LiveWallpaperPlugin::Impl::IsFullscreenForegroundWindow() const {
     return false;
   }
 
-  // Exclude Windows desktop and shell components
+  // Check window title for WallSync windows (overlay, taskbar dock, diagnostics)
+  wchar_t title[128]{};
+  if (GetWindowTextW(foreground, title, 128) > 0) {
+    if (wcsstr(title, L"WallSync") != nullptr) {
+      return false;
+    }
+  }
   HWND root_fg = GetAncestor(foreground, GA_ROOT);
   if (!root_fg) root_fg = foreground;
+  if (root_fg != foreground && GetWindowTextW(root_fg, title, 128) > 0) {
+    if (wcsstr(title, L"WallSync") != nullptr) {
+      return false;
+    }
+  }
+
+  // Exclude Windows desktop and shell components
 
   wchar_t root_class[64]{};
   if (GetClassNameW(root_fg, root_class, 64) > 0) {

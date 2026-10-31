@@ -325,91 +325,103 @@ class _DesktopWidgetState extends State<DesktopWidget>
         }
       }
     });
-    _mediaInfo = MediaSessionService().current;
-    if (_needsMediaSession && _mediaInfo.thumbnail.isNotEmpty) {
-      final initialThumb = _mediaInfo.thumbnail;
-      _decodeMediaThumbnailAsync(
-        initialThumb,
-        'initial overlay media state',
-      ).then((bytes) {
-        if (mounted && _mediaInfo.thumbnail == initialThumb) {
-          setState(() => _thumbnailBytes = bytes);
-        }
-      }).catchError((error, stackTrace) {
-        logWarning(
-          'DesktopWidget',
-          'Initial media artwork base64 decoding failed: $error\n$stackTrace',
-        );
-      });
-    }
-    _updatePlaybackPosition(_mediaInfo);
-    _mediaSubscription = MediaSessionService().mediaStream.listen((info) {
-      if (mounted) {
-        // Optimization: Do NOT trigger full widget rebuilds if media controls are not visible
-        final isMediaActive = _needsMediaSession;
-        if (!isMediaActive) return;
-
-        final hasChanged =
-            info.title != _mediaInfo.title ||
-            info.artist != _mediaInfo.artist ||
-            info.album != _mediaInfo.album ||
-            info.status != _mediaInfo.status ||
-            info.source != _mediaInfo.source ||
-            info.sessionId != _mediaInfo.sessionId ||
-            info.canPlay != _mediaInfo.canPlay ||
-            info.canPause != _mediaInfo.canPause ||
-            info.canGoNext != _mediaInfo.canGoNext ||
-            info.canGoPrevious != _mediaInfo.canGoPrevious ||
-            info.duration != _mediaInfo.duration ||
-            info.hasDuration != _mediaInfo.hasDuration ||
-            info.hasPosition != _mediaInfo.hasPosition;
-        final thumbChanged = info.thumbnail != _mediaInfo.thumbnail;
-
-        if (hasChanged) {
-          logInfo(
-            'DesktopWidget',
-            'Media data bound to overlay: source=${info.source.isEmpty ? "unknown" : info.source}, status=${info.status}.',
-          );
-        }
-
-        // Cache thumbnail bytes on change to prevent reloading flickering
-        if (thumbChanged) {
-          final targetThumb = info.thumbnail;
-          _decodeMediaThumbnailAsync(
-            targetThumb,
-            'overlay media update',
-          ).then((bytes) {
-            if (mounted && _mediaInfo.thumbnail == targetThumb) {
-              setState(() => _thumbnailBytes = bytes);
-            }
-          }).catchError((error, stackTrace) {
-            if (mounted) {
-              setState(() => _thumbnailBytes = null);
-              logWarning(
-                'DesktopWidget',
-                'Media artwork base64 decoding failed: $error\n$stackTrace',
-              );
-            }
-          });
-        } else if (info.thumbnail.isEmpty) {
-          _thumbnailBytes = null;
-        }
-
-        _mediaInfo = info;
-        _updatePlaybackPosition(info);
-
-        // Only trigger expensive desktop widget rebuild if track, status, or thumbnail changed.
-        if (hasChanged || thumbChanged) {
-          setState(() {});
-        }
-      }
-    });
+    _syncMediaSubscription();
 
     _neonAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
     );
     _initSettings();
+  }
+
+  void _syncMediaSubscription() {
+    final needed = _needsMediaSession;
+    if (needed && _mediaSubscription == null) {
+      _mediaInfo = MediaSessionService().current;
+      _updatePlaybackPosition(_mediaInfo);
+      if (_mediaInfo.thumbnail.isNotEmpty) {
+        final initialThumb = _mediaInfo.thumbnail;
+        _decodeMediaThumbnailAsync(
+          initialThumb,
+          'initial overlay media state',
+        ).then((bytes) {
+          if (mounted && _mediaInfo.thumbnail == initialThumb) {
+            setState(() => _thumbnailBytes = bytes);
+          }
+        }).catchError((error, stackTrace) {
+          logWarning(
+            'DesktopWidget',
+            'Initial media artwork base64 decoding failed: $error\n$stackTrace',
+          );
+        });
+      }
+      _mediaSubscription = MediaSessionService().mediaStream.listen(_onMediaInfoChanged);
+      MediaSessionService().start(owner: 'overlay');
+    } else if (!needed && _mediaSubscription != null) {
+      _mediaSubscription?.cancel();
+      _mediaSubscription = null;
+      _thumbnailBytes = null;
+      MediaSessionService().stop(owner: 'overlay');
+    }
+  }
+
+  void _onMediaInfoChanged(MediaInfo info) {
+    if (!mounted || !_needsMediaSession) return;
+    final hasChanged =
+        info.title != _mediaInfo.title ||
+        info.artist != _mediaInfo.artist ||
+        info.album != _mediaInfo.album ||
+        info.status != _mediaInfo.status ||
+        info.source != _mediaInfo.source ||
+        info.sessionId != _mediaInfo.sessionId ||
+        info.canPlay != _mediaInfo.canPlay ||
+        info.canPause != _mediaInfo.canPause ||
+        info.canGoNext != _mediaInfo.canGoNext ||
+        info.canGoPrevious != _mediaInfo.canGoPrevious ||
+        info.duration != _mediaInfo.duration ||
+        info.hasDuration != _mediaInfo.hasDuration ||
+        info.hasPosition != _mediaInfo.hasPosition;
+    final thumbChanged = info.thumbnail != _mediaInfo.thumbnail;
+
+    if (hasChanged) {
+      logInfo(
+        'DesktopWidget',
+        'Media data bound to overlay: source=${info.source.isEmpty ? "unknown" : info.source}, status=${info.status}.',
+      );
+    }
+
+    if (thumbChanged) {
+      final targetThumb = info.thumbnail;
+      if (targetThumb.isNotEmpty) {
+        _decodeMediaThumbnailAsync(
+          targetThumb,
+          'overlay media update',
+        ).then((bytes) {
+          if (mounted && _mediaInfo.thumbnail == targetThumb) {
+            setState(() => _thumbnailBytes = bytes);
+          }
+        }).catchError((error, stackTrace) {
+          if (mounted) {
+            setState(() => _thumbnailBytes = null);
+            logWarning(
+              'DesktopWidget',
+              'Media artwork base64 decoding failed: $error\n$stackTrace',
+            );
+          }
+        });
+      } else {
+        _thumbnailBytes = null;
+      }
+    } else if (info.thumbnail.isEmpty) {
+      _thumbnailBytes = null;
+    }
+
+    _mediaInfo = info;
+    _updatePlaybackPosition(info);
+
+    if (hasChanged || thumbChanged) {
+      setState(() {});
+    }
   }
 
   Future<void> _initSettings() async {
@@ -602,12 +614,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   void _syncMediaServiceState() {
-    final bool needMedia = _needsMediaSession;
-    if (needMedia) {
-      MediaSessionService().start(owner: 'overlay');
-    } else {
-      MediaSessionService().stop(owner: 'overlay');
-    }
+    _syncMediaSubscription();
   }
 
   bool get _needsMediaSession {
@@ -635,12 +642,19 @@ class _DesktopWidgetState extends State<DesktopWidget>
     _weatherTimer?.cancel();
     _weatherQueryController.dispose();
     _mediaSubscription?.cancel();
+    _mediaSubscription = null;
+    _thumbnailBytes = null;
     _connectivitySubscription?.cancel();
     _discordSub?.cancel();
     _steamSub?.cancel();
     _playbackPositionNotifier.dispose();
     MediaSessionService().stop(owner: 'overlay');
     SystemConnectivityService.instance.stop(owner: 'overlay');
+    try {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+    } catch (_) {}
+    unawaited(SystemOptimizerService.instance.optimizeMemory());
     super.dispose();
   }
 

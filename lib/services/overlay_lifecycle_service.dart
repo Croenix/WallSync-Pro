@@ -827,8 +827,8 @@ Future<OverlayProcessInspection?> inspectWindowsProcess(int processId) async {
     return null;
   }
 
-  final pathBuffer = calloc<Uint16>(32768);
-  final pathLength = calloc<Uint32>()..value = 32768;
+  final pathBuffer = calloc<Uint16>(1024);
+  final pathLength = calloc<Uint32>()..value = 1024;
   final creationTime = calloc<FILETIME>();
   final exitTime = calloc<FILETIME>();
   final kernelTime = calloc<FILETIME>();
@@ -916,8 +916,8 @@ Future<void> terminateWindowsProcess(OverlayProcessRecord record) async {
     );
   }
 
-  final pathBuffer = calloc<Uint16>(32768);
-  final pathLength = calloc<Uint32>()..value = 32768;
+  final pathBuffer = calloc<Uint16>(1024);
+  final pathLength = calloc<Uint32>()..value = 1024;
   final creationTime = calloc<FILETIME>();
   final exitTime = calloc<FILETIME>();
   final kernelTime = calloc<FILETIME>();

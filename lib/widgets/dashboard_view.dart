@@ -1923,6 +1923,10 @@ class _DashboardViewState extends State<DashboardView>
               if (instRecord.ready) {
                 _widgetLaunchedAt.remove(widgetId);
               }
+            } else if (instInspection != null && !instInspection.isRunning) {
+              try {
+                if (await instPidFile.exists()) await instPidFile.delete();
+              } catch (_) {}
             }
           }
         } catch (_) {}
@@ -2025,12 +2029,6 @@ class _DashboardViewState extends State<DashboardView>
     _widgetLaunchedAt[widgetId] = DateTime.now();
     final launchStopwatch = Stopwatch()..start();
     try {
-      final defaults = WidgetSettings.templateDefaults[widgetId] ?? {
-        'width': widgetId.startsWith('taskbar_') ? 340.0 : 360.0,
-        'height': widgetId.startsWith('taskbar_') ? 44.0 : 200.0,
-        'sizeFactor': widgetId.startsWith('taskbar_') ? 0.85 : 1.0,
-      };
-
       final isTaskbar = widgetId.startsWith('taskbar_');
       final activeIds = List<String>.from(_settings.activeWidgetIds);
       if (!activeIds.contains(widgetId)) {
@@ -2038,6 +2036,42 @@ class _DashboardViewState extends State<DashboardView>
       }
 
       final instService = SettingsService(instanceId: widgetId);
+      final pidFile = await instService.pidFile;
+
+      // Check if widget process is already active and healthy before attempting new spawn
+      if (await pidFile.exists()) {
+        try {
+          final content = (await _safeReadPidFile(pidFile)).trim();
+          final existingRecord = OverlayProcessRecord.tryParse(content);
+          if (existingRecord != null && existingRecord.ready) {
+            final inspection = await inspectWindowsProcess(existingRecord.pid);
+            if (inspection != null && inspection.isRunning && inspection.matches(existingRecord)) {
+              logInfo(
+                'DashboardView',
+                'Widget "$widgetId" is already running live (PID ${existingRecord.pid}); joined existing instance.',
+              );
+              setState(() {
+                _activeRunningWidgetIds.add(widgetId);
+                _isOverlayRunning = true;
+              });
+              _updateTrayMenu();
+              _widgetRecoveryPolicies[widgetId]?.reset();
+              _widgetRecoveryTimers[widgetId]?.cancel();
+              _widgetRecoveryTimers[widgetId] = null;
+              unawaited(DiagnosticsService.instance.refreshOverlayPid());
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
+      final stageSettingsStopwatch = Stopwatch()..start();
+      final defaults = WidgetSettings.templateDefaults[widgetId] ?? {
+        'width': isTaskbar ? 340.0 : 360.0,
+        'height': isTaskbar ? 44.0 : 200.0,
+        'sizeFactor': isTaskbar ? 0.85 : 1.0,
+      };
+
       WidgetSettings instSettings;
       try {
         final loaded = await instService.load();
@@ -2083,7 +2117,9 @@ class _DashboardViewState extends State<DashboardView>
         widgetTemplate: widgetId,
       );
       await _saveSettingsSafely(_settings);
+      final settingsPrepMs = stageSettingsStopwatch.elapsedMilliseconds;
 
+      final stageSpawnStopwatch = Stopwatch()..start();
       // Prepare shadow runtime copy so MSBuild / VS debug never locks DLLs
       String appPath = Platform.resolvedExecutable;
       String workingDir = File(appPath).parent.path;
@@ -2106,8 +2142,6 @@ class _DashboardViewState extends State<DashboardView>
       }
 
       // Launch overlay process
-      // In kDebugMode, direct Process.start gets trapped by the VS Code debugger Job Object.
-      // We use Task Scheduler with a unique task name per widget, or cmd start, to break out.
       bool launched = false;
       if (kDebugMode) {
         final sanitizedId = widgetId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
@@ -2175,6 +2209,21 @@ class _DashboardViewState extends State<DashboardView>
           logInfo('DashboardView', 'Overlay "$widgetId" spawned via direct Process.start.');
         }
       }
+      final spawnMs = stageSpawnStopwatch.elapsedMilliseconds;
+
+      // Verify visible readiness of spawned overlay
+      final stageReadinessStopwatch = Stopwatch()..start();
+      final readiness = await waitForOverlayReadiness(
+        readRecord: () async {
+          if (!await pidFile.exists()) return null;
+          final content = (await _safeReadPidFile(pidFile)).trim();
+          return content.isEmpty ? null : OverlayProcessRecord.tryParse(content);
+        },
+        inspectProcess: inspectWindowsProcess,
+        timeout: const Duration(seconds: 8),
+        pollInterval: const Duration(milliseconds: 200),
+      );
+      final readinessWaitMs = stageReadinessStopwatch.elapsedMilliseconds;
 
       setState(() {
         _activeRunningWidgetIds.add(widgetId);
@@ -2184,9 +2233,13 @@ class _DashboardViewState extends State<DashboardView>
       _widgetRecoveryPolicies[widgetId]?.reset();
       _widgetRecoveryTimers[widgetId]?.cancel();
       _widgetRecoveryTimers[widgetId] = null;
+      unawaited(DiagnosticsService.instance.refreshOverlayPid());
+
       logInfo(
         'DashboardView',
-        'Widget "$widgetId" launch completed: launched=$launched, duration=${launchStopwatch.elapsedMilliseconds}ms.',
+        'Widget "$widgetId" launch confirmed: readiness=${readiness.status.name}, '
+        'settingsPrep=${settingsPrepMs}ms, spawn=${spawnMs}ms, '
+        'readinessWait=${readinessWaitMs}ms, total=${launchStopwatch.elapsedMilliseconds}ms.',
       );
 
       if (mounted) {
@@ -2231,6 +2284,13 @@ class _DashboardViewState extends State<DashboardView>
         if (record != null) {
           Process.killPid(record.pid);
         }
+        if (await pidFile.exists()) {
+          await pidFile.delete();
+        }
+        final lockFile = await instService.lockFile;
+        if (await lockFile.exists()) {
+          await lockFile.delete();
+        }
       } catch (_) {}
 
       final activeIds = List<String>.from(_settings.activeWidgetIds)..remove(widgetId);
@@ -2242,6 +2302,10 @@ class _DashboardViewState extends State<DashboardView>
         _isOverlayRunning = _activeRunningWidgetIds.isNotEmpty;
       });
       _updateTrayMenu();
+
+      // Immediately refresh overlay PIDs and trigger system memory optimization
+      unawaited(DiagnosticsService.instance.refreshOverlayPid());
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

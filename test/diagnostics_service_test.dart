@@ -211,4 +211,62 @@ void main() {
       );
     },
   );
+
+  test('MemorySnapshot attributes and formats per-widget overlay memory', () {
+    final widgets = [
+      const WidgetOverlayMemorySnapshot(
+        widgetId: 'atomic_clock',
+        pid: 2001,
+        workingSetBytes: 120 * 1024 * 1024,
+        privateBytes: 300 * 1024 * 1024,
+        commitChargeBytes: 305 * 1024 * 1024,
+      ),
+      const WidgetOverlayMemorySnapshot(
+        widgetId: 'robik',
+        pid: 2002,
+        workingSetBytes: 125 * 1024 * 1024,
+        privateBytes: 310 * 1024 * 1024,
+        commitChargeBytes: 315 * 1024 * 1024,
+      ),
+      const WidgetOverlayMemorySnapshot(
+        widgetId: 'taskbar_media',
+        pid: 2003,
+        workingSetBytes: 115 * 1024 * 1024,
+        privateBytes: 305 * 1024 * 1024,
+        commitChargeBytes: 310 * 1024 * 1024,
+      ),
+    ];
+
+    final snapshot = MemorySnapshot(
+      processRssBytes: 350 * 1024 * 1024,
+      processMaxRssBytes: 400 * 1024 * 1024,
+      processPrivateBytes: 500 * 1024 * 1024,
+      systemTotalPhysBytes: 16 * 1024 * 1024 * 1024,
+      systemAvailPhysBytes: 8 * 1024 * 1024 * 1024,
+      systemMemoryLoadPercent: 50,
+      processId: 1000,
+      overlayProcessId: 2001,
+      overlayRssBytes: 360 * 1024 * 1024,
+      overlayPrivateBytes: 915 * 1024 * 1024,
+      overlayWidgets: widgets,
+      sampledAt: DateTime.now(),
+    );
+
+    expect(snapshot.overlayWidgets.length, 3);
+    expect(snapshot.overlayWidgets[0].widgetId, 'atomic_clock');
+    expect(snapshot.overlayWidgets[0].workingSetMb, 120.0);
+    expect(snapshot.overlayWidgets[0].privateMb, 300.0);
+    expect(snapshot.overlayWidgets[1].widgetId, 'robik');
+    expect(snapshot.overlayWidgets[2].widgetId, 'taskbar_media');
+
+    final str = snapshot.toString();
+    expect(str, contains('Overlay (3 active) RSS: 360.0 MB'));
+    expect(str, contains('atomic_clock(PID 2001): 120.0MB RSS / 300.0MB Priv'));
+    expect(str, contains('robik(PID 2002): 125.0MB RSS / 310.0MB Priv'));
+    expect(str, contains('taskbar_media(PID 2003): 115.0MB RSS / 305.0MB Priv'));
+
+    final map = snapshot.toMap();
+    expect(map['overlayWidgets'], isList);
+    expect((map['overlayWidgets'] as List).length, 3);
+  });
 }

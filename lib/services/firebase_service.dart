@@ -478,22 +478,11 @@ class FirebaseService {
       final appDirectoryStopwatch = Stopwatch()..start();
       final appDir = await SettingsService().getAppDirectory();
       final appDirectoryMs = appDirectoryStopwatch.elapsedMilliseconds;
-      final cacheDir = Directory('${appDir.path}/cached_wallpapers');
-      final cacheDirectoryStopwatch = Stopwatch()..start();
-      final cacheDirectoryExists = await cacheDir.exists();
-      final cacheDirectoryMs = cacheDirectoryStopwatch.elapsedMilliseconds;
-      if (!cacheDirectoryExists) {
-        _wallpaperCacheIndexWarmed = true;
-        logPerf(
-          'FirebaseService',
-          'Wallpaper cache index warmup found no cache directory '
-              '(app directory ${appDirectoryMs}ms, cache directory check '
-              '${cacheDirectoryMs}ms; total ${stopwatch.elapsedMilliseconds}ms).',
-        );
-        return;
-      }
-      final listingStopwatch = Stopwatch()..start();
-      final manifestFile = File('${cacheDir.path}/.index_manifest.json');
+      final cacheDirPath = '${appDir.path}/cached_wallpapers';
+      final manifestFile = File('$cacheDirPath/.index_manifest.json');
+
+      // Fast path: Check manifest file directly (<2ms) without waiting on Directory.exists()
+      final manifestStopwatch = Stopwatch()..start();
       Set<String>? manifestFilenames;
       if (await manifestFile.exists()) {
         try {
@@ -508,7 +497,7 @@ class FirebaseService {
       }
 
       if (manifestFilenames != null && manifestFilenames.isNotEmpty) {
-        final manifestMs = listingStopwatch.elapsedMilliseconds;
+        final manifestMs = manifestStopwatch.elapsedMilliseconds;
         _cachedWallpaperFilenames
           ..clear()
           ..addAll(manifestFilenames);
@@ -527,7 +516,7 @@ class FirebaseService {
         // Asynchronously reconcile cache directory in background isolate without blocking startup
         unawaited(() async {
           try {
-            final scanned = await _listValidCachedWallpaperFilenames(cacheDir.path);
+            final scanned = await _listValidCachedWallpaperFilenames(cacheDirPath);
             if (scanned.length != _cachedWallpaperFilenames.length ||
                 !scanned.containsAll(_cachedWallpaperFilenames)) {
               _cachedWallpaperFilenames
@@ -542,6 +531,22 @@ class FirebaseService {
         }());
         return;
       }
+
+      final cacheDir = Directory(cacheDirPath);
+      final cacheDirectoryStopwatch = Stopwatch()..start();
+      final cacheDirectoryExists = await cacheDir.exists();
+      final cacheDirectoryMs = cacheDirectoryStopwatch.elapsedMilliseconds;
+      if (!cacheDirectoryExists) {
+        _wallpaperCacheIndexWarmed = true;
+        logPerf(
+          'FirebaseService',
+          'Wallpaper cache index warmup found no cache directory '
+              '(app directory ${appDirectoryMs}ms, cache directory check '
+              '${cacheDirectoryMs}ms; total ${stopwatch.elapsedMilliseconds}ms).',
+        );
+        return;
+      }
+      final listingStopwatch = Stopwatch()..start();
 
       final validFilenames = await _listValidCachedWallpaperFilenames(cacheDir.path);
       final listingMs = listingStopwatch.elapsedMilliseconds;

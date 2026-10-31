@@ -461,10 +461,13 @@ class LiveWallpaperManager {
           (_pauseOnFullscreen && isFullscreen) ||
           (_pauseOnBatterySaver && isBatterySaver);
 
+      // Hysteresis: require 4 consecutive samples (~4s) of sustained fullscreen before pausing
+      // to eliminate rapid pause/resume oscillation; resume promptly on 1 sample when leaving fullscreen.
+      final requiredSamples = shouldPause ? 4 : 1;
       if (shouldPause != _policyPaused) {
         if (_candidatePolicyPaused == shouldPause) {
           _candidatePolicyCount++;
-          if (_candidatePolicyCount >= 2) {
+          if (_candidatePolicyCount >= requiredSamples) {
             _policyPaused = shouldPause;
             _candidatePolicyPaused = null;
             _candidatePolicyCount = 0;
@@ -478,6 +481,17 @@ class LiveWallpaperManager {
         } else {
           _candidatePolicyPaused = shouldPause;
           _candidatePolicyCount = 1;
+          if (requiredSamples <= 1) {
+            _policyPaused = shouldPause;
+            _candidatePolicyPaused = null;
+            _candidatePolicyCount = 0;
+            policyPausedNotifier.value = shouldPause;
+            logInfo(
+              'LiveWallpaperManager',
+              'Playback policy resumed promptly: paused=$shouldPause (fullscreen=$isFullscreen, batterySaver=$isBatterySaver)',
+            );
+            await _sendSettings();
+          }
         }
       } else {
         _candidatePolicyPaused = null;
