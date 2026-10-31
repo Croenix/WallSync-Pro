@@ -8,6 +8,7 @@ import 'app_runtime_service.dart';
 import 'settings_service.dart';
 import 'live_wallpaper_manager.dart';
 import 'system_optimizer_service.dart';
+import 'firebase_service.dart';
 
 String _normalizeWallpaperPath(String p) {
   var s = p.trim().replaceAll('/', '\\');
@@ -268,6 +269,7 @@ class WallpaperEngine {
     WidgetSettings? settings,
     bool Function()? isCancelled,
     int? transitionId,
+    bool skipValidation = false,
   }) async {
     if (!Platform.isWindows) return false;
     logInfo(
@@ -277,25 +279,34 @@ class WallpaperEngine {
     final sw = Stopwatch()..start();
 
     final imageFile = File(path);
-    final validationStopwatch = Stopwatch()..start();
-    final imageExists = await imageFile.exists();
-    final imageLength = imageExists ? await imageFile.length() : 0;
-    final validationMs = validationStopwatch.elapsedMilliseconds;
-    if (!imageExists || imageLength == 0) {
-      logError(
+    var validationMs = 0;
+    final isPreValidated = skipValidation || FirebaseService.isCachedWallpaperPathValidated(path);
+    if (!isPreValidated) {
+      final validationStopwatch = Stopwatch()..start();
+      final imageExists = await imageFile.exists();
+      final imageLength = imageExists ? await imageFile.length() : 0;
+      validationMs = validationStopwatch.elapsedMilliseconds;
+      if (!imageExists || imageLength == 0) {
+        logError(
+          'WallpaperEngine',
+          'Wallpaper image does not exist or is empty: $path '
+              '(validation ${validationMs}ms).',
+          null,
+          null,
+        );
+        return false;
+      }
+      logPerf(
         'WallpaperEngine',
-        'Wallpaper image does not exist or is empty: $path '
-            '(validation ${validationMs}ms).',
-        null,
-        null,
+        'Transition #${transitionId ?? '-'} cached image validation completed '
+            'in ${validationMs}ms ($imageLength bytes).',
       );
-      return false;
+    } else {
+      logPerf(
+        'WallpaperEngine',
+        'Transition #${transitionId ?? '-'} pre-validated image path verified instantly in 0ms.',
+      );
     }
-    logPerf(
-      'WallpaperEngine',
-      'Transition #${transitionId ?? '-'} cached image validation completed '
-          'in ${validationMs}ms ($imageLength bytes).',
-    );
     if (isCancelled?.call() ?? false) return false;
     final cleanPath = imageFile.absolute.path.replaceAll('/', '\\');
 

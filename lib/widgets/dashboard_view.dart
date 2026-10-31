@@ -841,41 +841,39 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   void _updateSystemStatsFallback() {
-    final idleTime = calloc<FILETIME>();
-    final kernelTime = calloc<FILETIME>();
-    final userTime = calloc<FILETIME>();
+    using((arena) {
+      final idleTime = arena<FILETIME>();
+      final kernelTime = arena<FILETIME>();
+      final userTime = arena<FILETIME>();
 
-    if (GetSystemTimes(idleTime, kernelTime, userTime).value) {
-      final int idle =
-          (idleTime.ref.dwHighDateTime << 32) | idleTime.ref.dwLowDateTime;
-      final int kernel =
-          (kernelTime.ref.dwHighDateTime << 32) | kernelTime.ref.dwLowDateTime;
-      final int user =
-          (userTime.ref.dwHighDateTime << 32) | userTime.ref.dwLowDateTime;
+      if (GetSystemTimes(idleTime, kernelTime, userTime).value) {
+        final int idle =
+            (idleTime.ref.dwHighDateTime << 32) | idleTime.ref.dwLowDateTime;
+        final int kernel =
+            (kernelTime.ref.dwHighDateTime << 32) | kernelTime.ref.dwLowDateTime;
+        final int user =
+            (userTime.ref.dwHighDateTime << 32) | userTime.ref.dwLowDateTime;
 
-      if (_lastIdleTime != 0) {
-        final int usr = user - _lastUserTime;
-        final int ker = kernel - _lastKernelTime;
-        final int idl = idle - _lastIdleTime;
-        final int sys = usr + ker;
-        if (sys > 0) {
-          _cpuUsage = (((sys - idl) * 100.0) / sys).clamp(0.0, 100.0);
+        if (_lastIdleTime != 0) {
+          final int usr = user - _lastUserTime;
+          final int ker = kernel - _lastKernelTime;
+          final int idl = idle - _lastIdleTime;
+          final int sys = usr + ker;
+          if (sys > 0) {
+            _cpuUsage = (((sys - idl) * 100.0) / sys).clamp(0.0, 100.0);
+          }
         }
+        _lastIdleTime = idle;
+        _lastKernelTime = kernel;
+        _lastUserTime = user;
       }
-      _lastIdleTime = idle;
-      _lastKernelTime = kernel;
-      _lastUserTime = user;
-    }
-    calloc.free(idleTime);
-    calloc.free(kernelTime);
-    calloc.free(userTime);
 
-    final memoryStatus = calloc<MEMORYSTATUSEX>();
-    memoryStatus.ref.dwLength = sizeOf<MEMORYSTATUSEX>();
-    if (GlobalMemoryStatusEx(memoryStatus).value) {
-      _ramUsage = memoryStatus.ref.dwMemoryLoad.toDouble();
-    }
-    calloc.free(memoryStatus);
+      final memoryStatus = arena<MEMORYSTATUSEX>();
+      memoryStatus.ref.dwLength = sizeOf<MEMORYSTATUSEX>();
+      if (GlobalMemoryStatusEx(memoryStatus).value) {
+        _ramUsage = memoryStatus.ref.dwMemoryLoad.toDouble();
+      }
+    });
   }
 
   void _updatePlaybackPosition(MediaInfo info) {
@@ -2727,6 +2725,7 @@ class _DashboardViewState extends State<DashboardView>
       // 2. Prepare shadow runtime copy so MSBuild never hits file locks on WebView2Loader.dll
       String appPath = Platform.resolvedExecutable;
       String workingDir = File(appPath).parent.path;
+      var runtimePrepMs = 0;
       try {
         final runtimeStopwatch = Stopwatch()..start();
         final runtimeDir = await DiagnosticsService.instance
@@ -2736,10 +2735,11 @@ class _DashboardViewState extends State<DashboardView>
               operation: _wallpaperEngine.prepareOverlayRuntime,
               warningThreshold: const Duration(milliseconds: 500),
             );
+        runtimePrepMs = runtimeStopwatch.elapsedMilliseconds;
         logPerf(
           'DashboardView',
           'Overlay shadow runtime preparation completed in '
-              '${runtimeStopwatch.elapsedMilliseconds}ms.',
+              '${runtimePrepMs}ms.',
         );
         final exeName = File(appPath).uri.pathSegments.last;
         final runtimeExe = File('${runtimeDir.path}\\$exeName');
@@ -2763,6 +2763,8 @@ class _DashboardViewState extends State<DashboardView>
         'Spawning overlay process: "$appPath" --overlay (workDir: "$workingDir")',
       );
 
+      var processCreationMs = 0;
+
       Future<bool> launchDirectly() async {
         logInfo('DashboardView', 'Launching overlay via direct Process.start.');
         final directStartStopwatch = Stopwatch()..start();
@@ -2773,10 +2775,11 @@ class _DashboardViewState extends State<DashboardView>
             workingDirectory: workingDir,
             mode: ProcessStartMode.detached,
           );
+          processCreationMs = directStartStopwatch.elapsedMilliseconds;
           logPerf(
             'DashboardView',
             'Overlay launched via Process.start detached in '
-                '${directStartStopwatch.elapsedMilliseconds}ms.',
+                '${processCreationMs}ms.',
           );
           return true;
         } catch (e) {
@@ -2846,6 +2849,7 @@ class _DashboardViewState extends State<DashboardView>
             );
             if (runResult.exitCode == 0) {
               launchedViaSchtasks = true;
+              processCreationMs = taskRunStopwatch.elapsedMilliseconds;
               taskSchedulerAcceptedAt = DateTime.now();
               logInfo(
                 'OverlayStartup',
@@ -2940,21 +2944,45 @@ class _DashboardViewState extends State<DashboardView>
       );
 
       if (readiness.isReady && readiness.record != null) {
+        final rec = readiness.record!;
         final acknowledgedMs = DateTime.now().millisecondsSinceEpoch;
+        final flutterInitMs = (rec.entryPointMs != null && rec.creationTime != null)
+            ? '${rec.entryPointMs! - rec.creationTime!}ms'
+            : 'unavailable';
+        final widgetConfigMs = (rec.settingsLoadedMs != null && rec.entryPointMs != null)
+            ? '${rec.settingsLoadedMs! - rec.entryPointMs!}ms'
+            : 'unavailable';
+        final firstFrameMs = (rec.firstFrameMs != null && rec.settingsLoadedMs != null)
+            ? '${rec.firstFrameMs! - rec.settingsLoadedMs!}ms'
+            : 'unavailable';
+        final visibleConfirmMs = (rec.windowInitMs != null && rec.firstFrameMs != null)
+            ? '${rec.windowInitMs! - rec.firstFrameMs!}ms'
+            : (rec.readyPublishedMs != null && rec.firstFrameMs != null)
+                ? '${rec.readyPublishedMs! - rec.firstFrameMs!}ms'
+                : 'unavailable';
+
+        logPerf(
+          'OverlayStartup',
+          'Overlay startup stages confirmed: PID ${rec.pid} | '
+          'runtime prep: ${runtimePrepMs}ms, '
+          'process creation: ${processCreationMs}ms, '
+          'flutter init: $flutterInitMs, '
+          'widget config: $widgetConfigMs, '
+          'first frame: $firstFrameMs, '
+          'visible confirm: $visibleConfirmMs | '
+          'complete launch phase: ${launchStopwatch.elapsedMilliseconds}ms'
+          '${taskSchedulerAcceptedAt == null ? '' : ', since Task Scheduler accepted ${DateTime.now().difference(taskSchedulerAcceptedAt).inMilliseconds}ms'}.',
+        );
         logInfo(
           'OverlayStartup',
-          'Overlay confirmed RUNNING and ready — PID ${readiness.record!.pid} '
-              '(state=${readiness.record!.state.name}, '
-              'entryPointMs=${readiness.record!.entryPointMs}, '
-              'windowInitMs=${readiness.record!.windowInitMs}, '
-              'firstFrameMs=${readiness.record!.firstFrameMs}, '
-              'readyPublishedMs=${readiness.record!.readyPublishedMs}, '
+          'Overlay confirmed RUNNING and ready — PID ${rec.pid} '
+              '(state=${rec.state.name}, '
+              'entryPointMs=${rec.entryPointMs}, '
+              'windowInitMs=${rec.windowInitMs}, '
+              'firstFrameMs=${rec.firstFrameMs}, '
+              'readyPublishedMs=${rec.readyPublishedMs}, '
               'acknowledgedMs=$acknowledgedMs) after '
-              '${readinessStopwatch.elapsedMilliseconds}ms; complete launch '
-              'phase took ${launchStopwatch.elapsedMilliseconds}ms'
-              '${taskSchedulerAcceptedAt == null ? '' : ', '
-                        'since Task Scheduler accepted launch '
-                        '${DateTime.now().difference(taskSchedulerAcceptedAt).inMilliseconds}ms'}.',
+              '${readinessStopwatch.elapsedMilliseconds}ms.',
         );
         if (mounted) {
           setState(() {
@@ -9646,7 +9674,7 @@ class _DashboardViewState extends State<DashboardView>
 
       if (!_isCurrentWallpaperTransition(requestId)) return;
 
-      if (downloaded == null || !await downloaded.exists()) {
+      if (downloaded == null) {
         _setWallpaperTransitionState(
           requestId,
           'static:${wallpaper.id}',
@@ -9689,6 +9717,7 @@ class _DashboardViewState extends State<DashboardView>
               settings: _settings,
               isCancelled: () => !_isCurrentWallpaperTransition(requestId),
               transitionId: requestId,
+              skipValidation: true,
             ),
             warningThreshold: const Duration(seconds: 2),
           );
@@ -9712,14 +9741,22 @@ class _DashboardViewState extends State<DashboardView>
               : wallpaper.url,
         );
         final settingsSaveStopwatch = Stopwatch()..start();
-        await _persistWallpaperSettings();
-        final settingsSaveMs = settingsSaveStopwatch.elapsedMilliseconds;
+        final saveFuture = _persistWallpaperSettings();
         if (!_isCurrentWallpaperTransition(requestId)) return;
         _setWallpaperTransitionState(
           requestId,
           'static:${wallpaper.id}',
           'active',
         );
+
+        if (mounted) {
+          _showAnimatedSnackBar(
+            'Applied static wallpaper: ${wallpaper.name}',
+            isSuccess: true,
+          );
+        }
+        await saveFuture;
+        final settingsSaveMs = settingsSaveStopwatch.elapsedMilliseconds;
         logPerf(
           'DashboardView',
           'Transition #$requestId completed successfully in '
@@ -9727,12 +9764,6 @@ class _DashboardViewState extends State<DashboardView>
               '(retrieval=${retrievalStopwatch.elapsedMilliseconds}ms, '
               'native apply=${nativeApplyMs}ms, '
               'settings persistence=${settingsSaveMs}ms).',
-        );
-
-        if (!mounted) return;
-        _showAnimatedSnackBar(
-          'Applied static wallpaper: ${wallpaper.name}',
-          isSuccess: true,
         );
       } else {
         _setWallpaperTransitionState(

@@ -310,10 +310,11 @@ class LiveWallpaperPlugin::Impl {
   std::string mpv_stderr_buffer_;
   HANDLE mpv_pipe_handle_ = INVALID_HANDLE_VALUE;
   bool mpv_frame_decoded_ = false;
+  bool mpv_is_reuse_ = false;
   std::chrono::steady_clock::time_point mpv_launch_started_{};
-  double mpv_previous_cleanup_ms_ = 0.0;
-  double mpv_executable_lookup_ms_ = 0.0;
-  double mpv_process_launch_ms_ = 0.0;
+  double mpv_previous_cleanup_ms_ = -1.0;
+  double mpv_executable_lookup_ms_ = -1.0;
+  double mpv_process_launch_ms_ = -1.0;
   double mpv_window_discovered_ms_ = -1.0;
   double mpv_window_discovery_call_ms_ = -1.0;
   double mpv_window_attach_ms_ = -1.0;
@@ -902,31 +903,56 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
   if (mpv_process_handle_ && mpv_hwnd_ && IsWindow(mpv_hwnd_) && mpv_window_attached_) {
     DWORD exit_code = 0;
     if (GetExitCodeProcess(mpv_process_handle_, &exit_code) && exit_code == STILL_ACTIVE) {
-      std::wstring wide_video = Utf8ToWide(video_path);
-      std::replace(wide_video.begin(), wide_video.end(), L'\\', L'/');
-      std::string safe_video = WideToUtf8(wide_video);
-      std::string escaped;
-      for (char c : safe_video) {
-        if (c == '"') escaped += "\\\"";
-        else if (c == '\\') escaped += "\\\\";
-        else escaped += c;
-      }
-      std::string load_cmd = R"({"command":["loadfile",")" + escaped + R"("]})";
-      if (SendMpvCommand(load_cmd)) {
-        SetMpvSettings(args);
-        flutter::EncodableMap result;
-        result[flutter::EncodableValue("success")] = flutter::EncodableValue(true);
-        result[flutter::EncodableValue("pid")] = flutter::EncodableValue(static_cast<int>(mpv_pid_));
-        result[flutter::EncodableValue("width")] = flutter::EncodableValue(mpv_width_ > 0 ? mpv_width_ : 1920);
-        result[flutter::EncodableValue("height")] = flutter::EncodableValue(mpv_height_ > 0 ? mpv_height_ : 1080);
-        result[flutter::EncodableValue("frameDecoded")] = flutter::EncodableValue(true);
-        result[flutter::EncodableValue("windowAttached")] = flutter::EncodableValue(true);
-        result[flutter::EncodableValue("windowVisible")] = flutter::EncodableValue(true);
-        result[flutter::EncodableValue("reused")] = flutter::EncodableValue(true);
-        return result;
+      HWND parent = GetParent(mpv_hwnd_);
+      const bool target_alive = parent && IsWindow(parent) && IsWindowVisible(parent);
+      const bool window_visible = IsWindowVisible(mpv_hwnd_) != FALSE;
+      if (target_alive && window_visible) {
+        std::wstring wide_video = Utf8ToWide(video_path);
+        std::replace(wide_video.begin(), wide_video.end(), L'\\', L'/');
+        std::string safe_video = WideToUtf8(wide_video);
+        std::string escaped;
+        for (char c : safe_video) {
+          if (c == '"') escaped += "\\\"";
+          else if (c == '\\') escaped += "\\\\";
+          else escaped += c;
+        }
+        std::string load_cmd = R"({"command":["loadfile",")" + escaped + R"("]})";
+        if (SendMpvCommand(load_cmd)) {
+          SetMpvSettings(args);
+          mpv_is_reuse_ = true;
+          mpv_frame_decoded_ = false;
+          mpv_launch_started_ = std::chrono::steady_clock::now();
+          mpv_output_configured_ms_ = -1.0;
+          mpv_frame_ready_ms_ = -1.0;
+          mpv_previous_cleanup_ms_ = -1.0;
+          mpv_executable_lookup_ms_ = -1.0;
+          mpv_process_launch_ms_ = -1.0;
+          mpv_window_discovered_ms_ = -1.0;
+          mpv_window_discovery_call_ms_ = -1.0;
+          mpv_window_attach_ms_ = -1.0;
+          mpv_window_attachment_call_ms_ = -1.0;
+          mpv_desktop_target_lookup_ms_ = -1.0;
+          mpv_visible_request_ms_ = -1.0;
+          mpv_visible_confirmed_ms_ = -1.0;
+          mpv_dwm_flush_ms_ = -1.0;
+          mpv_ipc_read_buffer_.clear();
+
+          flutter::EncodableMap pending;
+          pending[flutter::EncodableValue("pending")] = flutter::EncodableValue(true);
+          pending[flutter::EncodableValue("reused")] = flutter::EncodableValue(true);
+          pending[flutter::EncodableValue("mediaSwitched")] = flutter::EncodableValue(true);
+          pending[flutter::EncodableValue("coldLaunch")] = flutter::EncodableValue(false);
+          pending[flutter::EncodableValue("pid")] = flutter::EncodableValue(static_cast<int>(mpv_pid_));
+          pending[flutter::EncodableValue("windowAttached")] = flutter::EncodableValue(true);
+          pending[flutter::EncodableValue("windowVisible")] = flutter::EncodableValue(true);
+          pending[flutter::EncodableValue("frameDecoded")] = flutter::EncodableValue(false);
+          return pending;
+        }
       }
     }
   }
+
+  mpv_is_reuse_ = false;
 
   const auto start_call = std::chrono::steady_clock::now();
   if (!StopMpv()) {
@@ -1109,7 +1135,7 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
     failure[flutter::EncodableValue("win32Error")] = flutter::EncodableValue(static_cast<int>(err));
     failure[flutter::EncodableValue("cmdLine")] = flutter::EncodableValue(mpv_launch_cmd_line_);
     failure[flutter::EncodableValue("workingDir")] = flutter::EncodableValue(mpv_working_dir_);
-    failure[flutter::EncodableValue("launchMs")] = flutter::EncodableValue(0.0);
+    failure[flutter::EncodableValue("launchMs")] = flutter::EncodableValue(-1.0);
     failure[flutter::EncodableValue("cleanupMs")] = flutter::EncodableValue(mpv_previous_cleanup_ms_);
     failure[flutter::EncodableValue("lookupMs")] = flutter::EncodableValue(mpv_executable_lookup_ms_);
     return failure;
@@ -1158,6 +1184,9 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::PollMpvStart() {
     result[flutter::EncodableValue("windowVisible")] = flutter::EncodableValue(mpv_window_visible_);
     result[flutter::EncodableValue("ipcConnected")] = flutter::EncodableValue(mpv_pipe_handle_ != INVALID_HANDLE_VALUE && mpv_pipe_handle_ != nullptr);
     result[flutter::EncodableValue("frameDecoded")] = flutter::EncodableValue(mpv_frame_decoded_);
+    result[flutter::EncodableValue("reused")] = flutter::EncodableValue(mpv_is_reuse_);
+    result[flutter::EncodableValue("mediaSwitched")] = flutter::EncodableValue(mpv_is_reuse_);
+    result[flutter::EncodableValue("coldLaunch")] = flutter::EncodableValue(!mpv_is_reuse_);
   };
 
   DWORD exit_code = 0;
@@ -1346,8 +1375,8 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::PollMpvStart() {
   flutter::EncodableMap result;
   result[flutter::EncodableValue("success")] = flutter::EncodableValue(true);
   result[flutter::EncodableValue("pid")] = flutter::EncodableValue(static_cast<int>(mpv_pid_));
-  result[flutter::EncodableValue("width")] = flutter::EncodableValue(mpv_width_);
-  result[flutter::EncodableValue("height")] = flutter::EncodableValue(mpv_height_);
+  result[flutter::EncodableValue("width")] = flutter::EncodableValue(mpv_width_ > 0 ? mpv_width_ : 1920);
+  result[flutter::EncodableValue("height")] = flutter::EncodableValue(mpv_height_ > 0 ? mpv_height_ : 1080);
   add_phase_times(result);
   return result;
 }

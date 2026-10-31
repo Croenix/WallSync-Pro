@@ -157,6 +157,13 @@ class SystemOptimizerService {
 
   Timer? _idleOptimizerTimer;
   bool _isLowPowerModeActive = false;
+  int _operationCounter = 0;
+  Future<bool>? _inFlightMemoryTrim;
+  DateTime? _lastMemoryTrimTime;
+  static const Duration _minMemoryTrimInterval = Duration(seconds: 2);
+
+  Future<bool>? _inFlightLowPowerMode;
+  bool? _inFlightLowPowerTarget;
 
   bool get isLowPowerModeActive => _isLowPowerModeActive;
 
@@ -165,25 +172,56 @@ class SystemOptimizerService {
   /// When [force] is false and the dashboard window is visible, avoids evicting live textures
   /// and working set pages to prevent page fault stalls during active rendering.
   Future<bool> optimizeMemory({bool force = false}) async {
-    if (!force && DiagnosticsService.instance.isWindowVisible) {
+    final now = DateTime.now();
+    if (!force &&
+        _lastMemoryTrimTime != null &&
+        now.difference(_lastMemoryTrimTime!) < _minMemoryTrimInterval) {
+      return true; // Throttled duplicate trim
+    }
+    if (_inFlightMemoryTrim != null) {
+      return _inFlightMemoryTrim!;
+    }
+    final opId = 'trim_${++_operationCounter}_${now.millisecondsSinceEpoch}';
+    final completer = Completer<bool>();
+    _inFlightMemoryTrim = completer.future;
+
+    () async {
       try {
-        PaintingBinding.instance.imageCache.clear();
-      } catch (_) {}
-      return true;
-    }
-    try {
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-    } catch (_) {}
-    if (!Platform.isWindows) return false;
-    try {
-      final res = await _channel.invokeMethod<bool>('optimizeMemory');
-      logInfo('SystemOptimizerService', 'Native process memory trimmed successfully.');
-      return res ?? false;
-    } catch (e) {
-      logWarning('SystemOptimizerService', 'Native optimizeMemory call failed: $e');
-      return false;
-    }
+        if (!force && DiagnosticsService.instance.isWindowVisible) {
+          try {
+            PaintingBinding.instance.imageCache.clear();
+          } catch (_) {}
+          _lastMemoryTrimTime = DateTime.now();
+          completer.complete(true);
+          return;
+        }
+        try {
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+        } catch (_) {}
+        if (!Platform.isWindows) {
+          completer.complete(false);
+          return;
+        }
+        final res = await _channel.invokeMethod<bool>('optimizeMemory');
+        _lastMemoryTrimTime = DateTime.now();
+        logInfo(
+          'SystemOptimizerService',
+          '[$opId] Native process memory trimmed successfully.',
+        );
+        completer.complete(res ?? false);
+      } catch (e) {
+        logWarning(
+          'SystemOptimizerService',
+          '[$opId] Native optimizeMemory call failed: $e',
+        );
+        completer.complete(false);
+      } finally {
+        _inFlightMemoryTrim = null;
+      }
+    }();
+
+    return completer.future;
   }
 
   /// Creates a Windows NTFS hard link (`CreateHardLinkW`) to share read-only binaries/assets with 0 copying and 0 RAM overhead.
@@ -204,15 +242,39 @@ class SystemOptimizerService {
   /// Enables maximum CPU responsiveness for foreground user applications and games.
   Future<bool> setLowPowerMode(bool enable) async {
     if (!Platform.isWindows) return false;
-    try {
-      final res = await _channel.invokeMethod<bool>('setLowPowerMode', {'enable': enable});
-      _isLowPowerModeActive = enable;
-      logInfo('SystemOptimizerService', 'Native power mode updated: lowPower=$enable (EcoQoS enabled).');
-      return res ?? false;
-    } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setLowPowerMode call failed: $e');
-      return false;
+    if (_isLowPowerModeActive == enable && _inFlightLowPowerMode == null) {
+      return true; // Already in desired mode, idempotent no-op
     }
+    if (_inFlightLowPowerMode != null && _inFlightLowPowerTarget == enable) {
+      return _inFlightLowPowerMode!;
+    }
+    final opId = 'eco_${++_operationCounter}_${DateTime.now().millisecondsSinceEpoch}';
+    final completer = Completer<bool>();
+    _inFlightLowPowerMode = completer.future;
+    _inFlightLowPowerTarget = enable;
+
+    () async {
+      try {
+        final res = await _channel.invokeMethod<bool>('setLowPowerMode', {'enable': enable});
+        _isLowPowerModeActive = enable;
+        logInfo(
+          'SystemOptimizerService',
+          '[$opId] Native power mode updated: lowPower=$enable (EcoQoS enabled).',
+        );
+        completer.complete(res ?? false);
+      } catch (e) {
+        logWarning(
+          'SystemOptimizerService',
+          '[$opId] Native setLowPowerMode call failed: $e',
+        );
+        completer.complete(false);
+      } finally {
+        _inFlightLowPowerMode = null;
+        _inFlightLowPowerTarget = null;
+      }
+    }();
+
+    return completer.future;
   }
 
   /// Gathers real-time performance metrics directly from the Windows kernel (CPU, RAM, working set, battery)

@@ -303,29 +303,44 @@ class LiveWallpaperManager {
     _windowAttached = successResult['windowAttached'] == true;
     _windowVisible = successResult['windowVisible'] == true;
     _firstFrameReady = successResult['frameDecoded'] == true;
-    logPerf(
-      'LiveWallpaperManager',
-      'Transition #${transitionId ?? '-'} MPV ready: PID $_mpvPid, owned window attached=${successResult['windowAttached']}, '
-          'visible=${successResult['windowVisible']}, first frame decoded=${successResult['frameDecoded']}, ${width}x$height; '
-          'previous-player cleanup ${phase('cleanupMs')}, executable lookup ${phase('lookupMs')}, '
-          'process launch ${phase('launchMs')}, '
-          'window found elapsed ${phase('windowFoundMs')} '
-          '(native scan ${phase('windowDiscoveryCallMs')}), '
-          'window attach elapsed ${phase('attachMs')} '
-          '(native attach call ${phase('windowAttachmentCallMs')}, '
-          'desktop target lookup ${phase('desktopTargetLookupMs')}), '
-          'visible request elapsed ${phase('visibleRequestMs')}, '
-          'visible confirmed elapsed ${phase('visibleConfirmedMs')}, '
-          'DWM composition flush ${phase('dwmFlushMs')}, '
-          'IPC ready elapsed ${phase('ipcMs')}, '
-          'output configured elapsed ${phase('outputConfiguredMs')}, '
-          'decoded frame elapsed ${phase('frameReadyMs')}, '
-          'total ${startup.elapsedMilliseconds}ms, polls $polls '
-          '(native call total ${totalPollCallMs.toStringAsFixed(1)}ms, '
-          'max ${maxPollCallMs.toStringAsFixed(1)}ms; average interval '
-          '${polls > 1 ? (totalPollIntervalMs / (polls - 1)).toStringAsFixed(1) : 'n/a'}ms, '
-          'max ${maxPollIntervalMs.toStringAsFixed(1)}ms).',
-    );
+    final isReused = successResult['reused'] == true;
+    if (isReused) {
+      logPerf(
+        'LiveWallpaperManager',
+        'Transition #${transitionId ?? '-'} MPV ready (existing player reused for media switch): '
+            'PID $_mpvPid, owned window attached=${successResult['windowAttached']}, '
+            'visible=${successResult['windowVisible']}, first frame decoded=${successResult['frameDecoded']}, ${width}x$height; '
+            'media frame ready elapsed ${phase('frameReadyMs')}, total ${startup.elapsedMilliseconds}ms, '
+            'polls $polls (native call total ${totalPollCallMs.toStringAsFixed(1)}ms, '
+            'max ${maxPollCallMs.toStringAsFixed(1)}ms; average interval '
+            '${polls > 1 ? (totalPollIntervalMs / (polls - 1)).toStringAsFixed(1) : 'n/a'}ms, '
+            'max ${maxPollIntervalMs.toStringAsFixed(1)}ms).',
+      );
+    } else {
+      logPerf(
+        'LiveWallpaperManager',
+        'Transition #${transitionId ?? '-'} MPV ready (cold launch): PID $_mpvPid, owned window attached=${successResult['windowAttached']}, '
+            'visible=${successResult['windowVisible']}, first frame decoded=${successResult['frameDecoded']}, ${width}x$height; '
+            'previous-player cleanup ${phase('cleanupMs')}, executable lookup ${phase('lookupMs')}, '
+            'process launch ${phase('launchMs')}, '
+            'window found elapsed ${phase('windowFoundMs')} '
+            '(native scan ${phase('windowDiscoveryCallMs')}), '
+            'window attach elapsed ${phase('attachMs')} '
+            '(native attach call ${phase('windowAttachmentCallMs')}, '
+            'desktop target lookup ${phase('desktopTargetLookupMs')}), '
+            'visible request elapsed ${phase('visibleRequestMs')}, '
+            'visible confirmed elapsed ${phase('visibleConfirmedMs')}, '
+            'DWM composition flush ${phase('dwmFlushMs')}, '
+            'IPC ready elapsed ${phase('ipcMs')}, '
+            'output configured elapsed ${phase('outputConfiguredMs')}, '
+            'decoded frame elapsed ${phase('frameReadyMs')}, '
+            'total ${startup.elapsedMilliseconds}ms, polls $polls '
+            '(native call total ${totalPollCallMs.toStringAsFixed(1)}ms, '
+            'max ${maxPollCallMs.toStringAsFixed(1)}ms; average interval '
+            '${polls > 1 ? (totalPollIntervalMs / (polls - 1)).toStringAsFixed(1) : 'n/a'}ms, '
+            'max ${maxPollIntervalMs.toStringAsFixed(1)}ms).',
+      );
+    }
     _policyTimer?.cancel();
     _policyTimer = Timer.periodic(
       const Duration(milliseconds: 1000),

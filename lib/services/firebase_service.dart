@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -58,19 +59,20 @@ Map<String, Object?> _parseWallpaperCatalogSnapshot(String content) {
   };
 }
 
-Future<Set<String>> _listValidCachedWallpaperFilenames(String path) async {
+Set<String> _scanCachedWallpaperFilenamesSync(String path) {
   final dir = Directory(path);
-  if (!await dir.exists()) return <String>{};
+  if (!dir.existsSync()) return <String>{};
   final valid = <String>{};
   try {
-    await for (final entity in dir.list(followLinks: false)) {
+    for (final entity in dir.listSync(followLinks: false)) {
       if (entity is File) {
+        final p = entity.path;
+        final sep = Platform.pathSeparator;
+        final idx = p.lastIndexOf(sep);
+        final name = idx != -1 ? p.substring(idx + 1) : p;
+        if (name == '.index_manifest.json') continue;
         try {
-          if (await entity.length() > 0) {
-            final p = entity.path;
-            final sep = Platform.pathSeparator;
-            final idx = p.lastIndexOf(sep);
-            final name = idx != -1 ? p.substring(idx + 1) : p;
+          if (entity.lengthSync() > 0) {
             valid.add(name);
           }
         } catch (_) {}
@@ -78,6 +80,14 @@ Future<Set<String>> _listValidCachedWallpaperFilenames(String path) async {
     }
   } catch (_) {}
   return valid;
+}
+
+Future<Set<String>> _listValidCachedWallpaperFilenames(String path) async {
+  try {
+    return await Isolate.run(() => _scanCachedWallpaperFilenamesSync(path));
+  } catch (_) {
+    return _scanCachedWallpaperFilenamesSync(path);
+  }
 }
 
 const int _catalogIsolateThresholdCharacters = 256 * 1024;
@@ -483,6 +493,56 @@ class FirebaseService {
         return;
       }
       final listingStopwatch = Stopwatch()..start();
+      final manifestFile = File('${cacheDir.path}/.index_manifest.json');
+      Set<String>? manifestFilenames;
+      if (await manifestFile.exists()) {
+        try {
+          final content = await manifestFile.readAsString();
+          final dynamic decoded = jsonDecode(content);
+          if (decoded is List) {
+            manifestFilenames = decoded.map((e) => e.toString()).toSet();
+          } else if (decoded is Map && decoded['files'] is List) {
+            manifestFilenames = (decoded['files'] as List).map((e) => e.toString()).toSet();
+          }
+        } catch (_) {}
+      }
+
+      if (manifestFilenames != null && manifestFilenames.isNotEmpty) {
+        final manifestMs = listingStopwatch.elapsedMilliseconds;
+        _cachedWallpaperFilenames
+          ..clear()
+          ..addAll(manifestFilenames);
+        _validatedCachedWallpapers
+          ..clear()
+          ..addAll(manifestFilenames);
+        _wallpaperFileValidations.clear();
+        _wallpaperCacheIndexWarmed = true;
+        final totalMs = stopwatch.elapsedMilliseconds;
+        logPerf(
+          'FirebaseService',
+          'Wallpaper cache index loaded ${_cachedWallpaperFilenames.length} files from manifest '
+              'in ${manifestMs}ms (total ${totalMs}ms warmup). Background reconciliation started.',
+        );
+
+        // Asynchronously reconcile cache directory in background isolate without blocking startup
+        unawaited(() async {
+          try {
+            final scanned = await _listValidCachedWallpaperFilenames(cacheDir.path);
+            if (scanned.length != _cachedWallpaperFilenames.length ||
+                !scanned.containsAll(_cachedWallpaperFilenames)) {
+              _cachedWallpaperFilenames
+                ..clear()
+                ..addAll(scanned);
+              _validatedCachedWallpapers
+                ..clear()
+                ..addAll(scanned);
+              await _saveCacheIndexManifest(manifestFile, scanned);
+            }
+          } catch (_) {}
+        }());
+        return;
+      }
+
       final validFilenames = await _listValidCachedWallpaperFilenames(cacheDir.path);
       final listingMs = listingStopwatch.elapsedMilliseconds;
       _cachedWallpaperFilenames
@@ -493,13 +553,14 @@ class FirebaseService {
         ..addAll(validFilenames);
       _wallpaperFileValidations.clear();
       _wallpaperCacheIndexWarmed = true;
+      unawaited(_saveCacheIndexManifest(manifestFile, validFilenames));
       final totalMs = stopwatch.elapsedMilliseconds;
       final measuredPhaseMs = appDirectoryMs + cacheDirectoryMs + listingMs;
       final unaccountedMs = max(0, totalMs - measuredPhaseMs);
       logPerf(
         'FirebaseService',
         'Wallpaper cache index listed ${_cachedWallpaperFilenames.length} files '
-            'in ${listingMs}ms using async I/O '
+            'in ${listingMs}ms using worker isolate '
             '(app directory ${appDirectoryMs}ms, cache directory check '
             '${cacheDirectoryMs}ms, unaccounted wall time ${unaccountedMs}ms; '
             '${totalMs}ms total warmup).',
@@ -608,6 +669,30 @@ class FirebaseService {
   static const String _localDbFileName = 'local_rtdb_wallpapers.json';
   static final Set<String> _validatedCachedWallpapers = <String>{};
   static final Map<String, File> _cachedThumbnailFileMap = {};
+
+  static bool isWallpaperValidated(String filename) =>
+      _validatedCachedWallpapers.contains(filename);
+
+  static bool isCachedWallpaperPathValidated(String fullPath) {
+    final sep = Platform.pathSeparator;
+    final idx = fullPath.lastIndexOf(sep);
+    final name = idx != -1 ? fullPath.substring(idx + 1) : fullPath;
+    return _validatedCachedWallpapers.contains(name);
+  }
+
+  static Future<void> _saveCacheIndexManifest(
+    File manifestFile,
+    Set<String> filenames,
+  ) async {
+    try {
+      final json = jsonEncode({
+        'version': 1,
+        'updatedAt': DateTime.now().toIso8601String(),
+        'files': filenames.toList(),
+      });
+      await manifestFile.writeAsString(json, flush: true);
+    } catch (_) {}
+  }
 
   Future<File> get _localDbFile async {
     final appDir = await SettingsService().getAppDirectory();
@@ -1008,12 +1093,28 @@ class FirebaseService {
         '[FirebaseService] STATE: Target file path: ${targetFile.path}',
       );
 
-      // Check if it's already cached first
+      // Check if it's already verified in cache index first (instant RAM path)
       final cacheLookupStopwatch = Stopwatch()..start();
+      if (_validatedCachedWallpapers.contains(wallpaper.filename)) {
+        final cacheLookupMs = cacheLookupStopwatch.elapsedMilliseconds;
+        debugPrint(
+          '[FirebaseService] STATE: Wallpaper is validated in cache: ${wallpaper.filename}',
+        );
+        logPerf(
+          'FirebaseService',
+          'Wallpaper cache lookup found ${wallpaper.filename} instantly in '
+              '${cacheLookupMs}ms (total ${downloadStopwatch.elapsedMilliseconds}ms).',
+        );
+        debugPrint('[FirebaseService] EXIT downloadWallpaper() - CACHED');
+        onProgress(1.0);
+        return targetFile;
+      }
+
       final targetExists = await targetFile.exists();
       final cachedLength = targetExists ? await targetFile.length() : 0;
       final cacheLookupMs = cacheLookupStopwatch.elapsedMilliseconds;
       if (cachedLength > 0) {
+        _markWallpaperCached(wallpaper.filename);
         debugPrint(
           '[FirebaseService] STATE: Wallpaper is already cached: ${wallpaper.filename} ($cachedLength bytes)',
         );
@@ -1212,6 +1313,13 @@ class FirebaseService {
     _cachedWallpaperFilenames.add(filename);
     _validatedCachedWallpapers.add(filename);
     _wallpaperFileValidations.remove(filename);
+    unawaited(() async {
+      try {
+        final appDir = await SettingsService().getAppDirectory();
+        final manifestFile = File('${appDir.path}/cached_wallpapers/.index_manifest.json');
+        await _saveCacheIndexManifest(manifestFile, _cachedWallpaperFilenames);
+      } catch (_) {}
+    }());
   }
 
   /// Synchronously returns the cached thumbnail file if already on disk or in memory.
