@@ -50,6 +50,7 @@ dependencies:
   shorebird_code_push: ^2.0.6
   crypto: ^3.0.7
   tray_manager: 0.8.0
+  archive: ^4.5.2
 
 dev_dependencies:
   flutter_test:

@@ -7,46 +7,77 @@ import 'system_optimizer_service.dart';
 
 class OptimizationResult {
   final bool success;
-  final double ramFreedMb;
-  final double beforeWorkingSetMb;
-  final double afterWorkingSetMb;
+  final double workingSetBeforeMb;
+  final double workingSetAfterMb;
+  final double workingSetFreedMb;
+  final double privateBytesBeforeMb;
+  final double privateBytesAfterMb;
+  final double privateBytesFreedMb;
   final List<String> actionsTaken;
   final DateTime timestamp;
 
   const OptimizationResult({
     required this.success,
-    required this.ramFreedMb,
-    required this.beforeWorkingSetMb,
-    required this.afterWorkingSetMb,
+    required this.workingSetBeforeMb,
+    required this.workingSetAfterMb,
+    required this.workingSetFreedMb,
+    this.privateBytesBeforeMb = 0.0,
+    this.privateBytesAfterMb = 0.0,
+    this.privateBytesFreedMb = 0.0,
     required this.actionsTaken,
     required this.timestamp,
   });
 
+  // Backward-compatible aliases
+  double get ramFreedMb => workingSetFreedMb;
+  double get beforeWorkingSetMb => workingSetBeforeMb;
+  double get afterWorkingSetMb => workingSetAfterMb;
+
   Map<String, dynamic> toJson() => {
         'success': success,
-        'ramFreedMb': ramFreedMb,
-        'beforeWorkingSetMb': beforeWorkingSetMb,
-        'afterWorkingSetMb': afterWorkingSetMb,
+        'workingSetBeforeMb': workingSetBeforeMb,
+        'workingSetAfterMb': workingSetAfterMb,
+        'workingSetFreedMb': workingSetFreedMb,
+        'privateBytesBeforeMb': privateBytesBeforeMb,
+        'privateBytesAfterMb': privateBytesAfterMb,
+        'privateBytesFreedMb': privateBytesFreedMb,
+        'ramFreedMb': workingSetFreedMb,
+        'beforeWorkingSetMb': workingSetBeforeMb,
+        'afterWorkingSetMb': workingSetAfterMb,
         'actionsTaken': actionsTaken,
         'timestamp': timestamp.toIso8601String(),
       };
 
-  factory OptimizationResult.fromJson(Map<String, dynamic> json) =>
-      OptimizationResult(
-        success: json['success'] as bool? ?? true,
-        ramFreedMb: (json['ramFreedMb'] as num?)?.toDouble() ?? 0.0,
-        beforeWorkingSetMb:
-            (json['beforeWorkingSetMb'] as num?)?.toDouble() ?? 0.0,
-        afterWorkingSetMb:
-            (json['afterWorkingSetMb'] as num?)?.toDouble() ?? 0.0,
-        actionsTaken: (json['actionsTaken'] as List?)
-                ?.whereType<String>()
-                .toList() ??
-            const [],
-        timestamp: json['timestamp'] != null
-            ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
-            : DateTime.now(),
-      );
+  factory OptimizationResult.fromJson(Map<String, dynamic> json) {
+    final wsFreed = (json['workingSetFreedMb'] as num?)?.toDouble() ??
+        (json['ramFreedMb'] as num?)?.toDouble() ??
+        0.0;
+    final beforeWs = (json['workingSetBeforeMb'] as num?)?.toDouble() ??
+        (json['beforeWorkingSetMb'] as num?)?.toDouble() ??
+        0.0;
+    final afterWs = (json['workingSetAfterMb'] as num?)?.toDouble() ??
+        (json['afterWorkingSetMb'] as num?)?.toDouble() ??
+        0.0;
+    return OptimizationResult(
+      success: json['success'] as bool? ?? true,
+      workingSetBeforeMb: beforeWs,
+      workingSetAfterMb: afterWs,
+      workingSetFreedMb: wsFreed,
+      privateBytesBeforeMb:
+          (json['privateBytesBeforeMb'] as num?)?.toDouble() ?? 0.0,
+      privateBytesAfterMb:
+          (json['privateBytesAfterMb'] as num?)?.toDouble() ?? 0.0,
+      privateBytesFreedMb:
+          (json['privateBytesFreedMb'] as num?)?.toDouble() ?? 0.0,
+      actionsTaken: (json['actionsTaken'] as List?)
+              ?.whereType<String>()
+              .toList() ??
+          const [],
+      timestamp: json['timestamp'] != null
+          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
 }
 
 class PerformanceProfileConfig {
@@ -121,6 +152,18 @@ class PerformanceProfileConfig {
       lowPowerMode: false,
       boostPriority: false,
     ),
+    'custom': PerformanceProfileConfig(
+      id: 'custom',
+      label: 'Custom',
+      description:
+          'Fully personalized configuration. Custom frame rates, image cache boundaries, animation triggers, and power options.',
+      wallpaperFpsLimit: 60,
+      widgetRefreshIntervalMs: 1000,
+      pauseInactiveAnimations: true,
+      imageCacheLimitMb: 32,
+      lowPowerMode: false,
+      boostPriority: false,
+    ),
   };
 }
 
@@ -186,13 +229,16 @@ class DeviceOptimizationService {
 
     // Snapshot before metrics
     double beforeWs = 0.0;
+    double beforePrivate = 0.0;
     try {
+      final diagMem = DiagnosticsService.instance.getMemorySnapshot();
+      beforeWs = diagMem.processRssBytes / (1024.0 * 1024.0);
+      beforePrivate = (diagMem.processPrivateBytes ?? 0) / (1024.0 * 1024.0);
       final metrics = await _optimizer.getPerformanceMetrics();
-      beforeWs = (metrics?.processWorkingSetMb ?? 0.0) +
-          (metrics?.mpvWorkingSetMb ?? 0.0);
-      if (beforeWs <= 0.0) {
-        final diagMem = DiagnosticsService.instance.getMemorySnapshot();
-        beforeWs = diagMem.processRssBytes / (1024.0 * 1024.0);
+      if (metrics != null &&
+          metrics.processWorkingSetMb != null &&
+          metrics.processWorkingSetMb! > 0) {
+        beforeWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
       }
     } catch (_) {}
 
@@ -246,28 +292,37 @@ class DeviceOptimizationService {
       } catch (_) {}
     }
 
+    // Stabilization delay for Windows memory manager pages to settle
+    await Future.delayed(const Duration(milliseconds: 300));
+
     // Measure post-optimization metrics
     double afterWs = 0.0;
+    double afterPrivate = 0.0;
     try {
+      final diagMem = DiagnosticsService.instance.getMemorySnapshot();
+      afterWs = diagMem.processRssBytes / (1024.0 * 1024.0);
+      afterPrivate = (diagMem.processPrivateBytes ?? 0) / (1024.0 * 1024.0);
       final metrics = await _optimizer.getPerformanceMetrics();
-      afterWs = (metrics?.processWorkingSetMb ?? 0.0) +
-          (metrics?.mpvWorkingSetMb ?? 0.0);
-      if (afterWs <= 0.0) {
-        final diagMem = DiagnosticsService.instance.getMemorySnapshot();
-        afterWs = diagMem.processRssBytes / (1024.0 * 1024.0);
+      if (metrics != null &&
+          metrics.processWorkingSetMb != null &&
+          metrics.processWorkingSetMb! > 0) {
+        afterWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
       }
     } catch (_) {}
 
-    double freedMb = beforeWs > afterWs ? (beforeWs - afterWs) : 0.0;
-    if (freedMb < 0.1 && actions.isNotEmpty) {
-      freedMb = 18.5; // Baseline minimum measured GC & page file trim
-    }
+    final double wsFreed =
+        beforeWs > afterWs ? (beforeWs - afterWs) : 0.0;
+    final double privateFreed =
+        beforePrivate > afterPrivate ? (beforePrivate - afterPrivate) : 0.0;
 
     final result = OptimizationResult(
       success: true,
-      ramFreedMb: freedMb,
-      beforeWorkingSetMb: beforeWs,
-      afterWorkingSetMb: afterWs > 0 ? afterWs : (beforeWs - freedMb),
+      workingSetBeforeMb: beforeWs,
+      workingSetAfterMb: afterWs > 0 ? afterWs : beforeWs,
+      workingSetFreedMb: wsFreed,
+      privateBytesBeforeMb: beforePrivate,
+      privateBytesAfterMb: afterPrivate > 0 ? afterPrivate : beforePrivate,
+      privateBytesFreedMb: privateFreed,
       actionsTaken: actions,
       timestamp: DateTime.now(),
     );

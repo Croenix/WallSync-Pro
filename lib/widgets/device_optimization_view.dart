@@ -103,7 +103,8 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 const Icon(Icons.check_circle_rounded, color: Colors.white),
                 const SizedBox(width: 10),
                 Text(
-                  'Optimization complete! Freed ${res.ramFreedMb.toStringAsFixed(1)} MB RAM.',
+                  'Optimization complete! Working Set: ${res.workingSetFreedMb.toStringAsFixed(1)} MB trimmed'
+                  '${res.privateBytesFreedMb > 0 ? " • Private: ${res.privateBytesFreedMb.toStringAsFixed(1)} MB freed" : ""}',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -201,7 +202,11 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                     final item = history[i];
                     final dateStr = item['timestamp'] as String? ?? '';
                     final dt = DateTime.tryParse(dateStr) ?? DateTime.now();
-                    final freed = (item['ramFreedMb'] as num?)?.toDouble() ?? 0.0;
+                    final freed = (item['workingSetFreedMb'] as num?)?.toDouble() ??
+                        (item['ramFreedMb'] as num?)?.toDouble() ??
+                        0.0;
+                    final privFreed =
+                        (item['privateBytesFreedMb'] as num?)?.toDouble() ?? 0.0;
                     final actions = (item['actionsTaken'] as List?)?.whereType<String>().toList() ?? [];
 
                     return Padding(
@@ -224,7 +229,9 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                                   border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                                 ),
                                 child: Text(
-                                  '-${freed.toStringAsFixed(1)} MB RAM',
+                                  privFreed > 0
+                                      ? '-${freed.toStringAsFixed(1)} MB WS | -${privFreed.toStringAsFixed(1)} MB Priv'
+                                      : '-${freed.toStringAsFixed(1)} MB RAM',
                                   style: const TextStyle(
                                     color: Color(0xFF10B981),
                                     fontSize: 11,
@@ -627,7 +634,9 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 if (_lastResult != null) ...[
                   const SizedBox(height: 10),
                   Text(
-                    'Last run: Freed ${_lastResult!.ramFreedMb.toStringAsFixed(1)} MB (${_lastResult!.actionsTaken.length} actions completed).',
+                    'Last run: Trimmed ${_lastResult!.workingSetFreedMb.toStringAsFixed(1)} MB Working Set'
+                    '${_lastResult!.privateBytesFreedMb > 0 ? " • ${_lastResult!.privateBytesFreedMb.toStringAsFixed(1)} MB Private Commit" : ""} '
+                    '(${_lastResult!.actionsTaken.length} actions completed).',
                     style: const TextStyle(fontSize: 12, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
                   ),
                 ],
@@ -683,71 +692,78 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
           style: TextStyle(fontSize: 13, color: Colors.white54),
         ),
         const SizedBox(height: 14),
-        Row(
-          children: PerformanceProfileConfig.profiles.values.map((prof) {
-            final isSelected = currentProfile == prof.id;
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: InkWell(
-                  onTap: () => _selectProfile(prof.id),
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF38BDF8).withValues(alpha: 0.12)
-                          : const Color(0xFF12141D),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = constraints.maxWidth > 900
+                ? (constraints.maxWidth - 48) / 5
+                : (constraints.maxWidth - 12) / 2;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: PerformanceProfileConfig.profiles.values.map((prof) {
+                final isSelected = currentProfile == prof.id;
+                return SizedBox(
+                  width: cardWidth,
+                  child: InkWell(
+                    onTap: () => _selectProfile(prof.id),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
                         color: isSelected
-                            ? const Color(0xFF38BDF8)
-                            : Colors.white.withValues(alpha: 0.08),
-                        width: isSelected ? 1.5 : 1.0,
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.12)
+                            : const Color(0xFF12141D),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF38BDF8)
+                              : Colors.white.withValues(alpha: 0.08),
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                prof.label,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? const Color(0xFF38BDF8) : Colors.white,
+                                ),
+                              ),
+                              if (isSelected)
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 18),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            prof.description,
+                            style: const TextStyle(fontSize: 11.5, color: Colors.white54, height: 1.35),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _buildProfileBadge('${prof.wallpaperFpsLimit} FPS'),
+                              _buildProfileBadge('${prof.widgetRefreshIntervalMs}ms Refresh'),
+                              _buildProfileBadge('${prof.imageCacheLimitMb}MB Cache'),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              prof.label,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected ? const Color(0xFF38BDF8) : Colors.white,
-                              ),
-                            ),
-                            if (isSelected)
-                              const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 18),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          prof.description,
-                          style: const TextStyle(fontSize: 11.5, color: Colors.white54, height: 1.35),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: [
-                            _buildProfileBadge('${prof.wallpaperFpsLimit} FPS'),
-                            _buildProfileBadge('${prof.widgetRefreshIntervalMs}ms Refresh'),
-                            _buildProfileBadge('${prof.imageCacheLimitMb}MB Cache'),
-                          ],
-                        ),
-                      ],
-                    ),
                   ),
-                ),
-              ),
+                );
+              }).toList(),
             );
-          }).toList(),
+          },
         ),
       ],
     );
@@ -849,33 +865,39 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
           ),
           const Divider(color: Colors.white12, height: 24),
           // Switches
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Auto-Pause Inactive Background Animations', style: TextStyle(color: Colors.white, fontSize: 14)),
-            subtitle: const Text('Suspends animation loops when dashboard or overlay is unfocused or obscured by games.', style: TextStyle(color: Colors.white54, fontSize: 12)),
-            value: widget.settings.pauseInactiveAnimations,
-            activeThumbColor: const Color(0xFF38BDF8),
-            onChanged: (val) async {
-              final updated = await widget.settingsService.updateSettings(
-                (c) => c.copyWith(pauseInactiveAnimations: val, performanceProfile: 'custom'),
-              );
-              widget.onSettingsChanged(updated);
-              setState(() {});
-            },
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Auto-Pause Inactive Background Animations', style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: const Text('Suspends animation loops when dashboard or overlay is unfocused or obscured by games.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              value: widget.settings.pauseInactiveAnimations,
+              activeThumbColor: const Color(0xFF38BDF8),
+              onChanged: (val) async {
+                final updated = await widget.settingsService.updateSettings(
+                  (c) => c.copyWith(pauseInactiveAnimations: val, performanceProfile: 'custom'),
+                );
+                widget.onSettingsChanged(updated);
+                setState(() {});
+              },
+            ),
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Automatic Widget Sizing (Default ON)', style: TextStyle(color: Colors.white, fontSize: 14)),
-            subtitle: const Text('Automatically adapts widget window dimensions to content length and Windows display DPI.', style: TextStyle(color: Colors.white54, fontSize: 12)),
-            value: widget.settings.autoSizing,
-            activeThumbColor: const Color(0xFF10B981),
-            onChanged: (val) async {
-              final updated = await widget.settingsService.updateSettings(
-                (c) => c.copyWith(autoSizing: val),
-              );
-              widget.onSettingsChanged(updated);
-              setState(() {});
-            },
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Automatic Widget Sizing (Default ON)', style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: const Text('Automatically adapts widget window dimensions to content length and Windows display DPI.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              value: widget.settings.autoSizing,
+              activeThumbColor: const Color(0xFF10B981),
+              onChanged: (val) async {
+                final updated = await widget.settingsService.updateSettings(
+                  (c) => c.copyWith(autoSizing: val),
+                );
+                widget.onSettingsChanged(updated);
+                setState(() {});
+              },
+            ),
           ),
         ],
       ),

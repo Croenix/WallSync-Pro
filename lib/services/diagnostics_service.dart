@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' as math;
+import 'package:archive/archive.dart';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -307,6 +309,7 @@ class SmoothnessSnapshot {
   final int suspendedFrames;
   final int eligibleFrames;
   final int pipelineGapFrames;
+  final int presentationStallFrames;
   final double averageFrameTimeMs;
   final double averageTotalSpanMs;
   final double worstFrameTimeMs;
@@ -314,6 +317,8 @@ class SmoothnessSnapshot {
   final double averageRasterTimeMs;
   final double worstBuildTimeMs;
   final double worstRasterTimeMs;
+  final double worstPresentationDelayMs;
+  final double averagePresentationDelayMs;
   final double p50FrameTimeMs;
   final double p90FrameTimeMs;
   final double p99FrameTimeMs;
@@ -330,6 +335,7 @@ class SmoothnessSnapshot {
     this.suspendedFrames = 0,
     required this.eligibleFrames,
     this.pipelineGapFrames = 0,
+    this.presentationStallFrames = 0,
     required this.averageFrameTimeMs,
     this.averageTotalSpanMs = 0.0,
     required this.worstFrameTimeMs,
@@ -337,6 +343,8 @@ class SmoothnessSnapshot {
     this.averageRasterTimeMs = 0.0,
     this.worstBuildTimeMs = 0.0,
     this.worstRasterTimeMs = 0.0,
+    this.worstPresentationDelayMs = 0.0,
+    this.averagePresentationDelayMs = 0.0,
     this.p50FrameTimeMs = 0.0,
     this.p90FrameTimeMs = 0.0,
     this.p99FrameTimeMs = 0.0,
@@ -354,6 +362,7 @@ class SmoothnessSnapshot {
     'suspendedFrames': suspendedFrames,
     'eligibleFrames': eligibleFrames,
     'pipelineGapFrames': pipelineGapFrames,
+    'presentationStallFrames': presentationStallFrames,
     'averageFrameTimeMs': averageFrameTimeMs.toStringAsFixed(2),
     'averageTotalSpanMs': averageTotalSpanMs.toStringAsFixed(2),
     'worstFrameTimeMs': worstFrameTimeMs.toStringAsFixed(2),
@@ -361,6 +370,8 @@ class SmoothnessSnapshot {
     'averageRasterTimeMs': averageRasterTimeMs.toStringAsFixed(2),
     'worstBuildTimeMs': worstBuildTimeMs.toStringAsFixed(2),
     'worstRasterTimeMs': worstRasterTimeMs.toStringAsFixed(2),
+    'worstPresentationDelayMs': worstPresentationDelayMs.toStringAsFixed(2),
+    'averagePresentationDelayMs': averagePresentationDelayMs.toStringAsFixed(2),
     'p50FrameTimeMs': p50FrameTimeMs.toStringAsFixed(2),
     'p90FrameTimeMs': p90FrameTimeMs.toStringAsFixed(2),
     'p99FrameTimeMs': p99FrameTimeMs.toStringAsFixed(2),
@@ -377,11 +388,49 @@ class SmoothnessSnapshot {
       'Frames: $totalFrames ($eligibleFrames measured, $suspendedFrames gaps) | '
       'Smoothness: ${cumulativeSmoothnessPercentage.toStringAsFixed(1)}% (Rolling: ${rollingSmoothnessPercentage.toStringAsFixed(1)}%) | '
       'Jank: $jankFrames (>16.6ms) | Severe Jank: $severeJankFrames (>33.3ms) | '
+      'DWM Stalls: $presentationStallFrames | '
       'P50: ${p50FrameTimeMs.toStringAsFixed(1)}ms | P90: ${p90FrameTimeMs.toStringAsFixed(1)}ms | P99: ${p99FrameTimeMs.toStringAsFixed(1)}ms | '
       'Avg Active: ${averageFrameTimeMs.toStringAsFixed(2)}ms (Build: ${averageBuildTimeMs.toStringAsFixed(2)}ms, Raster: ${averageRasterTimeMs.toStringAsFixed(2)}ms, Span: $averageTotalSpanSpanSafe) | '
       'Peak Active: ${worstFrameTimeMs.toStringAsFixed(2)}ms';
 
   String get averageTotalSpanSpanSafe => averageTotalSpanMs.toStringAsFixed(2);
+}
+
+/// Structured log entry for diagnostic telemetry history and export.
+class DiagnosticLogEntry {
+  final DateTime timestamp;
+  final String severity; // 'INFO', 'WARN', 'ERROR', 'PERF'
+  final String category; // 'General', 'Frame', 'Memory', 'Watchdog', 'Native'
+  final String message;
+  final double? processCpuPercent;
+  final double? systemCpuPercent;
+  final double? processRssMb;
+  final double? processPrivateMb;
+  final double? smoothnessPercent;
+
+  const DiagnosticLogEntry({
+    required this.timestamp,
+    required this.severity,
+    required this.category,
+    required this.message,
+    this.processCpuPercent,
+    this.systemCpuPercent,
+    this.processRssMb,
+    this.processPrivateMb,
+    this.smoothnessPercent,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'timestamp': timestamp.toIso8601String(),
+    'severity': severity,
+    'category': category,
+    'message': message,
+    if (processCpuPercent != null) 'processCpuPercent': processCpuPercent,
+    if (systemCpuPercent != null) 'systemCpuPercent': systemCpuPercent,
+    if (processRssMb != null) 'processRssMb': processRssMb,
+    if (processPrivateMb != null) 'processPrivateMb': processPrivateMb,
+    if (smoothnessPercent != null) 'smoothnessPercent': smoothnessPercent,
+  };
 }
 
 /// Active async operation tracker for detecting overloading & over-waiting.
@@ -421,6 +470,7 @@ class DiagnosticsService {
   int _jankFrames = 0;
   int _severeJankFrames = 0;
   int _suspendedFrames = 0;
+  int _presentationStallFrames = 0;
   double _totalFrameDurationMs = 0.0;
   double _worstFrameDurationMs = 0.0;
   double _totalBuildDurationMs = 0.0;
@@ -428,8 +478,11 @@ class DiagnosticsService {
   double _totalFrameSpanMs = 0.0;
   double _worstBuildDurationMs = 0.0;
   double _worstRasterDurationMs = 0.0;
+  double _totalPresentationDelayMs = 0.0;
+  double _worstPresentationDelayMs = 0.0;
   final List<double> _recentFrameDurations = [];
   final List<String> _recentRawFrameSamples = [];
+  final List<DiagnosticLogEntry> _historyEntries = [];
   bool _isWindowVisible = true;
   bool get isWindowVisible => _isWindowVisible;
   void setWindowVisible(bool visible) {
@@ -602,6 +655,16 @@ class DiagnosticsService {
     if (buildMs > _worstBuildDurationMs) _worstBuildDurationMs = buildMs;
     if (rasterMs > _worstRasterDurationMs) _worstRasterDurationMs = rasterMs;
 
+    // Distinguish DXGI swapchain / DWM v-sync presentation throttle from active GPU rendering
+    final isPresentationStall = rasterMs > 50.0 && buildMs < 3.0;
+    if (isPresentationStall) {
+      _presentationStallFrames++;
+      _totalPresentationDelayMs += rasterMs;
+      if (rasterMs > _worstPresentationDelayMs) {
+        _worstPresentationDelayMs = rasterMs;
+      }
+    }
+
     _recentFrameDurations.add(activeMs);
     if (_recentFrameDurations.length > 120) _recentFrameDurations.removeAt(0);
 
@@ -610,6 +673,15 @@ class DiagnosticsService {
     if (isSevereJank) {
       _severeJankFrames++;
       _jankFrames++;
+      recordHistoryEntry(
+        severity: 'WARN',
+        category: 'Frame',
+        message: 'Severe frame active compute: ${activeMs.toStringAsFixed(1)}ms '
+            '(UI: ${buildMs.toStringAsFixed(1)}ms, Raster: ${rasterMs.toStringAsFixed(1)}ms)',
+        smoothness: _eligibleFrames > 0
+            ? (((_eligibleFrames - _jankFrames) * 100.0) / _eligibleFrames)
+            : 100.0,
+      );
       final shouldLog =
           activeMs > 100.0 &&
           (_lastJankLogTime == null ||
@@ -656,6 +728,11 @@ class DiagnosticsService {
             '${_activeOperations.length}'
             '${activeOperationDetails.isEmpty ? '' : ' [$activeOperationDetails]'}';
         _hangEvents.add('[${now.toIso8601String()}] $note');
+        recordHistoryEntry(
+          severity: 'WARN',
+          category: 'Watchdog',
+          message: 'UI Event Loop Gap: ${hangMs}ms stall (${_activeOperations.length} active ops)',
+        );
         logWarning('DiagnosticsService', note);
       }
     });
@@ -1130,6 +1207,10 @@ class DiagnosticsService {
           (smoothRecentCount * 100.0) / _recentFrameDurations.length;
     }
 
+    final double avgPres = _presentationStallFrames > 0
+        ? (_totalPresentationDelayMs / _presentationStallFrames)
+        : 0.0;
+
     return SmoothnessSnapshot(
       totalFrames: _totalFrames,
       jankFrames: _jankFrames,
@@ -1137,6 +1218,7 @@ class DiagnosticsService {
       suspendedFrames: _suspendedFrames,
       eligibleFrames: _eligibleFrames,
       pipelineGapFrames: _pipelineGapFrames,
+      presentationStallFrames: _presentationStallFrames,
       averageFrameTimeMs: avg,
       averageTotalSpanMs: avgSpan,
       worstFrameTimeMs: _worstFrameDurationMs,
@@ -1144,6 +1226,8 @@ class DiagnosticsService {
       averageRasterTimeMs: avgRaster,
       worstBuildTimeMs: _worstBuildDurationMs,
       worstRasterTimeMs: _worstRasterDurationMs,
+      worstPresentationDelayMs: _worstPresentationDelayMs,
+      averagePresentationDelayMs: avgPres,
       p50FrameTimeMs: p50,
       p90FrameTimeMs: p90,
       p99FrameTimeMs: p99,
@@ -1162,6 +1246,7 @@ class DiagnosticsService {
     _jankFrames = 0;
     _severeJankFrames = 0;
     _suspendedFrames = 0;
+    _presentationStallFrames = 0;
     _totalFrameDurationMs = 0.0;
     _worstFrameDurationMs = 0.0;
     _totalBuildDurationMs = 0.0;
@@ -1169,6 +1254,8 @@ class DiagnosticsService {
     _totalFrameSpanMs = 0.0;
     _worstBuildDurationMs = 0.0;
     _worstRasterDurationMs = 0.0;
+    _totalPresentationDelayMs = 0.0;
+    _worstPresentationDelayMs = 0.0;
     _recentFrameDurations.clear();
     _recentRawFrameSamples.clear();
     _hangEvents.clear();
@@ -1311,6 +1398,17 @@ class DiagnosticsService {
             '(${smooth.jankFrames}/${smooth.eligibleFrames} measured frames jank; '
             '${smooth.suspendedFrames} long timing gaps excluded) | '
             'Active Ops: ${_activeOperations.length}',
+      );
+      recordHistoryEntry(
+        severity: 'INFO',
+        category: 'Telemetry',
+        message:
+            'RAM: ${mem.processRssMb.toStringAsFixed(1)}MB, CPU: ${cpu.processCpuPercent.toStringAsFixed(1)}%, Smooth: ${smooth.smoothnessPercentage.toStringAsFixed(1)}%',
+        cpuPercent: cpu.processCpuPercent,
+        sysCpuPercent: cpu.systemCpuPercent,
+        rssMb: mem.processRssMb,
+        privateMb: mem.processPrivateMb,
+        smoothness: smooth.smoothnessPercentage,
       );
     } catch (e) {
       logError('DiagnosticsService', 'Error taking periodic snapshot', e);
@@ -1461,6 +1559,13 @@ class DiagnosticsService {
     );
     buffer.writeln('Jank Frames (>16.6ms):   ${smooth.jankFrames}');
     buffer.writeln('Severe Jank (>33.3ms):   ${smooth.severeJankFrames}');
+    if (smooth.presentationStallFrames > 0) {
+      buffer.writeln(
+        'DWM Presentation Stalls: ${smooth.presentationStallFrames} frames '
+        '(worst delay: ${smooth.worstPresentationDelayMs.toStringAsFixed(1)} ms; '
+        'avg: ${smooth.averagePresentationDelayMs.toStringAsFixed(1)} ms)',
+      );
+    }
     buffer.writeln(
       'Timing Gaps Excluded:    ${smooth.suspendedFrames} (cause not inferred from FrameTiming)',
     );
@@ -1509,6 +1614,454 @@ class DiagnosticsService {
       'Diagnostic review report saved to: ${file.absolute.path}',
     );
     return file;
+  }
+
+  void recordHistoryEntry({
+    required String severity,
+    required String category,
+    required String message,
+    double? cpuPercent,
+    double? sysCpuPercent,
+    double? rssMb,
+    double? privateMb,
+    double? smoothness,
+  }) {
+    final entry = DiagnosticLogEntry(
+      timestamp: DateTime.now(),
+      severity: severity,
+      category: category,
+      message: message,
+      processCpuPercent: cpuPercent,
+      systemCpuPercent: sysCpuPercent,
+      processRssMb: rssMb,
+      processPrivateMb: privateMb,
+      smoothnessPercent: smoothness,
+    );
+    _historyEntries.add(entry);
+    if (_historyEntries.length > 500) {
+      _historyEntries.removeAt(0);
+    }
+  }
+
+  List<DiagnosticLogEntry> getHistoryEntries({
+    Duration? timeRange,
+    String? severity,
+    String? category,
+  }) {
+    final now = DateTime.now();
+    return _historyEntries.where((entry) {
+      if (timeRange != null && now.difference(entry.timestamp) > timeRange) {
+        return false;
+      }
+      if (severity != null &&
+          severity.toUpperCase() != 'ALL' &&
+          entry.severity.toUpperCase() != severity.toUpperCase()) {
+        return false;
+      }
+      if (category != null &&
+          category.toLowerCase() != 'all' &&
+          entry.category.toLowerCase() != category.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void clearHistoryEntries() {
+    _historyEntries.clear();
+  }
+
+  /// Returns the canonical directory for all exported reports and support bundles.
+  Future<Directory> getExportDirectory() async {
+    final localAppData = Platform.environment['LOCALAPPDATA'];
+    final appData =
+        Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
+    final basePath = localAppData != null
+        ? '$localAppData\\WallSync\\exports'
+        : '$appData\\com.example\\wallsync\\exports';
+    final dir = Directory(basePath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  /// Generates the standard ASCII text diagnostic report.
+  Future<String> generateTxtReport() => generateDiagnosticReport();
+
+  /// Exports standard TXT report to the exports directory.
+  Future<File> exportTxtReport([String? fileName]) async {
+    final report = await generateTxtReport();
+    final exportDir = await getExportDirectory();
+    final name = fileName ??
+        'WallSync_Report_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.txt';
+    final file = File('${exportDir.path}\\$name');
+    await file.writeAsString(report, flush: true);
+    logInfo('DiagnosticsService', 'Exported TXT report: ${file.path}');
+    return file;
+  }
+
+  /// Generates an extended comprehensive diagnostic trace report.
+  Future<String> generateDetailedReport() async {
+    final standard = await generateDiagnosticReport();
+    final smooth = getSmoothnessSnapshot();
+
+    final buffer = StringBuffer(standard);
+    buffer.writeln('');
+    buffer.writeln(
+      '================================================================',
+    );
+    buffer.writeln(
+      '               DETAILED DIAGNOSTIC TRACE & LOGS                 ',
+    );
+    buffer.writeln(
+      '================================================================',
+    );
+    buffer.writeln(
+      'Execution Mode:        ${kReleaseMode ? "Release" : (kProfileMode ? "Profile" : "Debug")}',
+    );
+    buffer.writeln(
+      'Flutter Impeller / D3D: Active OpenGLESSDF / DXGI swapchain',
+    );
+    buffer.writeln('Window Visibility:     $_isWindowVisible');
+    buffer.writeln(
+      'Overlay Child PIDs:    ${_overlayPids.isEmpty ? "None" : _overlayPids.join(", ")}',
+    );
+    buffer.writeln('Overlay Status:        $_overlayProcessStatus');
+    buffer.writeln(
+      'DWM V-Sync Stalls:     ${smooth.presentationStallFrames} frames',
+    );
+    buffer.writeln(
+      'Worst DWM Delay:       ${smooth.worstPresentationDelayMs.toStringAsFixed(2)} ms',
+    );
+    buffer.writeln(
+      'Avg DWM Delay:         ${smooth.averagePresentationDelayMs.toStringAsFixed(2)} ms',
+    );
+    buffer.writeln(
+      'Percentiles:           P50: ${smooth.p50FrameTimeMs.toStringAsFixed(1)}ms | P90: ${smooth.p90FrameTimeMs.toStringAsFixed(1)}ms | P99: ${smooth.p99FrameTimeMs.toStringAsFixed(1)}ms',
+    );
+    buffer.writeln('');
+    buffer.writeln('--- ACTIVE ASYNC TASKS (${_activeOperations.length}) ---');
+    if (_activeOperations.isEmpty) {
+      buffer.writeln(
+        '  No asynchronous operations currently blocking or waiting.',
+      );
+    } else {
+      for (final op in _activeOperations.values) {
+        buffer.writeln(
+          '  * [${op.tag}] ${op.name} (elapsed: ${op.stopwatch.elapsedMilliseconds}ms, threshold: ${op.warningThreshold.inMilliseconds}ms)',
+        );
+      }
+    }
+    buffer.writeln('');
+    buffer.writeln('--- TELEMETRY LOG ENTRIES (${_historyEntries.length}) ---');
+    if (_historyEntries.isEmpty) {
+      buffer.writeln(
+        '  No telemetry entries recorded during current isolate session.',
+      );
+    } else {
+      for (final e in _historyEntries) {
+        buffer.writeln(
+          '  [${e.timestamp.toIso8601String()}] [${e.severity}] [${e.category}] ${e.message}',
+        );
+      }
+    }
+    buffer.writeln(
+      '================================================================',
+    );
+    return buffer.toString();
+  }
+
+  /// Exports detailed trace report to the exports directory.
+  Future<File> exportDetailedReport([String? fileName]) async {
+    final report = await generateDetailedReport();
+    final exportDir = await getExportDirectory();
+    final name = fileName ??
+        'WallSync_Detailed_Trace_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.txt';
+    final file = File('${exportDir.path}\\$name');
+    await file.writeAsString(report, flush: true);
+    logInfo('DiagnosticsService', 'Exported detailed trace: ${file.path}');
+    return file;
+  }
+
+  /// Generates time-series CSV metrics.
+  Future<String> generateCsvData() async {
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'Timestamp,ProcessCpuPercent,SystemCpuPercent,WorkingSetMb,PrivateCommitMb,SmoothnessPercent,JankFrames,AvgFrameTimeMs,ActiveOperations,Severity,Category,Message',
+    );
+    if (_historyEntries.isEmpty) {
+      final mem = getMemorySnapshot();
+      final cpu = getCpuSnapshot();
+      final smooth = getSmoothnessSnapshot();
+      buffer.writeln(
+        '${DateTime.now().toIso8601String()},'
+        '${cpu.processCpuPercent.toStringAsFixed(2)},'
+        '${cpu.systemCpuPercent.toStringAsFixed(2)},'
+        '${mem.processRssMb.toStringAsFixed(2)},'
+        '${mem.processPrivateMb?.toStringAsFixed(2) ?? ""},'
+        '${smooth.smoothnessPercentage.toStringAsFixed(1)},'
+        '${smooth.jankFrames},'
+        '${smooth.averageFrameTimeMs.toStringAsFixed(2)},'
+        '${_activeOperations.length},'
+        'INFO,Snapshot,Current system state',
+      );
+    } else {
+      for (final e in _historyEntries) {
+        final safeMsg = e.message.replaceAll('"', '""');
+        buffer.writeln(
+          '${e.timestamp.toIso8601String()},'
+          '${e.processCpuPercent?.toStringAsFixed(2) ?? ""},'
+          '${e.systemCpuPercent?.toStringAsFixed(2) ?? ""},'
+          '${e.processRssMb?.toStringAsFixed(2) ?? ""},'
+          '${e.processPrivateMb?.toStringAsFixed(2) ?? ""},'
+          '${e.smoothnessPercent?.toStringAsFixed(1) ?? ""},'
+          '$_jankFrames,'
+          '${_eligibleFrames > 0 ? (_totalFrameDurationMs / _eligibleFrames).toStringAsFixed(2) : ""},'
+          '${_activeOperations.length},'
+          '${e.severity},'
+          '${e.category},'
+          '"$safeMsg"',
+        );
+      }
+    }
+    return buffer.toString();
+  }
+
+  /// Exports time-series CSV file to the exports directory.
+  Future<File> exportCsvFile([String? fileName]) async {
+    final csv = await generateCsvData();
+    final exportDir = await getExportDirectory();
+    final name = fileName ??
+        'WallSync_Metrics_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.csv';
+    final file = File('${exportDir.path}\\$name');
+    await file.writeAsString(csv, flush: true);
+    logInfo('DiagnosticsService', 'Exported CSV metrics: ${file.path}');
+    return file;
+  }
+
+  /// Generates machine-readable structured JSON report with schema version.
+  Future<String> generateJsonReport() async {
+    final mem = getMemorySnapshot();
+    final cpu = getCpuSnapshot();
+    final smooth = getSmoothnessSnapshot();
+    final storage = await getStorageSnapshot();
+
+    final data = {
+      '\$schema': 'https://wallsync.app/schemas/diagnostics-v2.json',
+      'schemaVersion': '2.0.0',
+      'generatedAt': DateTime.now().toIso8601String(),
+      'sessionStartedAt': _diagnosticsSessionStartedAt.toIso8601String(),
+      'system': {
+        'platform': Platform.operatingSystem,
+        'osVersion': Platform.operatingSystemVersion,
+        'dartVersion': Platform.version,
+        'logicalCores': Platform.numberOfProcessors,
+        'processId': pid,
+      },
+      'memory': {
+        'processWorkingSetMb': mem.processRssMb,
+        'processPeakWorkingSetMb': mem.processMaxRssMb,
+        'processPrivateCommitMb': mem.processPrivateMb,
+        'processCommitChargeMb': mem.processCommitChargeMb,
+        'sessionPeakWorkingSetMb': mem.processSessionPeakRssBytes == null
+            ? null
+            : mem.processSessionPeakRssBytes! / (1024 * 1024),
+        'sessionPeakPrivateMb': mem.processSessionPeakPrivateBytes == null
+            ? null
+            : mem.processSessionPeakPrivateBytes! / (1024 * 1024),
+        'imageCacheMb': mem.imageCacheMb,
+        'imageCacheCount': mem.imageCacheCount,
+        'systemTotalPhysMb': mem.systemTotalPhysMb,
+        'systemAvailPhysMb': mem.systemAvailPhysMb,
+        'systemMemoryLoadPercent': mem.systemMemoryLoadPercent,
+        'mpvPid': mem.mpvProcessId,
+        'mpvWorkingSetMb': mem.mpvProcessId == null ? null : mem.mpvRssMb,
+        'mpvPrivateCommitMb': mem.mpvPrivateMb,
+        'overlayPid': mem.overlayProcessId,
+        'overlayWorkingSetMb': mem.overlayRssBytes == null
+            ? null
+            : mem.overlayRssBytes! / (1024 * 1024),
+        'overlayPrivateCommitMb': mem.overlayPrivateBytes == null
+            ? null
+            : mem.overlayPrivateBytes! / (1024 * 1024),
+        'overlayStatus': mem.overlayProcessStatus,
+      },
+      'cpu': {
+        'processCpuPercent': cpu.processCpuPercent,
+        'systemCpuPercent': cpu.systemCpuPercent,
+        'sampleIntervalMs': cpu.sampleIntervalMs,
+      },
+      'rendering': {
+        'totalFrames': smooth.totalFrames,
+        'eligibleFrames': smooth.eligibleFrames,
+        'jankFrames': smooth.jankFrames,
+        'severeJankFrames': smooth.severeJankFrames,
+        'suspendedFrames': smooth.suspendedFrames,
+        'pipelineGapFrames': smooth.pipelineGapFrames,
+        'presentationStallFrames': smooth.presentationStallFrames,
+        'smoothnessPercent': smooth.smoothnessPercentage,
+        'rollingSmoothnessPercent': smooth.rollingSmoothnessPercentage,
+        'averageFrameTimeMs': smooth.averageFrameTimeMs,
+        'averageBuildTimeMs': smooth.averageBuildTimeMs,
+        'averageRasterTimeMs': smooth.averageRasterTimeMs,
+        'averageTotalSpanMs': smooth.averageTotalSpanMs,
+        'worstFrameTimeMs': smooth.worstFrameTimeMs,
+        'worstBuildTimeMs': smooth.worstBuildTimeMs,
+        'worstRasterTimeMs': smooth.worstRasterTimeMs,
+        'worstPresentationDelayMs': smooth.worstPresentationDelayMs,
+        'p50FrameTimeMs': smooth.p50FrameTimeMs,
+        'p90FrameTimeMs': smooth.p90FrameTimeMs,
+        'p99FrameTimeMs': smooth.p99FrameTimeMs,
+        'recentRawSamples': smooth.recentFrameSamples,
+      },
+      'storage': {
+        'totalMb': storage.totalMb,
+        'appDataMb': storage.appDataMb,
+        'localAppDataMb': storage.localAppDataMb,
+        'videoCacheMb': storage.videoCacheMb,
+        'thumbnailCacheMb': storage.thumbnailCacheMb,
+        'logFileMb': storage.logFileMb,
+      },
+      'watchdog': {
+        'hangEvents': _hangEvents,
+        'activeOperations': _activeOperations.values
+            .map(
+              (op) => {
+                'tag': op.tag,
+                'name': op.name,
+                'runningMs': op.stopwatch.elapsedMilliseconds,
+              },
+            )
+            .toList(),
+      },
+      'history': _historyEntries.map((e) => e.toJson()).toList(),
+    };
+
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
+  /// Exports structured JSON file to the exports directory.
+  Future<File> exportJsonFile([String? fileName]) async {
+    final json = await generateJsonReport();
+    final exportDir = await getExportDirectory();
+    final name = fileName ??
+        'WallSync_Diagnostics_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.json';
+    final file = File('${exportDir.path}\\$name');
+    await file.writeAsString(json, flush: true);
+    logInfo('DiagnosticsService', 'Exported JSON diagnostics: ${file.path}');
+    return file;
+  }
+
+  /// Returns a concise single-block summary for clipboard copy.
+  String generateSummaryText() {
+    final mem = getMemorySnapshot();
+    final cpu = getCpuSnapshot();
+    final smooth = getSmoothnessSnapshot();
+
+    final buffer = StringBuffer();
+    buffer.writeln('WallSync Pro Diagnostic Summary');
+    buffer.writeln(
+      '• Memory: ${mem.processRssMb.toStringAsFixed(1)} MB Working Set'
+      '${mem.processPrivateMb != null ? ' | ${mem.processPrivateMb!.toStringAsFixed(1)} MB Private Commit' : ''}',
+    );
+    buffer.writeln(
+      '• CPU: ${cpu.processCpuPercent.toStringAsFixed(1)}% App | ${cpu.systemCpuPercent.toStringAsFixed(1)}% System',
+    );
+    buffer.writeln(
+      '• Rendering: ${smooth.smoothnessPercentage.toStringAsFixed(1)}% Smoothness '
+      '(${smooth.jankFrames}/${smooth.eligibleFrames} jank frames; worst: ${smooth.worstFrameTimeMs.toStringAsFixed(1)} ms)',
+    );
+    if (smooth.presentationStallFrames > 0) {
+      buffer.writeln(
+        '• DWM / V-Sync Stalls: ${smooth.presentationStallFrames} frames (worst: ${smooth.worstPresentationDelayMs.toStringAsFixed(1)} ms)',
+      );
+    }
+    buffer.writeln(
+      '• Overlays: ${mem.overlayProcessStatus} | MPV: ${mem.mpvProcessId != null ? 'PID ${mem.mpvProcessId}' : 'Inactive'}',
+    );
+    buffer.writeln(
+      '• Stability: ${_hangEvents.isEmpty ? 'Optimal (0 watchdog hangs)' : '${_hangEvents.length} event-loop stalls recorded'}',
+    );
+    buffer.writeln('• Active Operations: ${_activeOperations.length} in flight');
+    return buffer.toString().trim();
+  }
+
+  /// Generates a complete ZIP support package containing TXT, CSV, JSON, and logs.
+  Future<File> generateSupportPackageZip([String? fileName]) async {
+    final exportDir = await getExportDirectory();
+    final name = fileName ??
+        'WallSync_Support_Package_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.zip';
+    final zipFile = File('${exportDir.path}\\$name');
+
+    final txtReport = await generateDiagnosticReport();
+    final detailedReport = await generateDetailedReport();
+    final csvData = await generateCsvData();
+    final jsonReport = await generateJsonReport();
+    final summaryText = generateSummaryText();
+
+    final archive = Archive();
+    archive.addFile(ArchiveFile.string('report.txt', txtReport));
+    archive.addFile(ArchiveFile.string('detailed_trace.txt', detailedReport));
+    archive.addFile(ArchiveFile.string('metrics.csv', csvData));
+    archive.addFile(ArchiveFile.string('diagnostics.json', jsonReport));
+    archive.addFile(ArchiveFile.string('summary.txt', summaryText));
+
+    // Include recent application log if exists and readable
+    try {
+      final appData =
+          Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
+      final logFile = File('$appData\\com.example\\wallsync\\app_debug.log');
+      if (await logFile.exists()) {
+        final logBytes = await logFile.readAsBytes();
+        if (logBytes.length > 5 * 1024 * 1024) {
+          final trimmed = logBytes.sublist(logBytes.length - 2 * 1024 * 1024);
+          archive.addFile(ArchiveFile('app_debug.log', trimmed.length, trimmed));
+        } else {
+          archive.addFile(
+            ArchiveFile('app_debug.log', logBytes.length, logBytes),
+          );
+        }
+      }
+    } catch (_) {}
+
+    final zipBytes = ZipEncoder().encode(archive);
+    await zipFile.writeAsBytes(zipBytes, flush: true);
+    logInfo('DiagnosticsService', 'Support package created: ${zipFile.path}');
+    return zipFile;
+  }
+
+  /// Launches Windows Explorer showing the export directory.
+  Future<void> openExportFolder() async {
+    final dir = await getExportDirectory();
+    if (Platform.isWindows) {
+      await Process.start('explorer.exe', [dir.path]);
+    }
+  }
+
+  /// Clears in-memory diagnostics metrics, history entries, and rotates log files.
+  Future<void> clearDiagnostics() async {
+    resetSmoothnessMetrics();
+    clearHistoryEntries();
+    _hangEvents.clear();
+    try {
+      final appData =
+          Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
+      final logFile = File('$appData\\com.example\\wallsync\\app_debug.log');
+      if (await logFile.exists()) {
+        final oldBackup = File('$appData\\com.example\\wallsync\\app_debug.old');
+        if (await oldBackup.exists()) {
+          try {
+            await oldBackup.delete();
+          } catch (_) {}
+        }
+        try {
+          await logFile.rename(oldBackup.path);
+        } catch (_) {}
+        await logFile.writeAsString('', flush: true);
+      }
+    } catch (_) {}
+    logInfo('DiagnosticsService', 'All diagnostics and metric histories cleared.');
   }
 
   void dispose() {

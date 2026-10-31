@@ -51,10 +51,12 @@ import 'custom_widget_builder.dart';
 class DashboardView extends StatefulWidget {
   final WidgetSettings initialSettings;
   final bool isStartupBackground;
+  final String? initialTab;
   const DashboardView({
     super.key,
     required this.initialSettings,
     this.isStartupBackground = false,
+    this.initialTab,
   });
 
   @override
@@ -169,6 +171,9 @@ class _DashboardViewState extends State<DashboardView>
   Uint8List? _thumbnailBytes;
   int _dashboardBuildCount = 0;
   Future<StorageSnapshot>? _diagnosticsStorageSnapshot;
+  String _diagHistorySeverityFilter = 'ALL';
+  String _diagHistoryCategoryFilter = 'ALL';
+  Duration? _diagHistoryTimeRangeFilter;
   final Map<String, Future<File?>> _recentThumbnailFutures = {};
 
   T _profileDashboardSection<T>(String section, T Function() action) {
@@ -1067,6 +1072,9 @@ class _DashboardViewState extends State<DashboardView>
     _tabCtrl.addListener(() => setState(() {}));
 
     _settings = widget.initialSettings;
+    if (widget.initialTab != null && widget.initialTab!.isNotEmpty) {
+      _currentMainTab = widget.initialTab!;
+    }
     _syncConnectivityService();
     _activeTemplate = widget.initialSettings.widgetTemplate;
     if (_settings.widgetTemplate == 'custom') {
@@ -13350,14 +13358,17 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Widget _buildTaskbarSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
-    return SwitchListTile(
-      value: value,
-      onChanged: onChanged,
-      title: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-      subtitle: Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.5))),
-      activeColor: const Color(0xFF38BDF8),
-      contentPadding: EdgeInsets.zero,
-      dense: true,
+    return Material(
+      type: MaterialType.transparency,
+      child: SwitchListTile(
+        value: value,
+        onChanged: onChanged,
+        title: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+        subtitle: Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.5))),
+        activeThumbColor: const Color(0xFF38BDF8),
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+      ),
     );
   }
 
@@ -25657,6 +25668,11 @@ class _DashboardViewState extends State<DashboardView>
                             'Build / Raster Avg',
                             '${smooth.averageBuildTimeMs.toStringAsFixed(2)} / ${smooth.averageRasterTimeMs.toStringAsFixed(2)} ms',
                           ),
+                          if (smooth.presentationStallFrames > 0)
+                            (
+                              'DWM / V-Sync Stalls',
+                              '${smooth.presentationStallFrames} frames (${smooth.worstPresentationDelayMs.toStringAsFixed(1)} ms)',
+                            ),
                         ],
                       ),
 
@@ -25811,161 +25827,415 @@ class _DashboardViewState extends State<DashboardView>
               ),
               const SizedBox(height: 24),
 
-              // Action Toolbar: Export review.txt, snapshot, open log
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 3),
+              // ── Diagnostics Telemetry History & Event Log ───────────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xF50D111D), Color(0xF5080A12)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    width: 1.1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header & Filter Row
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        ],
-                      ),
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.description_rounded, size: 18),
-                        label: const Text(
-                          'Generate & Export review.txt',
+                          child: const Icon(
+                            Icons.history_rounded,
+                            size: 18,
+                            color: Color(0xFF38BDF8),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'Diagnostics Telemetry & Event History',
                           style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                            letterSpacing: 0.3,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
-                        onPressed: () async {
-                          try {
-                            final file = await diag.saveReviewReportToFile();
-                            if (mounted) {
-                              _showAnimatedSnackBar(
-                                'Review report generated successfully at: ${file.path}',
-                                isSuccess: true,
-                              );
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              _showAnimatedSnackBar(
-                                'Failed to save review report: $e',
-                                isSuccess: false,
-                              );
-                            }
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          foregroundColor: const Color(0xFF070913),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
+                        const Spacer(),
+                        // Time Range filter
+                        DropdownButton<Duration?>(
+                          value: _diagHistoryTimeRangeFilter,
+                          dropdownColor: const Color(0xFF141724),
+                          underline: const SizedBox(),
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                          items: const [
+                            DropdownMenuItem(value: null, child: Text('All Time')),
+                            DropdownMenuItem(value: Duration(minutes: 5), child: Text('Last 5m')),
+                            DropdownMenuItem(value: Duration(minutes: 15), child: Text('Last 15m')),
+                            DropdownMenuItem(value: Duration(hours: 1), child: Text('Last 1h')),
+                          ],
+                          onChanged: (val) => setState(() => _diagHistoryTimeRangeFilter = val),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        // Severity filter
+                        DropdownButton<String>(
+                          value: _diagHistorySeverityFilter,
+                          dropdownColor: const Color(0xFF141724),
+                          underline: const SizedBox(),
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                          items: const [
+                            DropdownMenuItem(value: 'ALL', child: Text('All Severities')),
+                            DropdownMenuItem(value: 'INFO', child: Text('Info Only')),
+                            DropdownMenuItem(value: 'WARN', child: Text('Warnings')),
+                            DropdownMenuItem(value: 'ERROR', child: Text('Errors')),
+                          ],
+                          onChanged: (val) => setState(() => _diagHistorySeverityFilter = val ?? 'ALL'),
+                        ),
+                        const SizedBox(width: 8),
+                        // Category filter
+                        DropdownButton<String>(
+                          value: _diagHistoryCategoryFilter,
+                          dropdownColor: const Color(0xFF141724),
+                          underline: const SizedBox(),
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                          items: const [
+                            DropdownMenuItem(value: 'ALL', child: Text('All Categories')),
+                            DropdownMenuItem(value: 'Telemetry', child: Text('Telemetry')),
+                            DropdownMenuItem(value: 'Frame', child: Text('Frame / Jank')),
+                            DropdownMenuItem(value: 'Watchdog', child: Text('Watchdog')),
+                          ],
+                          onChanged: (val) => setState(() => _diagHistoryCategoryFilter = val ?? 'ALL'),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.white54),
+                          tooltip: 'Clear History',
+                          onPressed: () {
+                            diag.clearHistoryEntries();
+                            setState(() {});
+                          },
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.camera_alt_rounded, size: 16),
-                    label: const Text('Capture Snapshot'),
-                    onPressed: () async {
-                      await diag.takePeriodicSnapshot();
-                      setState(() {});
-                      if (mounted) {
-                        _showAnimatedSnackBar(
-                          'Health snapshot captured to log file.',
-                          isSuccess: true,
+                    const SizedBox(height: 12),
+
+                    // Log list
+                    Builder(
+                      builder: (context) {
+                        final entries = diag.getHistoryEntries(
+                          timeRange: _diagHistoryTimeRangeFilter,
+                          severity: _diagHistorySeverityFilter,
+                          category: _diagHistoryCategoryFilter,
                         );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      foregroundColor: Colors.white,
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        width: 1.0,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: const Text('Reset Metrics'),
-                    onPressed: () {
-                      diag.resetSmoothnessMetrics();
-                      setState(() {});
-                      if (mounted) {
-                        _showAnimatedSnackBar(
-                          'Frame and hang metrics reset to baseline.',
-                          isSuccess: true,
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      foregroundColor: Colors.white,
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        width: 1.0,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.folder_open_rounded, size: 16),
-                    label: const Text('Open Log File'),
-                    onPressed: () async {
-                      final appData =
-                          Platform.environment['APPDATA'] ??
-                          Directory.systemTemp.path;
-                      final logPath =
-                          '$appData\\com.example\\wallsync\\app_debug.log';
-                      final logFile = File(logPath);
-                      if (await logFile.exists()) {
-                        await Process.start('notepad.exe', [logFile.path]);
-                      } else {
-                        if (mounted) {
-                          _showAnimatedSnackBar(
-                            'Log file does not exist yet.',
-                            isSuccess: false,
+
+                        if (entries.isEmpty) {
+                          return Container(
+                            height: 80,
+                            alignment: Alignment.center,
+                            child: Text(
+                              'No telemetry events recorded under selected filter. Frame timing and watchdog are operating normally.',
+                              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.45)),
+                            ),
                           );
                         }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.10),
-                      foregroundColor: const Color(0xFF38BDF8),
-                      side: BorderSide(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                        width: 1.0,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+
+                        return Container(
+                          constraints: const BoxConstraints(maxHeight: 180),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: entries.length,
+                            separatorBuilder: (_, _) => Divider(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              height: 8,
+                            ),
+                            itemBuilder: (context, index) {
+                              final entry = entries[entries.length - 1 - index];
+                              final isWarn = entry.severity == 'WARN';
+                              final isError = entry.severity == 'ERROR';
+                              final badgeColor = isError
+                                  ? const Color(0xFFF43F5E)
+                                  : isWarn
+                                      ? const Color(0xFFF59E0B)
+                                      : const Color(0xFF10B981);
+
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${entry.timestamp.hour.toString().padLeft(2, '0')}:${entry.timestamp.minute.toString().padLeft(2, '0')}:${entry.timestamp.second.toString().padLeft(2, '0')}',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontFamily: 'Segoe UI',
+                                        color: Colors.white.withValues(alpha: 0.40),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: badgeColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: badgeColor.withValues(alpha: 0.35), width: 0.8),
+                                      ),
+                                      child: Text(
+                                        entry.severity,
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                          color: badgeColor,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.06),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        entry.category,
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        entry.message,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: isWarn || isError ? Colors.white : Colors.white.withValues(alpha: 0.75),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ── Bottom Diagnostics Action Bar — All 8 Export/Action Controls ────────
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Export Diagnostics & System Actions',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Row 1: 4 Export Format Controls
+                  Row(
+                    children: [
+                      // 1. Generate TXT Report
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.description_rounded,
+                          label: 'Generate TXT Report',
+                          isPrimary: true,
+                          onPressed: () async {
+                            try {
+                              final file = await diag.exportTxtReport();
+                              if (mounted) {
+                                _showAnimatedSnackBar('TXT Report saved: ${file.path}', isSuccess: true);
+                              }
+                            } catch (e) {
+                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 2. Detailed Diagnostic Trace
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.analytics_rounded,
+                          label: 'Detailed Diagnostic Report',
+                          onPressed: () async {
+                            try {
+                              final file = await diag.exportDetailedReport();
+                              if (mounted) {
+                                _showAnimatedSnackBar('Detailed trace saved: ${file.path}', isSuccess: true);
+                              }
+                            } catch (e) {
+                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 3. Export CSV
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.table_chart_rounded,
+                          label: 'Export CSV',
+                          onPressed: () async {
+                            try {
+                              final file = await diag.exportCsvFile();
+                              if (mounted) {
+                                _showAnimatedSnackBar('CSV exported: ${file.path}', isSuccess: true);
+                              }
+                            } catch (e) {
+                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 4. Export JSON
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.data_object_rounded,
+                          label: 'Export JSON',
+                          onPressed: () async {
+                            try {
+                              final file = await diag.exportJsonFile();
+                              if (mounted) {
+                                _showAnimatedSnackBar('JSON exported: ${file.path}', isSuccess: true);
+                              }
+                            } catch (e) {
+                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Row 2: 4 Utility & Support Controls
+                  Row(
+                    children: [
+                      // 5. Copy Summary
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.copy_rounded,
+                          label: 'Copy Summary',
+                          onPressed: () async {
+                            final summary = diag.generateSummaryText();
+                            await Clipboard.setData(ClipboardData(text: summary));
+                            if (mounted) {
+                              _showAnimatedSnackBar('Diagnostic summary copied to clipboard!', isSuccess: true);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 6. Generate Support Package (ZIP)
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.archive_rounded,
+                          label: 'Generate Support Package',
+                          accentColor: const Color(0xFF10B981),
+                          onPressed: () async {
+                            try {
+                              final zip = await diag.generateSupportPackageZip();
+                              if (mounted) {
+                                _showAnimatedSnackBar('Support package created: ${zip.path}', isSuccess: true);
+                              }
+                            } catch (e) {
+                              if (mounted) _showAnimatedSnackBar('Failed to create package: $e', isSuccess: false);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 7. Open Export Folder
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.folder_open_rounded,
+                          label: 'Open Export Folder',
+                          accentColor: const Color(0xFFF59E0B),
+                          onPressed: () async {
+                            try {
+                              await diag.openExportFolder();
+                            } catch (e) {
+                              if (mounted) _showAnimatedSnackBar('Could not open folder: $e', isSuccess: false);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // 8. Clear Diagnostics
+                      Expanded(
+                        child: _buildDiagActionButton(
+                          icon: Icons.delete_sweep_rounded,
+                          label: 'Clear Diagnostics',
+                          accentColor: const Color(0xFFF43F5E),
+                          onPressed: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: const Color(0xFF141724),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+                                ),
+                                title: const Text('Clear All Diagnostics?', style: TextStyle(color: Colors.white, fontSize: 16)),
+                                content: const Text(
+                                  'This will reset all in-memory frame timing metrics, clear telemetry history, and archive the debug log file to a clean state.',
+                                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(ctx).pop(false),
+                                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFF43F5E),
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () => Navigator.of(ctx).pop(true),
+                                    child: const Text('Clear Everything'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirmed == true) {
+                              await diag.clearDiagnostics();
+                              setState(() {});
+                              if (mounted) {
+                                _showAnimatedSnackBar('All diagnostics and metrics reset to clean baseline.', isSuccess: true);
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -26121,6 +26391,64 @@ class _DashboardViewState extends State<DashboardView>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDiagActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool isPrimary = false,
+    Color? accentColor,
+  }) {
+    final effectiveColor =
+        accentColor ?? (isPrimary ? const Color(0xFF38BDF8) : Colors.white);
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
+            : Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isPrimary
+              ? const Color(0xFF38BDF8).withValues(alpha: 0.40)
+              : (accentColor != null
+                  ? accentColor.withValues(alpha: 0.35)
+                  : Colors.white.withValues(alpha: 0.10)),
+          width: 1.0,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 15, color: effectiveColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight:
+                          isPrimary ? FontWeight.w700 : FontWeight.w600,
+                      color: effectiveColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

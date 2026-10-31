@@ -1640,9 +1640,10 @@ std::optional<LRESULT> LiveWallpaperPlugin::Impl::HandleWindowMessage(
 }
 
 void LiveWallpaperPlugin::Impl::OptimizeMemory() {
-  HANDLE current_proc = GetCurrentProcess();
-  EmptyWorkingSet(current_proc);
-  SetProcessWorkingSetSize(current_proc, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+  // IMPORTANT: Do NOT call EmptyWorkingSet on the Flutter process while the window
+  // is visible or rendering. Paging out D3D/DXGI swapchains, shader programs, and font
+  // atlases causes severe raster thread stalls (up to 8.9s) when DWM/DXGI encounters
+  // hard page faults during frame presentation.
   HeapCompact(GetProcessHeap(), 0);
   if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
     EmptyWorkingSet(mpv_process_handle_);

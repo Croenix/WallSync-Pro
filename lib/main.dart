@@ -222,6 +222,13 @@ void main(List<String> args) async {
       videoPathIndex >= 0 && videoPathIndex + 1 < args.length
       ? args[videoPathIndex + 1]
       : null;
+  final openTabArg = args.firstWhere(
+    (argument) => argument.startsWith('--open-tab='),
+    orElse: () => '',
+  );
+  final initialTab = openTabArg.isNotEmpty
+      ? openTabArg.substring('--open-tab='.length)
+      : null;
   final isStartupBackground = startupTrigger == 'windows-logon';
   if (isStartupBackground || isStartupRegistration) {
     logInfo(
@@ -1015,6 +1022,7 @@ void main(List<String> args) async {
         settings: settings,
         startMinimized: isMinimized,
         isStartupBackground: isStartupBackground,
+        initialTab: initialTab,
       ),
     );
     if (isStartupBackground) {
@@ -1096,11 +1104,13 @@ class DashboardApp extends StatefulWidget {
   final WidgetSettings settings;
   final bool startMinimized;
   final bool isStartupBackground;
+  final String? initialTab;
   const DashboardApp({
     super.key,
     required this.settings,
     this.startMinimized = false,
     this.isStartupBackground = false,
+    this.initialTab,
   });
 
   @override
@@ -1226,6 +1236,7 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
             : DashboardView(
                 initialSettings: widget.settings,
                 isStartupBackground: widget.isStartupBackground,
+                initialTab: widget.initialTab,
               ),
       ),
     );

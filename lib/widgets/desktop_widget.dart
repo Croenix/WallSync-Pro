@@ -19,6 +19,8 @@ import '../services/system_connectivity_service.dart';
 import '../services/system_optimizer_service.dart';
 import '../services/discord_ipc_service.dart';
 import '../services/steam_monitor_service.dart';
+import '../services/device_optimization_service.dart';
+import '../services/live_wallpaper_manager.dart';
 import 'custom_widget_renderer.dart';
 
 Future<Uint8List> _decodeMediaThumbnailAsync(String encoded, String owner) async {
@@ -791,13 +793,31 @@ class _DesktopWidgetState extends State<DesktopWidget>
     _scheduleWindowBoundsSave(immediate: true);
   }
 
-  void _openWidgetCustomization() {
+  void _openDashboard([String? tab]) {
     try {
-      Process.start(Platform.resolvedExecutable, []);
+      final args = (tab != null && tab.isNotEmpty) ? ['--open-tab=$tab'] : <String>[];
+      Process.start(Platform.resolvedExecutable, args);
     } catch (e) {
       logWarning('DesktopWidget', 'Could not launch main application window: $e');
     }
   }
+
+  Future<void> _cyclePerformanceProfile() async {
+    const order = ['balanced', 'performance', 'power_saver', 'high_quality'];
+    final current = _settings.performanceProfile;
+    final idx = order.indexOf(current);
+    final next = order[(idx + 1) % order.length];
+    final updated = await DeviceOptimizationService.instance.applyProfile(
+      profileId: next,
+      currentSettings: _settings,
+      settingsService: _settingsService,
+    );
+    if (mounted) {
+      setState(() => _settings = updated);
+    }
+  }
+
+  void _openWidgetCustomization() => _openDashboard('widgets');
 
   Future<void> _showContextMenu(BuildContext context, Offset globalPosition) async {
     final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
@@ -3081,6 +3101,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
     final locStr = _settings.weatherLocation.isNotEmpty ? _settings.weatherLocation : 'Local';
     final hasMedia = _mediaInfo.title.isNotEmpty || _mediaInfo.isPlaying;
+    final isVideoWallpaper = _settings.activeWallpaperType == 'video';
+    final isPaused = !LiveWallpaperManager().isPlaying;
+
+    // CPU color-coded threshold
+    final cpuColor = _cpuUsage > 85
+        ? const Color(0xFFF43F5E)
+        : (_cpuUsage > 60 ? const Color(0xFFF59E0B) : Color(_settings.taskbarAccentColor));
+
+    // RAM color-coded threshold
+    final ramColor = _ramUsage > 85
+        ? const Color(0xFFF43F5E)
+        : (_ramUsage > 70 ? const Color(0xFFF59E0B) : const Color(0xFFA855F7));
 
     return _buildTaskbarGlassContainer(
       height: 48,
@@ -3091,7 +3123,276 @@ class _DesktopWidgetState extends State<DesktopWidget>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 1. Time & Date Pill
+            // 1. Home / WallSync Logo Button (opens Dashboard)
+            Tooltip(
+              message: 'WallSync Dashboard — Click to open',
+              child: InkWell(
+                onTap: () => _openDashboard('wallpapers'),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.widgets_rounded,
+                          size: 14,
+                          color: Color(0xFF070B12),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'WallSync',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            _buildTaskbarDivider(),
+
+            // 2. Wallpaper Mode & Playback Pill
+            Tooltip(
+              message: isVideoWallpaper
+                  ? 'Video Wallpaper Active (Click to ${isPaused ? "Play" : "Pause"})'
+                  : 'Static Wallpaper Active',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: (isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: (isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
+                        .withValues(alpha: 0.30),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isVideoWallpaper ? Icons.movie_filter_rounded : Icons.image_rounded,
+                      size: (_settings.taskbarIconSize - 4).clamp(10.0, 16.0),
+                      color: isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isVideoWallpaper ? 'VIDEO' : 'STATIC',
+                      style: TextStyle(
+                        color: isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8),
+                        fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 12.0),
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    if (isVideoWallpaper) ...[
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () {
+                          if (isPaused) {
+                            LiveWallpaperManager().play();
+                          } else {
+                            LiveWallpaperManager().pause();
+                          }
+                          setState(() {});
+                        },
+                        child: Icon(
+                          isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                          size: 14,
+                          color: const Color(0xFF38BDF8),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            _buildTaskbarDivider(),
+
+            // 3. Hardware Monitoring Chips (CPU, RAM, GPU, Profile)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // CPU Pill
+                if (_settings.taskbarShowCpu) ...[
+                  Tooltip(
+                    message:
+                        'CPU Usage: ${_cpuUsage.toStringAsFixed(1)}% (${Platform.numberOfProcessors} Cores)\nClick to open Device Optimization',
+                    child: InkWell(
+                      onTap: () => _openDashboard('device_optimization'),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cpuColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: cpuColor.withValues(alpha: 0.28)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.memory_rounded,
+                                size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
+                                color: cpuColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_cpuUsage.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                color: cpuColor,
+                                fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Segoe UI',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+
+                // RAM Pill
+                if (_settings.taskbarShowRam) ...[
+                  Tooltip(
+                    message:
+                        'System RAM: ${_ramUsage.toStringAsFixed(0)}% used\nClick to open Device Optimization',
+                    child: InkWell(
+                      onTap: () => _openDashboard('device_optimization'),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: ramColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: ramColor.withValues(alpha: 0.28)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.developer_board_rounded,
+                                size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
+                                color: ramColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_ramUsage.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                color: ramColor,
+                                fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Segoe UI',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+
+                // GPU / Target FPS Pill
+                Tooltip(
+                  message:
+                      'GPU Graphics Engine: Impeller DXGI\nTarget: ${_settings.wallpaperFpsLimit} FPS\nClick to open Device Optimization',
+                  child: InkWell(
+                    onTap: () => _openDashboard('device_optimization'),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.speed_rounded,
+                              size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
+                              color: const Color(0xFF10B981)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_settings.wallpaperFpsLimit} FPS',
+                            style: TextStyle(
+                              color: const Color(0xFF10B981),
+                              fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'Segoe UI',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // Performance Profile Pill (Click to cycle profile)
+                Tooltip(
+                  message:
+                      'Performance Profile: ${_settings.performanceProfile.toUpperCase()}\nClick to cycle profile',
+                  child: InkWell(
+                    onTap: _cyclePerformanceProfile,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.tune_rounded,
+                              size: (_settings.taskbarIconSize - 6).clamp(9.0, 14.0),
+                              color: const Color(0xFF38BDF8)),
+                          const SizedBox(width: 4),
+                          Text(
+                            _settings.performanceProfile.toUpperCase(),
+                            style: TextStyle(
+                              color: const Color(0xFF38BDF8),
+                              fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 12.0),
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            _buildTaskbarDivider(),
+
+            // 4. Time & Date Pill
             if (_settings.taskbarShowTime) ...[
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -3126,7 +3427,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
               _buildTaskbarDivider(),
             ],
 
-            // 2. Weather Pill
+            // 5. Weather Pill
             if (_settings.taskbarShowWeather) ...[
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -3160,7 +3461,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
               _buildTaskbarDivider(),
             ],
 
-            // 3. Mini Media Visualizer
+            // 6. Mini Media Visualizer
             if (_settings.taskbarShowMedia) ...[
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 160),
@@ -3227,69 +3528,116 @@ class _DesktopWidgetState extends State<DesktopWidget>
               _buildTaskbarDivider(),
             ],
 
-            // 4. Hardware Telemetry Chips
+            // 7. Widget Controls & Navigation Toolbar
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // CPU
-                if (_settings.taskbarShowCpu) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Color(_settings.taskbarAccentColor).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: Color(_settings.taskbarAccentColor).withValues(alpha: 0.25),
+                // Lock/Unlock Toggle
+                Tooltip(
+                  message: _settings.isLocked
+                      ? 'Position Locked (Click to Unlock)'
+                      : 'Position Unlocked (Click to Lock)',
+                  child: InkWell(
+                    onTap: () {
+                      final newLocked = !_settings.isLocked;
+                      setState(() {
+                        _settings.isLocked = newLocked;
+                        if (newLocked) _visualEditorModeActive = false;
+                      });
+                      unawaited(_settingsService.updateSettings((c) => c.copyWith(isLocked: newLocked)));
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: Icon(
+                        _settings.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                        size: 16,
+                        color: _settings.isLocked ? const Color(0xFFF43F5E) : const Color(0xFF10B981),
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.memory_rounded, size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0), color: Color(_settings.taskbarAccentColor)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_cpuUsage.toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            color: Color(_settings.taskbarAccentColor),
-                            fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Segoe UI',
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
-                  const SizedBox(width: 6),
-                ],
-                // RAM
-                if (_settings.taskbarShowRam) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFA855F7).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: const Color(0xFFA855F7).withValues(alpha: 0.25),
+                ),
+                const SizedBox(width: 4),
+
+                // Edit Mode Toggle
+                Tooltip(
+                  message: _visualEditorModeActive ? 'Exit Layout Editor' : 'Edit Widget Layout',
+                  child: InkWell(
+                    onTap: () {
+                      if (_settings.isLocked) return;
+                      setState(() {
+                        _visualEditorModeActive = !_visualEditorModeActive;
+                        _settings.editorMode = _visualEditorModeActive;
+                      });
+                      unawaited(_settingsService.updateSettings((c) => c.copyWith(editorMode: _visualEditorModeActive)));
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: Icon(
+                        _visualEditorModeActive ? Icons.check_circle_outline_rounded : Icons.crop_free_rounded,
+                        size: 16,
+                        color: _settings.isLocked
+                            ? Colors.white24
+                            : (_visualEditorModeActive ? const Color(0xFF38BDF8) : Colors.white60),
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.developer_board_rounded, size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0), color: const Color(0xFFA855F7)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_ramUsage.toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            color: const Color(0xFFA855F7),
-                            fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Segoe UI',
-                          ),
-                        ),
-                      ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+
+                // Add Widget Shortcut
+                Tooltip(
+                  message: 'Add / Preset Widgets',
+                  child: InkWell(
+                    onTap: () => _openDashboard('widgets'),
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(5),
+                      child: Icon(
+                        Icons.add_circle_outline_rounded,
+                        size: 16,
+                        color: Colors.white70,
+                      ),
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(width: 4),
+
+                // Diagnostics Shortcut
+                Tooltip(
+                  message: 'Performance & Diagnostics Monitor',
+                  child: InkWell(
+                    onTap: () => _openDashboard('diagnostics'),
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(5),
+                      child: Icon(
+                        Icons.monitor_heart_rounded,
+                        size: 16,
+                        color: Color(0xFF38BDF8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+
+                // Device Optimization Shortcut
+                Tooltip(
+                  message: 'Device Optimization System',
+                  child: InkWell(
+                    onTap: () => _openDashboard('device_optimization'),
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(5),
+                      child: Icon(
+                        Icons.speed_rounded,
+                        size: 16,
+                        color: Color(0xFF10B981),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ],
