@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'settings_service.dart';
+import 'system_optimizer_service.dart';
 
 class AppRuntimeService {
   static final Map<String, Directory> _sessionPreparedRuntimes = {};
@@ -171,9 +172,19 @@ class AppRuntimeService {
               }
             }
             await Directory(destFile.parent.path).create(recursive: true);
-            await entity.copy(destination);
+            // Attempt zero-copy native NTFS hard link first (0ms, 0 disk space)
+            bool linked = false;
+            try {
+              linked = await SystemOptimizerService.instance.createHardLink(
+                target: destination,
+                existing: entity.path,
+              );
+            } catch (_) {}
+            if (!linked) {
+              await entity.copy(destination);
+              copiedBytes += sourceSize;
+            }
             copiedCount++;
-            copiedBytes += sourceSize;
           }),
         );
       }

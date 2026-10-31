@@ -1036,7 +1036,6 @@ void main(List<String> args) async {
         unawaited(NotificationService.instance.init());
         unawaited(ShortbirdClient().init());
       }
-      unawaited(SystemOptimizerService.instance.optimizeMemory());
       SystemOptimizerService.instance.startBackgroundMemoryOptimizer(
         interval: const Duration(minutes: 5),
       );
@@ -1127,6 +1126,7 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
   @override
   void onWindowClose() {
     logInfo('DashboardApp', 'Window close intercepted; hiding dashboard.');
+    unawaited(SettingsService.flushPendingSaves());
     unawaited(_hideDashboard());
   }
 
@@ -1220,9 +1220,6 @@ class _DashboardAppState extends State<DashboardApp> with WindowListener {
                 onComplete: () {
                   setState(() {
                     _showSplash = false;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    unawaited(SystemOptimizerService.instance.optimizeMemory());
                   });
                 },
               )

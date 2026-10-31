@@ -1268,18 +1268,24 @@ class _DashboardViewState extends State<DashboardView>
       _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
         if (_isWindowVisible) _checkOverlayStatus();
       });
-      unawaited(_initSettingsWatcher());
-      unawaited(_initSystemTray());
-      SystemOptimizerService.instance.startBackgroundMemoryOptimizer();
       if (!widget.isStartupBackground) {
         unawaited(_loadWallpapers());
-        _updateCheckTimer = Timer(const Duration(milliseconds: 600), () {
+      }
+      // Stagger non-critical background services to leave event loop 100% free for initial frame rendering
+      Timer(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        unawaited(_initSettingsWatcher());
+        unawaited(_initSystemTray());
+        SystemOptimizerService.instance.startBackgroundMemoryOptimizer();
+      });
+      if (!widget.isStartupBackground) {
+        _updateCheckTimer = Timer(const Duration(milliseconds: 1500), () {
           if (mounted) {
-            unawaited(_checkForUpdates());
             unawaited(_checkAutoResumeLiveWallpaper());
+            unawaited(_checkForUpdates());
           }
         });
-        _launchPopupTimer = Timer(const Duration(milliseconds: 1200), () {
+        _launchPopupTimer = Timer(const Duration(milliseconds: 3500), () {
           if (mounted) LaunchPopupService.instance.checkAndShowPopup(context);
         });
       }
@@ -1566,6 +1572,7 @@ class _DashboardViewState extends State<DashboardView>
       _saveDebounce?.cancel();
       unawaited(_saveSettingsSafely(_settings));
     }
+    unawaited(SettingsService.flushPendingSaves());
     _settingsWatcher?.cancel();
     _watcherDebounce?.cancel();
     _tabCtrl.dispose();
@@ -2397,11 +2404,6 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _saveSettingsSafely(WidgetSettings settings) async {
     try {
       await _settingsService.saveSettings(settings);
-      if (settings.widgetTemplate.isNotEmpty) {
-        try {
-          await SettingsService(instanceId: settings.widgetTemplate).saveSettings(settings);
-        } catch (_) {}
-      }
     } catch (error, stackTrace) {
       logError(
         'DashboardView',
@@ -3096,13 +3098,15 @@ class _DashboardViewState extends State<DashboardView>
       'DashboardView.build',
       arguments: {'buildId': buildId, 'tab': _currentMainTab},
     );
+    int syncBuildMs = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final elapsed = buildSw.elapsedMilliseconds;
       if (elapsed > 100) {
         logInfo(
           'DashboardView',
-          '[PERF] DashboardView build #$buildId reached post-frame callback after ${elapsed}ms (includes framework layout/paint scheduling; not raster time)',
+          '[PERF] DashboardView build #$buildId post-frame callback reached: '
+          'totalPostFrameSpan=${elapsed}ms (syncBuild=${syncBuildMs}ms, layoutPaintScheduling=${elapsed - syncBuildMs}ms; not raster time)',
         );
       }
     });
@@ -3210,6 +3214,7 @@ class _DashboardViewState extends State<DashboardView>
       ),
     );
     final buildDuration = buildSw.elapsedMilliseconds;
+    syncBuildMs = buildDuration;
     if (buildDuration > 35) {
       logInfo(
         'DashboardView',

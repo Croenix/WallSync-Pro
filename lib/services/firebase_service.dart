@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
@@ -60,14 +59,14 @@ Map<String, Object?> _parseWallpaperCatalogSnapshot(String content) {
 }
 
 Future<Set<String>> _listValidCachedWallpaperFilenames(String path) async {
-  return await Isolate.run(() {
-    final dir = Directory(path);
-    if (!dir.existsSync()) return <String>{};
-    final valid = <String>{};
-    for (final entity in dir.listSync(followLinks: false)) {
+  final dir = Directory(path);
+  if (!await dir.exists()) return <String>{};
+  final valid = <String>{};
+  try {
+    await for (final entity in dir.list(followLinks: false)) {
       if (entity is File) {
         try {
-          if (entity.lengthSync() > 0) {
+          if (await entity.length() > 0) {
             final p = entity.path;
             final sep = Platform.pathSeparator;
             final idx = p.lastIndexOf(sep);
@@ -77,8 +76,8 @@ Future<Set<String>> _listValidCachedWallpaperFilenames(String path) async {
         } catch (_) {}
       }
     }
-    return valid;
-  });
+  } catch (_) {}
+  return valid;
 }
 
 const int _catalogIsolateThresholdCharacters = 256 * 1024;
@@ -435,6 +434,7 @@ class FirebaseService {
   static int _activeThumbnailDownloads = 0;
   static final List<Completer<void>> _thumbnailSlotWaiters = [];
   Set<String> _localCatalogKeys = {};
+  static List<FirebaseWallpaper>? _inMemoryCatalogCache;
   Future<_RemoteWallpaperCatalog?>? _inFlightRemoteCatalog;
   Future<Map<String, dynamic>?>? _inFlightCheckUpdate;
 
@@ -615,6 +615,10 @@ class FirebaseService {
 
   /// Loads wallpapers saved in local RTDB cache file.
   Future<List<FirebaseWallpaper>?> loadLocalWallpapers() async {
+    final cached = _inMemoryCatalogCache;
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
     try {
       final file = await _localDbFile;
       if (!await file.exists() || await file.length() == 0) return null;
@@ -629,6 +633,7 @@ class FirebaseService {
       );
       if (list.isNotEmpty) {
         final result = deduplicateWallpapers(list);
+        _inMemoryCatalogCache = result;
         unawaited(_prewarmThumbnailCache(result));
         return result;
       }
@@ -733,6 +738,7 @@ class FirebaseService {
       }
       await tempFile.rename(file.path);
       _localCatalogKeys = keys.toSet();
+      _inMemoryCatalogCache = wallpapers;
       logInfo(
         'FirebaseService',
         'Saved ${wallpapers.length} wallpapers to local RTDB file: ${file.path}',

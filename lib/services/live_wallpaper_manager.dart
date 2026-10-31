@@ -94,7 +94,7 @@ class LiveWallpaperManager {
     required Future<Map<String, dynamic>?> Function() poll,
     required bool Function() isCancelled,
     Duration timeout = const Duration(seconds: 15),
-    Duration initialInterval = const Duration(milliseconds: 32),
+    Duration initialInterval = const Duration(milliseconds: 16),
   }) async {
     final stopwatch = Stopwatch()..start();
     var result = initialResult;
@@ -104,11 +104,11 @@ class LiveWallpaperManager {
       await Future<void>.delayed(interval);
       if (isCancelled()) return null;
       result = await poll();
-      // Window discovery and decoder initialization can take seconds. Back
-      // off after the responsive initial phase so polling cannot create a
-      // platform-channel storm on the UI isolate.
+      // Fast polling at 16ms during initial window discovery, progressive backoff after
       if (stopwatch.elapsed > const Duration(seconds: 1)) {
-        interval = const Duration(milliseconds: 100);
+        interval = const Duration(milliseconds: 80);
+      } else if (stopwatch.elapsed > const Duration(milliseconds: 400)) {
+        interval = const Duration(milliseconds: 32);
       }
     }
     return result;

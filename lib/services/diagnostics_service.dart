@@ -672,12 +672,17 @@ class DiagnosticsService {
         return;
       }
 
-      final pidFiles = appDir.listSync().whereType<File>().where((f) {
-        final name = f.uri.pathSegments.isNotEmpty
-            ? f.uri.pathSegments.last.toLowerCase()
-            : '';
-        return name.startsWith('overlay') && name.endsWith('.pid');
-      }).toList();
+      final pidFiles = <File>[];
+      await for (final entity in appDir.list(followLinks: false)) {
+        if (entity is File) {
+          final name = entity.uri.pathSegments.isNotEmpty
+              ? entity.uri.pathSegments.last.toLowerCase()
+              : '';
+          if (name.startsWith('overlay') && name.endsWith('.pid')) {
+            pidFiles.add(entity);
+          }
+        }
+      }
 
       if (pidFiles.isEmpty) {
         _overlayPid = null;

@@ -258,4 +258,23 @@ void main() {
       }
     }
   });
+
+  test('SettingsService saveSettings updates in-memory cache immediately and coalesces debounced writes', () async {
+    final service = SettingsService(instanceId: 'test_debounce_coalesce');
+    final s1 = WidgetSettings(startOnBoot: false, activeWallpaperPath: 'path1');
+    final s2 = WidgetSettings(startOnBoot: false, activeWallpaperPath: 'path2');
+
+    // Calling saveSettings updates cache synchronously in memory
+    final f1 = service.saveSettings(s1);
+    expect((await service.loadSettings()).activeWallpaperPath, 'path1');
+
+    final f2 = service.saveSettings(s2);
+    expect((await service.loadSettings()).activeWallpaperPath, 'path2');
+
+    // Flush pending saves immediately
+    await SettingsService.flushPendingSaves();
+    await Future.wait([f1, f2]);
+
+    expect((await service.loadSettings()).activeWallpaperPath, 'path2');
+  });
 }

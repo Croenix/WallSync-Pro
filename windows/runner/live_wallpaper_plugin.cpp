@@ -234,6 +234,7 @@ class LiveWallpaperPlugin::Impl {
   std::string PickImageFile(const std::string& title);
   bool BoostProcessPriority(bool boost);
   bool SetWindowCloaked(bool cloak);
+  bool CreateFileHardLink(const std::wstring& target_path, const std::wstring& existing_path);
   void StartLowMemoryMonitor();
   void StopLowMemoryMonitor();
 
@@ -535,6 +536,31 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
     result->Success(flutter::EncodableValue(SetWindowCloaked(cloak)));
     return;
   }
+  if (call.method_name() == "createHardLink") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (!args) {
+      result->Success(flutter::EncodableValue(false));
+      return;
+    }
+    std::string target_str = "";
+    auto it_target = args->find(flutter::EncodableValue("target"));
+    if (it_target != args->end()) {
+      target_str = GetStringFromEncodable(it_target->second, "");
+    }
+    std::string existing_str = "";
+    auto it_existing = args->find(flutter::EncodableValue("existing"));
+    if (it_existing != args->end()) {
+      existing_str = GetStringFromEncodable(it_existing->second, "");
+    }
+    if (target_str.empty() || existing_str.empty()) {
+      result->Success(flutter::EncodableValue(false));
+      return;
+    }
+    std::wstring wide_target = Utf8ToWide(target_str);
+    std::wstring wide_existing = Utf8ToWide(existing_str);
+    result->Success(flutter::EncodableValue(CreateFileHardLink(wide_target, wide_existing)));
+    return;
+  }
   result->NotImplemented();
 }
 
@@ -649,7 +675,7 @@ HWND LiveWallpaperPlugin::Impl::FindMpvWindow(DWORD pid, int timeout_ms) {
       break;
     }
     std::this_thread::sleep_for(
-        std::chrono::milliseconds(remaining < 50 ? remaining : 50));
+        std::chrono::milliseconds(remaining < 10 ? remaining : 10));
   } while (std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - start)
                .count() < timeout_ms);
@@ -1115,7 +1141,7 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::PollMpvStart() {
 
     if (!mpv_frame_decoded_) {
       const auto now = std::chrono::steady_clock::now();
-      if (now - mpv_last_frame_query_ >= std::chrono::milliseconds(100)) {
+      if (now - mpv_last_frame_query_ >= std::chrono::milliseconds(20)) {
         const std::string output_query =
             "{\"command\":[\"get_property\",\"vo-configured\"],\"request_id\":2}\n";
         DWORD written = 0;
@@ -1627,6 +1653,15 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetPerformanceMetrics() {
     metrics[flutter::EncodableValue("processPrivateBytesMb")] =
         flutter::EncodableValue(static_cast<double>(pmc.PrivateUsage / (1024 * 1024)));
   }
+  if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
+    PROCESS_MEMORY_COUNTERS_EX mpv_pmc{};
+    if (GetProcessMemoryInfo(mpv_process_handle_, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&mpv_pmc), sizeof(mpv_pmc))) {
+      metrics[flutter::EncodableValue("mpvWorkingSetMb")] =
+          flutter::EncodableValue(static_cast<double>(mpv_pmc.WorkingSetSize / (1024 * 1024)));
+      metrics[flutter::EncodableValue("mpvPrivateBytesMb")] =
+          flutter::EncodableValue(static_cast<double>(mpv_pmc.PrivateUsage / (1024 * 1024)));
+    }
+  }
 
   // 3. CPU metrics via GetSystemTimes
   FILETIME idle_time{}, kernel_time{}, user_time{};
@@ -2136,6 +2171,14 @@ bool LiveWallpaperPlugin::Impl::SetWindowCloaked(bool cloak) {
 #endif
   HRESULT hr = DwmSetWindowAttribute(target, DWMWA_CLOAK, &val, sizeof(val));
   return SUCCEEDED(hr);
+}
+
+bool LiveWallpaperPlugin::Impl::CreateFileHardLink(
+    const std::wstring& target_path, const std::wstring& existing_path) {
+  if (GetFileAttributesW(target_path.c_str()) != INVALID_FILE_ATTRIBUTES) {
+    DeleteFileW(target_path.c_str());
+  }
+  return CreateHardLinkW(target_path.c_str(), existing_path.c_str(), nullptr) != 0;
 }
 
 void LiveWallpaperPlugin::Impl::StartLowMemoryMonitor() {

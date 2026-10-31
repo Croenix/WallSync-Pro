@@ -1819,9 +1819,12 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
     try {
       await tempFile.writeAsString(payload.jsonStr, flush: false);
       try {
-        await tempFile.copy(file.path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+        await tempFile.rename(file.path);
       } catch (_) {
-        await file.writeAsString(payload.jsonStr, flush: false);
+        await tempFile.copy(file.path);
       }
       return true;
     } finally {
@@ -1850,6 +1853,28 @@ class SettingsService {
   SettingsService({this.instanceId});
 
   static Future<void> _settingsWriteQueue = Future<void>.value();
+  static final Map<String, Timer> _pendingDebounceTimers = {};
+  static final Map<String, Completer<void>> _pendingSaveCompleters = {};
+  static final Map<String, WidgetSettings> _pendingSettingsMap = {};
+
+  /// Flushes any debounced in-flight settings writes immediately to disk before exit/shutdown.
+  static Future<void> flushPendingSaves() async {
+    final futures = <Future<void>>[];
+    for (final key in _pendingDebounceTimers.keys.toList()) {
+      _pendingDebounceTimers[key]?.cancel();
+      _pendingDebounceTimers.remove(key);
+      final completer = _pendingSaveCompleters.remove(key);
+      final settings = _pendingSettingsMap.remove(key);
+      if (settings != null) {
+        final instanceId = key == '__global__' ? null : key;
+        futures.add(SettingsService(instanceId: instanceId)._writeSettingsDirect(settings));
+      }
+      if (completer != null && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+    await Future.wait(futures);
+  }
 
   Future<T> _serializeSettingsWrite<T>(Future<T> Function() operation) {
     final previous = _settingsWriteQueue;
@@ -1932,6 +1957,13 @@ class SettingsService {
   Future<void> save(WidgetSettings settings) => saveSettings(settings);
 
   Future<WidgetSettings> loadSettings() async {
+    final key = instanceId ?? '__global__';
+    final pending = _pendingSettingsMap[key];
+    if (pending != null) {
+      _cachedSettings = pending;
+      _settingsLoadSucceeded = true;
+      return pending;
+    }
     _settingsLoadSucceeded = false;
     try {
       final file = await settingsFile;
@@ -1976,71 +2008,61 @@ class SettingsService {
     return _cachedSettings;
   }
 
-  Future<void> saveSettings(WidgetSettings settings) => _serializeSettingsWrite(
-    () async {
-      final totalSw = Stopwatch()..start();
-      try {
-        final previousStartOnBoot = _cachedSettings.startOnBoot;
-        final jsonStr = jsonEncode(settings.toJson());
+  /// Saves settings with fast in-memory update and coalescing debounced disk write.
+  /// Pass [immediate] = true for critical synchronization (e.g. before exit or mode transitions).
+  Future<void> saveSettings(WidgetSettings settings, {bool immediate = false}) {
+    _cachedSettings = settings;
+    final jsonStr = jsonEncode(settings.toJson());
+    if (_lastPersistedJsonStr == jsonStr) {
+      return Future.value();
+    }
 
-        // Fast path: skip file write completely if settings are identical in content
-        if (_lastPersistedJsonStr == jsonStr) {
-          _cachedSettings = settings;
-          return;
-        }
+    final key = instanceId ?? '__global__';
+    _pendingSettingsMap[key] = settings;
 
-        final file = await settingsFile;
-        final lock = await _settingsLockFile;
-        final payload = _SettingsFileWritePayload(
-          settingsFilePath: file.path,
-          lockFilePath: lock.path,
-          jsonStr: jsonStr,
-          pid: pid,
-        );
-
-        final writeSw = Stopwatch()..start();
-        await _executeSettingsFileWrite(payload);
-        _cachedSettings = settings;
-        _lastPersistedJsonStr = jsonStr;
-        final writeMs = writeSw.elapsedMilliseconds;
-
-        var shortcutMs = 0;
-        if (previousStartOnBoot != settings.startOnBoot) {
-          final shortcutSw = Stopwatch()..start();
-          await _updateStartupShortcut(settings.startOnBoot);
-          shortcutMs = shortcutSw.elapsedMilliseconds;
-        }
-        final totalMs = totalSw.elapsedMilliseconds;
-        logPerf(
-          'SettingsService',
-          'Settings saved to file off-thread: total=${totalMs}ms '
-              '(write=${writeMs}ms, shortcutSync=${shortcutMs}ms).',
-        );
-      } catch (e, stackTrace) {
-        logError(
-          'SettingsService',
-          'Failed to save settings to file',
-          e,
-          stackTrace,
-        );
-        rethrow;
+    if (immediate) {
+      _pendingDebounceTimers[key]?.cancel();
+      _pendingDebounceTimers.remove(key);
+      final completer = _pendingSaveCompleters.remove(key);
+      final future = _serializeSettingsWrite(() => _writeSettingsDirect(settings));
+      if (completer != null && !completer.isCompleted) {
+        future.whenComplete(completer.complete);
       }
-    },
-  );
+      return future;
+    }
 
-  /// Applies a partial update to the latest persisted settings without
-  /// overwriting changes made by another app process.
-  Future<WidgetSettings> updateSettings(
-    WidgetSettings Function(WidgetSettings current) update,
-  ) => _serializeSettingsWrite(() async {
+    var completer = _pendingSaveCompleters[key];
+    if (completer == null || completer.isCompleted) {
+      completer = Completer<void>();
+      _pendingSaveCompleters[key] = completer;
+    }
+
+    _pendingDebounceTimers[key]?.cancel();
+    _pendingDebounceTimers[key] = Timer(const Duration(milliseconds: 300), () {
+      _pendingDebounceTimers.remove(key);
+      final s = _pendingSettingsMap.remove(key);
+      final c = _pendingSaveCompleters.remove(key);
+      if (s != null) {
+        _serializeSettingsWrite(() => _writeSettingsDirect(s)).whenComplete(() {
+          if (c != null && !c.isCompleted) c.complete();
+        });
+      } else {
+        if (c != null && !c.isCompleted) c.complete();
+      }
+    });
+
+    return completer.future;
+  }
+
+  Future<void> _writeSettingsDirect(WidgetSettings settings) async {
+    final totalSw = Stopwatch()..start();
     try {
-      final current = await loadSettings();
-      final updated = update(current);
-      final jsonStr = jsonEncode(updated.toJson());
+      final previousStartOnBoot = _cachedSettings.startOnBoot;
+      final jsonStr = jsonEncode(settings.toJson());
 
       if (_lastPersistedJsonStr == jsonStr) {
-        _cachedSettings = updated;
-        return updated;
+        _cachedSettings = settings;
+        return;
       }
 
       final file = await settingsFile;
@@ -2052,19 +2074,46 @@ class SettingsService {
         pid: pid,
       );
 
+      final writeSw = Stopwatch()..start();
       await _executeSettingsFileWrite(payload);
-      _cachedSettings = updated;
+      _cachedSettings = settings;
       _lastPersistedJsonStr = jsonStr;
+      final writeMs = writeSw.elapsedMilliseconds;
 
-      if (current.startOnBoot != updated.startOnBoot) {
-        await _updateStartupShortcut(updated.startOnBoot);
+      var shortcutMs = 0;
+      if (previousStartOnBoot != settings.startOnBoot) {
+        final shortcutSw = Stopwatch()..start();
+        await _updateStartupShortcut(settings.startOnBoot);
+        shortcutMs = shortcutSw.elapsedMilliseconds;
       }
-      return updated;
+      final totalMs = totalSw.elapsedMilliseconds;
+      logPerf(
+        'SettingsService',
+        'Settings saved to file off-thread: total=${totalMs}ms '
+            '(write=${writeMs}ms, shortcutSync=${shortcutMs}ms).',
+      );
     } catch (e, stackTrace) {
-      logError('SettingsService', 'Failed to update settings', e, stackTrace);
+      logError(
+        'SettingsService',
+        'Failed to save settings to file',
+        e,
+        stackTrace,
+      );
       rethrow;
     }
-  });
+  }
+
+  /// Applies a partial update to the latest persisted settings without
+  /// overwriting changes made by another app process.
+  Future<WidgetSettings> updateSettings(
+    WidgetSettings Function(WidgetSettings current) update,
+  ) async {
+    final current = await loadSettings();
+    final updated = update(current);
+    _cachedSettings = updated;
+    await saveSettings(updated, immediate: true);
+    return updated;
+  }
 
   Future<void> _updateStartupShortcut(bool startOnBoot) async {
     if (!Platform.isWindows) return;

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
+import 'diagnostics_service.dart';
 import 'settings_service.dart';
 
 class NativePerformanceMetrics {
@@ -13,6 +14,8 @@ class NativePerformanceMetrics {
     this.availPhysMb,
     this.processWorkingSetMb,
     this.processPrivateBytesMb,
+    this.mpvWorkingSetMb,
+    this.mpvPrivateBytesMb,
     this.batteryPercent,
     this.isAcConnected,
     this.isCharging,
@@ -24,6 +27,8 @@ class NativePerformanceMetrics {
   final double? availPhysMb;
   final double? processWorkingSetMb;
   final double? processPrivateBytesMb;
+  final double? mpvWorkingSetMb;
+  final double? mpvPrivateBytesMb;
   final int? batteryPercent;
   final bool? isAcConnected;
   final bool? isCharging;
@@ -36,6 +41,8 @@ class NativePerformanceMetrics {
       availPhysMb: (map['availPhysMb'] as num?)?.toDouble(),
       processWorkingSetMb: (map['processWorkingSetMb'] as num?)?.toDouble(),
       processPrivateBytesMb: (map['processPrivateBytesMb'] as num?)?.toDouble(),
+      mpvWorkingSetMb: (map['mpvWorkingSetMb'] as num?)?.toDouble(),
+      mpvPrivateBytesMb: (map['mpvPrivateBytesMb'] as num?)?.toDouble(),
       batteryPercent: map['batteryPercent'] as int?,
       isAcConnected: map['isAcConnected'] as bool?,
       isCharging: map['isCharging'] as bool?,
@@ -91,7 +98,15 @@ class SystemOptimizerService {
 
   /// Commands Windows to flush the process working set (`SetProcessWorkingSetSize` and `EmptyWorkingSet`).
   /// Reclaims unused virtual memory pages across WallSync Pro and background MPV video instances.
-  Future<bool> optimizeMemory() async {
+  /// When [force] is false and the dashboard window is visible, avoids evicting live textures
+  /// and working set pages to prevent page fault stalls during active rendering.
+  Future<bool> optimizeMemory({bool force = false}) async {
+    if (!force && DiagnosticsService.instance.isWindowVisible) {
+      try {
+        PaintingBinding.instance.imageCache.clear();
+      } catch (_) {}
+      return true;
+    }
     try {
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
@@ -103,6 +118,20 @@ class SystemOptimizerService {
       return res ?? false;
     } catch (e) {
       logWarning('SystemOptimizerService', 'Native optimizeMemory call failed: $e');
+      return false;
+    }
+  }
+
+  /// Creates a Windows NTFS hard link (`CreateHardLinkW`) to share read-only binaries/assets with 0 copying and 0 RAM overhead.
+  Future<bool> createHardLink({required String target, required String existing}) async {
+    if (!Platform.isWindows) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('createHardLink', {
+        'target': target,
+        'existing': existing,
+      });
+      return res ?? false;
+    } catch (_) {
       return false;
     }
   }

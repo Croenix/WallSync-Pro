@@ -11,7 +11,6 @@ import '../services/settings_service.dart';
 import '../services/video_wallpaper_cache.dart';
 import '../services/video_thumbnail_service.dart';
 import '../services/wallpaper_metadata_service.dart';
-import '../services/system_optimizer_service.dart';
 
 /// Hardware-accelerated live video preview widget using WebView2.
 class LiveVideoPreview extends StatefulWidget {
@@ -64,7 +63,6 @@ class LiveVideoPreviewState extends State<LiveVideoPreview> {
       try {
         c.dispose();
       } catch (_) {}
-      unawaited(SystemOptimizerService.instance.optimizeMemory());
     }
   }
 
