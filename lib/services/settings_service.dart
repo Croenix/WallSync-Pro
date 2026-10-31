@@ -776,6 +776,13 @@ class WidgetSettings {
   bool showOuterFrame;
   bool editorMode;
   double sizeFactor;
+  bool autoSizing;
+  String performanceProfile; // 'balanced' | 'performance' | 'power_saver' | 'high_quality' | 'custom'
+  int wallpaperFpsLimit;
+  int widgetRefreshIntervalMs;
+  bool pauseInactiveAnimations;
+  int imageCacheLimitMb;
+  List<Map<String, dynamic>> optimizationHistory;
 
   // 3D position & rotation controls
   String widgetTemplate; // 'classic' | 'minimal' | 'cyber' | 'split' | 'neon'
@@ -907,6 +914,13 @@ class WidgetSettings {
     this.widgetTemplate = 'classic',
     this.editorMode = true,
     this.sizeFactor = 1.0,
+    this.autoSizing = true,
+    this.performanceProfile = 'balanced',
+    this.wallpaperFpsLimit = 60,
+    this.widgetRefreshIntervalMs = 1000,
+    this.pauseInactiveAnimations = true,
+    this.imageCacheLimitMb = 24,
+    List<Map<String, dynamic>>? optimizationHistory,
     Map<String, double>? elementTranslateX,
     Map<String, double>? elementTranslateY,
     Map<String, double>? elementTranslateZ,
@@ -965,6 +979,7 @@ class WidgetSettings {
        customElements =
            customElements ?? CustomWidgetElement.defaultCustomLayout(),
        savedCustomWidgets = savedCustomWidgets ?? [],
+       optimizationHistory = optimizationHistory ?? [],
        elementTranslateX = elementTranslateX ?? {},
        elementTranslateY = elementTranslateY ?? {},
        elementTranslateZ = elementTranslateZ ?? {},
@@ -1406,6 +1421,18 @@ class WidgetSettings {
       widgetTemplate: json['widgetTemplate'] ?? 'classic',
       editorMode: json['editorMode'] ?? false,
       sizeFactor: (json['sizeFactor'] ?? 1.0).toDouble(),
+      autoSizing: json['autoSizing'] ?? true,
+      performanceProfile: json['performanceProfile'] ?? 'balanced',
+      wallpaperFpsLimit: json['wallpaperFpsLimit'] ?? 60,
+      widgetRefreshIntervalMs: json['widgetRefreshIntervalMs'] ?? 1000,
+      pauseInactiveAnimations: json['pauseInactiveAnimations'] ?? true,
+      imageCacheLimitMb: json['imageCacheLimitMb'] ?? 24,
+      optimizationHistory: (json['optimizationHistory'] is List)
+          ? (json['optimizationHistory'] as List)
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList()
+          : [],
       elementTranslateX: parseDoubleMap(json['elementTranslateX']),
       elementTranslateY: parseDoubleMap(json['elementTranslateY']),
       elementTranslateZ: parseDoubleMap(json['elementTranslateZ']),
@@ -1507,6 +1534,13 @@ class WidgetSettings {
       'widgetTemplate': widgetTemplate,
       'editorMode': editorMode,
       'sizeFactor': sizeFactor,
+      'autoSizing': autoSizing,
+      'performanceProfile': performanceProfile,
+      'wallpaperFpsLimit': wallpaperFpsLimit,
+      'widgetRefreshIntervalMs': widgetRefreshIntervalMs,
+      'pauseInactiveAnimations': pauseInactiveAnimations,
+      'imageCacheLimitMb': imageCacheLimitMb,
+      'optimizationHistory': optimizationHistory,
       'elementTranslateX': elementTranslateX,
       'elementTranslateY': elementTranslateY,
       'elementTranslateZ': elementTranslateZ,
@@ -1596,6 +1630,13 @@ class WidgetSettings {
     String? widgetTemplate,
     bool? editorMode,
     double? sizeFactor,
+    bool? autoSizing,
+    String? performanceProfile,
+    int? wallpaperFpsLimit,
+    int? widgetRefreshIntervalMs,
+    bool? pauseInactiveAnimations,
+    int? imageCacheLimitMb,
+    List<Map<String, dynamic>>? optimizationHistory,
     Map<String, double>? elementTranslateX,
     Map<String, double>? elementTranslateY,
     Map<String, double>? elementTranslateZ,
@@ -1697,6 +1738,16 @@ class WidgetSettings {
       widgetTemplate: widgetTemplate ?? this.widgetTemplate,
       editorMode: editorMode ?? this.editorMode,
       sizeFactor: sizeFactor ?? this.sizeFactor,
+      autoSizing: autoSizing ?? this.autoSizing,
+      performanceProfile: performanceProfile ?? this.performanceProfile,
+      wallpaperFpsLimit: wallpaperFpsLimit ?? this.wallpaperFpsLimit,
+      widgetRefreshIntervalMs:
+          widgetRefreshIntervalMs ?? this.widgetRefreshIntervalMs,
+      pauseInactiveAnimations:
+          pauseInactiveAnimations ?? this.pauseInactiveAnimations,
+      imageCacheLimitMb: imageCacheLimitMb ?? this.imageCacheLimitMb,
+      optimizationHistory: optimizationHistory ??
+          this.optimizationHistory.map((m) => Map<String, dynamic>.from(m)).toList(),
       elementTranslateX: elementTranslateX ?? Map.from(this.elementTranslateX),
       elementTranslateY: elementTranslateY ?? Map.from(this.elementTranslateY),
       elementTranslateZ: elementTranslateZ ?? Map.from(this.elementTranslateZ),

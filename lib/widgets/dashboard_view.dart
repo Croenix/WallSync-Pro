@@ -35,6 +35,7 @@ import 'animated_backgrounds.dart';
 import 'color_picker_widget.dart';
 import 'gradient_picker_widget.dart';
 import 'splash_screen.dart';
+import 'device_optimization_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:window_manager/window_manager.dart';
@@ -3187,6 +3188,18 @@ class _DashboardViewState extends State<DashboardView>
                               key: const ValueKey('taskbar'),
                             ),
                           )
+                        : _currentMainTab == 'device_optimization'
+                        ? _profileDashboardSection(
+                            'deviceOptimization.build',
+                            () => DeviceOptimizationView(
+                              key: const ValueKey('device_optimization'),
+                              settings: _settings,
+                              settingsService: _settingsService,
+                              onSettingsChanged: (updated) {
+                                setState(() => _settings = updated);
+                              },
+                            ),
+                          )
                         : _currentMainTab == 'diagnostics'
                         ? _profileDashboardSection(
                             'diagnostics.build',
@@ -3406,6 +3419,20 @@ class _DashboardViewState extends State<DashboardView>
                             'Widgets',
                             'widgets',
                             Icons.widgets_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Taskbar',
+                            'taskbar',
+                            Icons.dock_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Optimization',
+                            'device_optimization',
+                            Icons.speed_rounded,
                             compact: compact,
                           ),
                           const SizedBox(width: 3),

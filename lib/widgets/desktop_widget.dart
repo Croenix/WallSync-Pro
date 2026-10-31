@@ -316,7 +316,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
     // Keep the media service active for any configured media element.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncMediaServiceState();
+      if (mounted) {
+        _syncMediaServiceState();
+        if (_settings.autoSizing) {
+          _applyAutoSizing();
+        }
+      }
     });
     _mediaInfo = MediaSessionService().current;
     if (_needsMediaSession && _mediaInfo.thumbnail.isNotEmpty) {
@@ -756,6 +761,241 @@ class _DesktopWidgetState extends State<DesktopWidget>
       setState(() {
         _visualEditorModeActive = false;
       });
+    }
+  }
+
+  Future<void> _applyAutoSizing() async {
+    final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
+    final defaults =
+        WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
+        {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
+    final baseWidth = _settings.widgetTemplate == 'custom' && _settings.width > 0
+        ? _settings.width
+        : defaults['width']!;
+    final baseHeight = _settings.widgetTemplate == 'custom' && _settings.height > 0
+        ? _settings.height
+        : defaults['height']!;
+
+    final targetWidth = ((isTaskbar ? baseWidth : (baseWidth + 40.0)) * _settings.sizeFactor)
+        .clamp(isTaskbar ? 120.0 : 180.0, 1920.0);
+    final targetHeight = ((isTaskbar ? baseHeight : (baseHeight + 32.0)) * _settings.sizeFactor)
+        .clamp(isTaskbar ? 36.0 : 60.0, 1080.0);
+
+    setState(() {
+      _settings.width = targetWidth;
+      _settings.height = targetHeight;
+    });
+    try {
+      await windowManager.setSize(Size(targetWidth, targetHeight));
+    } catch (_) {}
+    _scheduleWindowBoundsSave(immediate: true);
+  }
+
+  void _openWidgetCustomization() {
+    try {
+      Process.start(Platform.resolvedExecutable, []);
+    } catch (e) {
+      logWarning('DesktopWidget', 'Could not launch main application window: $e');
+    }
+  }
+
+  Future<void> _showContextMenu(BuildContext context, Offset globalPosition) async {
+    final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+
+    final isLocked = _settings.isLocked;
+    final isEdit = _visualEditorModeActive && !isLocked;
+    final isAutoSizing = _settings.autoSizing;
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      color: const Color(0xFF141724),
+      elevation: 12,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+          width: 1.2,
+        ),
+      ),
+      items: [
+        const PopupMenuItem<String>(
+          value: 'customize',
+          height: 40,
+          child: Row(
+            children: [
+              Icon(Icons.tune_rounded, size: 17, color: Color(0xFF38BDF8)),
+              SizedBox(width: 10),
+              Text(
+                'Customize Widget',
+                style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'lock',
+          height: 40,
+          child: Row(
+            children: [
+              Icon(
+                isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                size: 17,
+                color: isLocked ? const Color(0xFFF43F5E) : const Color(0xFF10B981),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isLocked ? 'Lock Position (ON)' : 'Lock Position (OFF)',
+                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                ),
+              ),
+              if (isLocked)
+                const Icon(Icons.check_rounded, size: 15, color: Color(0xFFF43F5E)),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'edit',
+          height: 40,
+          enabled: !isLocked,
+          child: Row(
+            children: [
+              Icon(
+                isEdit ? Icons.check_circle_outline_rounded : Icons.crop_free_rounded,
+                size: 17,
+                color: isLocked ? Colors.white24 : const Color(0xFF38BDF8),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isEdit ? 'Exit Edit Mode' : 'Edit Widget (Reposition / Resize)',
+                  style: TextStyle(
+                    color: isLocked ? Colors.white38 : Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (isEdit)
+                const Icon(Icons.check_rounded, size: 15, color: Color(0xFF38BDF8)),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'auto_size',
+          height: 40,
+          child: Row(
+            children: [
+              Icon(
+                Icons.aspect_ratio_rounded,
+                size: 17,
+                color: isAutoSizing ? const Color(0xFF10B981) : Colors.white60,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isAutoSizing ? 'Auto Sizing (ON)' : 'Auto Sizing (OFF)',
+                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                ),
+              ),
+              if (isAutoSizing)
+                const Icon(Icons.check_rounded, size: 15, color: Color(0xFF10B981)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'reset_position',
+          height: 40,
+          child: Row(
+            children: [
+              Icon(Icons.restart_alt_rounded, size: 17, color: Colors.amberAccent),
+              SizedBox(width: 10),
+              Text(
+                'Reset Position',
+                style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        const PopupMenuItem<String>(
+          value: 'close',
+          height: 40,
+          child: Row(
+            children: [
+              Icon(Icons.close_rounded, size: 17, color: Color(0xFFF43F5E)),
+              SizedBox(width: 10),
+              Text(
+                'Close Widget',
+                style: TextStyle(color: Color(0xFFF43F5E), fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (selected == null) return;
+    switch (selected) {
+      case 'customize':
+        _openWidgetCustomization();
+        break;
+      case 'lock':
+        final newLocked = !_settings.isLocked;
+        setState(() {
+          _settings.isLocked = newLocked;
+          if (newLocked) {
+            _visualEditorModeActive = false;
+          }
+        });
+        unawaited(_settingsService.updateSettings((c) => c.copyWith(isLocked: newLocked)));
+        _scheduleWindowBoundsSave(immediate: true);
+        break;
+      case 'edit':
+        if (_settings.isLocked) return;
+        setState(() {
+          _visualEditorModeActive = !_visualEditorModeActive;
+          _settings.editorMode = _visualEditorModeActive;
+        });
+        unawaited(_settingsService.updateSettings((c) => c.copyWith(editorMode: _visualEditorModeActive)));
+        _resetInactivityTimer();
+        _scheduleWindowBoundsSave(immediate: true);
+        break;
+      case 'auto_size':
+        final newAutoSizing = !_settings.autoSizing;
+        setState(() {
+          _settings.autoSizing = newAutoSizing;
+        });
+        unawaited(_settingsService.updateSettings((c) => c.copyWith(autoSizing: newAutoSizing)));
+        if (newAutoSizing) {
+          _applyAutoSizing();
+        }
+        _scheduleWindowBoundsSave(immediate: true);
+        break;
+      case 'reset_position':
+        try {
+          await windowManager.center();
+          final pos = await windowManager.getPosition();
+          setState(() {
+            _settings.posX = pos.dx;
+            _settings.posY = pos.dy;
+          });
+          unawaited(_settingsService.updateSettings((c) => c.copyWith(posX: pos.dx, posY: pos.dy)));
+          _scheduleWindowBoundsSave(immediate: true);
+        } catch (_) {}
+        break;
+      case 'close':
+        try {
+          await windowManager.close();
+        } catch (_) {
+          exit(0);
+        }
+        break;
     }
   }
 
@@ -4552,9 +4792,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
   // ── Main build ────────────────────────────────────────────────────────────
 
   List<Widget> _buildResizeHandles(BuildContext context) {
+    if (_settings.isLocked) return const [];
     final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
     final handleSize = isTaskbar ? 4.0 : 8.0;
     final cornerSize = isTaskbar ? 8.0 : 16.0;
+
+    void onResizeStart(ResizeEdge edge) {
+      if (_settings.isLocked) return;
+      if (_settings.autoSizing) {
+        _settings.autoSizing = false;
+        unawaited(_settingsService.updateSettings((c) => c.copyWith(autoSizing: false)));
+      }
+      _startUserWindowInteraction();
+      windowManager.startResizing(edge);
+    }
 
     return [
       // Top edge
@@ -4567,10 +4818,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeUp,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.top);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.top),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4587,10 +4835,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeDown,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.bottom);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.bottom),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4607,10 +4852,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeLeft,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.left);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.left),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4627,10 +4869,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeRight,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.right);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.right),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4647,10 +4886,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeUpLeft,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.topLeft);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.topLeft),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4667,10 +4903,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeUpRight,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.topRight);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.topRight),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4687,10 +4920,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeDownLeft,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.bottomLeft);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.bottomLeft),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -4707,10 +4937,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           cursor: SystemMouseCursors.resizeDownRight,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onPanStart: (_) {
-              _startUserWindowInteraction();
-              windowManager.startResizing(ResizeEdge.bottomRight);
-            },
+            onPanStart: (_) => onResizeStart(ResizeEdge.bottomRight),
             onPanEnd: (_) => _endUserWindowInteraction(),
             onPanCancel: () => _endUserWindowInteraction(),
             child: const SizedBox.expand(),
@@ -5821,6 +6048,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
+                onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
                 onPanStart: (d) {
                   _handleInteraction();
                   if (!_settings.isLocked) {
@@ -5865,6 +6093,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
       final effectiveWidth = math.max(baseWidth, _settings.width);
       mainWidget = GestureDetector(
         behavior: HitTestBehavior.translucent,
+        onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
         onPanStart: (d) {
           _handleInteraction();
           if (!_settings.isLocked) {
@@ -5895,6 +6124,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
+              onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
               onPanStart: (d) {
                 _handleInteraction();
                 if (!_settings.isLocked) {
@@ -5938,6 +6168,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
         onHover: (_) => _handleInteraction(),
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
+          onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
           onTap: () {
             if (_visualEditorModeActive) {
               logInfo(

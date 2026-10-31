@@ -235,6 +235,10 @@ class LiveWallpaperPlugin::Impl {
   bool BoostProcessPriority(bool boost);
   bool SetWindowCloaked(bool cloak);
   bool CreateFileHardLink(const std::wstring& target_path, const std::wstring& existing_path);
+  flutter::EncodableMap GetWindowsVersionInfo();
+  flutter::EncodableList GetProcessList();
+  bool SetProcessPriority(DWORD pid, int priority_level);
+  bool TrimProcessMemory(DWORD pid);
   void StartLowMemoryMonitor();
   void StopLowMemoryMonitor();
 
@@ -559,6 +563,43 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
     std::wstring wide_target = Utf8ToWide(target_str);
     std::wstring wide_existing = Utf8ToWide(existing_str);
     result->Success(flutter::EncodableValue(CreateFileHardLink(wide_target, wide_existing)));
+    return;
+  }
+  if (call.method_name() == "getWindowsVersionInfo") {
+    result->Success(flutter::EncodableValue(GetWindowsVersionInfo()));
+    return;
+  }
+  if (call.method_name() == "getProcessList") {
+    result->Success(flutter::EncodableValue(GetProcessList()));
+    return;
+  }
+  if (call.method_name() == "setProcessPriority") {
+    int pid = 0;
+    int priority = 1;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_pid = args->find(flutter::EncodableValue("pid"));
+      if (it_pid != args->end()) {
+        pid = GetIntFromEncodable(it_pid->second, 0);
+      }
+      auto it_pri = args->find(flutter::EncodableValue("priority"));
+      if (it_pri != args->end()) {
+        priority = GetIntFromEncodable(it_pri->second, 1);
+      }
+    }
+    result->Success(flutter::EncodableValue(SetProcessPriority(static_cast<DWORD>(pid), priority)));
+    return;
+  }
+  if (call.method_name() == "trimProcessMemory") {
+    int pid = 0;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_pid = args->find(flutter::EncodableValue("pid"));
+      if (it_pid != args->end()) {
+        pid = GetIntFromEncodable(it_pid->second, 0);
+      }
+    }
+    result->Success(flutter::EncodableValue(TrimProcessMemory(static_cast<DWORD>(pid))));
     return;
   }
   result->NotImplemented();
@@ -2179,6 +2220,165 @@ bool LiveWallpaperPlugin::Impl::CreateFileHardLink(
     DeleteFileW(target_path.c_str());
   }
   return CreateHardLinkW(target_path.c_str(), existing_path.c_str(), nullptr) != 0;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsVersionInfo() {
+  flutter::EncodableMap info;
+
+  SYSTEM_INFO sys_info{};
+  GetSystemInfo(&sys_info);
+  info[flutter::EncodableValue("processorCount")] =
+      flutter::EncodableValue(static_cast<int>(sys_info.dwNumberOfProcessors));
+
+  std::string product_name = "Windows 11";
+  std::string display_version = "";
+  int build_number = 22631;
+  int ubr = 0;
+
+  HKEY hKey = nullptr;
+  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                    L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                    0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+    wchar_t buf[256] = {0};
+    DWORD buf_size = sizeof(buf);
+    if (RegQueryValueExW(hKey, L"ProductName", nullptr, nullptr,
+                         reinterpret_cast<LPBYTE>(buf), &buf_size) == ERROR_SUCCESS) {
+      product_name = WideToUtf8(buf);
+    }
+    buf_size = sizeof(buf);
+    if (RegQueryValueExW(hKey, L"DisplayVersion", nullptr, nullptr,
+                         reinterpret_cast<LPBYTE>(buf), &buf_size) == ERROR_SUCCESS) {
+      display_version = WideToUtf8(buf);
+    }
+    buf_size = sizeof(buf);
+    if (RegQueryValueExW(hKey, L"CurrentBuildNumber", nullptr, nullptr,
+                         reinterpret_cast<LPBYTE>(buf), &buf_size) == ERROR_SUCCESS) {
+      build_number = _wtoi(buf);
+    }
+    DWORD ubr_val = 0;
+    DWORD ubr_size = sizeof(ubr_val);
+    if (RegQueryValueExW(hKey, L"UBR", nullptr, nullptr,
+                         reinterpret_cast<LPBYTE>(&ubr_val), &ubr_size) == ERROR_SUCCESS) {
+      ubr = static_cast<int>(ubr_val);
+    }
+    RegCloseKey(hKey);
+  }
+
+  bool is_win11 = (build_number >= 22000);
+  if (is_win11 && product_name.find("Windows 10") != std::string::npos) {
+    size_t pos = product_name.find("Windows 10");
+    product_name.replace(pos, 10, "Windows 11");
+  }
+
+  info[flutter::EncodableValue("productName")] = flutter::EncodableValue(product_name);
+  info[flutter::EncodableValue("displayVersion")] = flutter::EncodableValue(display_version);
+  info[flutter::EncodableValue("build")] = flutter::EncodableValue(build_number);
+  info[flutter::EncodableValue("ubr")] = flutter::EncodableValue(ubr);
+  info[flutter::EncodableValue("isWindows11")] = flutter::EncodableValue(is_win11);
+  info[flutter::EncodableValue("supportsEcoQoS")] = flutter::EncodableValue(is_win11);
+
+  return info;
+}
+
+flutter::EncodableList LiveWallpaperPlugin::Impl::GetProcessList() {
+  flutter::EncodableList list;
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) {
+    return list;
+  }
+
+  DWORD current_pid = GetCurrentProcessId();
+  PROCESSENTRY32W pe32{};
+  pe32.dwSize = sizeof(PROCESSENTRY32W);
+
+  if (Process32FirstW(snapshot, &pe32)) {
+    do {
+      if (pe32.th32ProcessID == 0) continue;
+
+      flutter::EncodableMap item;
+      std::string name = WideToUtf8(pe32.szExeFile);
+      item[flutter::EncodableValue("pid")] =
+          flutter::EncodableValue(static_cast<int>(pe32.th32ProcessID));
+      item[flutter::EncodableValue("name")] = flutter::EncodableValue(name);
+      item[flutter::EncodableValue("threads")] =
+          flutter::EncodableValue(static_cast<int>(pe32.cntThreads));
+
+      bool is_self = (pe32.th32ProcessID == current_pid);
+      bool is_wallsync = is_self ||
+                         (_wcsicmp(pe32.szExeFile, L"WallSync.exe") == 0) ||
+                         (_wcsicmp(pe32.szExeFile, L"mpv.exe") == 0);
+      item[flutter::EncodableValue("isWallSync")] =
+          flutter::EncodableValue(is_wallsync);
+      item[flutter::EncodableValue("isCurrentProcess")] =
+          flutter::EncodableValue(is_self);
+
+      double working_set_mb = 0.0;
+      double private_mb = 0.0;
+      HANDLE h_proc = OpenProcess(
+          PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE,
+          pe32.th32ProcessID);
+      if (h_proc) {
+        PROCESS_MEMORY_COUNTERS_EX pmc{};
+        if (GetProcessMemoryInfo(h_proc,
+                                 reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
+                                 sizeof(pmc))) {
+          working_set_mb =
+              static_cast<double>(pmc.WorkingSetSize) / (1024.0 * 1024.0);
+          private_mb =
+              static_cast<double>(pmc.PrivateUsage) / (1024.0 * 1024.0);
+        }
+        CloseHandle(h_proc);
+      }
+      item[flutter::EncodableValue("workingSetMb")] =
+          flutter::EncodableValue(working_set_mb);
+      item[flutter::EncodableValue("privateMb")] =
+          flutter::EncodableValue(private_mb);
+
+      list.push_back(flutter::EncodableValue(item));
+    } while (Process32NextW(snapshot, &pe32));
+  }
+  CloseHandle(snapshot);
+  return list;
+}
+
+bool LiveWallpaperPlugin::Impl::SetProcessPriority(DWORD pid, int priority_level) {
+  if (pid == 0) return false;
+  HANDLE h_proc = (pid == GetCurrentProcessId())
+                      ? GetCurrentProcess()
+                      : OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid);
+  if (!h_proc) return false;
+
+  DWORD priority_class = NORMAL_PRIORITY_CLASS;
+  if (priority_level == 0) {
+    priority_class = BELOW_NORMAL_PRIORITY_CLASS;
+  } else if (priority_level == 2) {
+    priority_class = ABOVE_NORMAL_PRIORITY_CLASS;
+  } else if (priority_level == 3) {
+    priority_class = HIGH_PRIORITY_CLASS;
+  }
+
+  BOOL success = SetPriorityClass(h_proc, priority_class);
+  if (pid != GetCurrentProcessId()) {
+    CloseHandle(h_proc);
+  }
+  return success != 0;
+}
+
+bool LiveWallpaperPlugin::Impl::TrimProcessMemory(DWORD pid) {
+  if (pid == 0) return false;
+  HANDLE h_proc = (pid == GetCurrentProcessId())
+                      ? GetCurrentProcess()
+                      : OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (!h_proc) return false;
+
+  EmptyWorkingSet(h_proc);
+  SetProcessWorkingSetSize(h_proc, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+  if (pid != GetCurrentProcessId()) {
+    CloseHandle(h_proc);
+  } else {
+    HeapCompact(GetProcessHeap(), 0);
+  }
+  return true;
 }
 
 void LiveWallpaperPlugin::Impl::StartLowMemoryMonitor() {

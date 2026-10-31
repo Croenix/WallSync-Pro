@@ -85,6 +85,70 @@ class NativeGpuAndDisplayInfo {
   }
 }
 
+class WindowsVersionInfo {
+  const WindowsVersionInfo({
+    required this.productName,
+    required this.displayVersion,
+    required this.build,
+    required this.ubr,
+    required this.isWindows11,
+    required this.supportsEcoQoS,
+    required this.processorCount,
+  });
+
+  final String productName;
+  final String displayVersion;
+  final int build;
+  final int ubr;
+  final bool isWindows11;
+  final bool supportsEcoQoS;
+  final int processorCount;
+
+  factory WindowsVersionInfo.fromMap(Map<Object?, Object?> map) {
+    return WindowsVersionInfo(
+      productName: (map['productName'] as String?) ?? 'Windows',
+      displayVersion: (map['displayVersion'] as String?) ?? '',
+      build: (map['build'] as int?) ?? 0,
+      ubr: (map['ubr'] as int?) ?? 0,
+      isWindows11: (map['isWindows11'] as bool?) ?? false,
+      supportsEcoQoS: (map['supportsEcoQoS'] as bool?) ?? false,
+      processorCount: (map['processorCount'] as int?) ?? 4,
+    );
+  }
+}
+
+class WindowsProcessInfo {
+  const WindowsProcessInfo({
+    required this.pid,
+    required this.name,
+    required this.threads,
+    required this.workingSetMb,
+    required this.privateMb,
+    required this.isWallSync,
+    required this.isCurrentProcess,
+  });
+
+  final int pid;
+  final String name;
+  final int threads;
+  final double workingSetMb;
+  final double privateMb;
+  final bool isWallSync;
+  final bool isCurrentProcess;
+
+  factory WindowsProcessInfo.fromMap(Map<Object?, Object?> map) {
+    return WindowsProcessInfo(
+      pid: (map['pid'] as int?) ?? 0,
+      name: (map['name'] as String?) ?? '',
+      threads: (map['threads'] as int?) ?? 0,
+      workingSetMb: (map['workingSetMb'] as num?)?.toDouble() ?? 0.0,
+      privateMb: (map['privateMb'] as num?)?.toDouble() ?? 0.0,
+      isWallSync: (map['isWallSync'] as bool?) ?? false,
+      isCurrentProcess: (map['isCurrentProcess'] as bool?) ?? false,
+    );
+  }
+}
+
 class SystemOptimizerService {
   static final SystemOptimizerService instance = SystemOptimizerService._();
   SystemOptimizerService._();
@@ -348,6 +412,64 @@ class SystemOptimizerService {
       return res ?? false;
     } catch (e) {
       logWarning('SystemOptimizerService', 'Native setWindowCloaked call failed: $e');
+      return false;
+    }
+  }
+
+  /// Retrieves native Windows version and build diagnostics.
+  Future<WindowsVersionInfo?> getWindowsVersionInfo() async {
+    if (!Platform.isWindows) return null;
+    try {
+      final raw = await _channel.invokeMapMethod<Object?, Object?>('getWindowsVersionInfo');
+      if (raw == null) return null;
+      return WindowsVersionInfo.fromMap(raw);
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native getWindowsVersionInfo failed: $e');
+      return null;
+    }
+  }
+
+  /// Enumerates running processes with PID, working set, private bytes, and WallSync identification.
+  Future<List<WindowsProcessInfo>> getProcessList() async {
+    if (!Platform.isWindows) return const [];
+    try {
+      final rawList = await _channel.invokeListMethod<dynamic>('getProcessList');
+      if (rawList == null) return const [];
+      return rawList
+          .whereType<Map>()
+          .map((m) => WindowsProcessInfo.fromMap(m))
+          .toList();
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native getProcessList failed: $e');
+      return const [];
+    }
+  }
+
+  /// Adjusts the priority class for a specific process (0: Below Normal / Power Saver, 1: Normal, 2: Above Normal / Performance, 3: High).
+  Future<bool> setProcessPriority(int pid, int priorityLevel) async {
+    if (!Platform.isWindows) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('setProcessPriority', {
+        'pid': pid,
+        'priority': priorityLevel,
+      });
+      return res ?? false;
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native setProcessPriority failed: $e');
+      return false;
+    }
+  }
+
+  /// Trims the working set and compacts the heap for a specific PID.
+  Future<bool> trimProcessMemory(int pid) async {
+    if (!Platform.isWindows) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('trimProcessMemory', {
+        'pid': pid,
+      });
+      return res ?? false;
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native trimProcessMemory failed: $e');
       return false;
     }
   }
