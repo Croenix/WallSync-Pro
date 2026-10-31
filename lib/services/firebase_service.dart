@@ -421,6 +421,7 @@ class FirebaseService {
   final String _databaseUrl;
   final HttpClient _httpClient;
   final Map<String, Future<String>> _pendingReportSubmissions = {};
+  static bool _cachedWallpapersDirCreated = false;
 
   // Shared HttpClient to enable TCP connection reuse (Keep-Alive) and massive performance optimizations.
   static final HttpClient _sharedClient = HttpClient()
@@ -995,8 +996,11 @@ class FirebaseService {
     try {
       final appDir = await SettingsService().getAppDirectory();
       final cacheDir = Directory('${appDir.path}/cached_wallpapers');
-      if (!await cacheDir.exists()) {
-        await cacheDir.create(recursive: true);
+      if (!_cachedWallpapersDirCreated) {
+        if (!await cacheDir.exists()) {
+          await cacheDir.create(recursive: true);
+        }
+        _cachedWallpapersDirCreated = true;
       }
 
       final targetFile = File('${cacheDir.path}/${wallpaper.filename}');

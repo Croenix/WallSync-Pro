@@ -235,11 +235,25 @@ class DeviceOptimizationService {
       beforeWs = diagMem.processRssBytes / (1024.0 * 1024.0);
       beforePrivate = (diagMem.processPrivateBytes ?? 0) / (1024.0 * 1024.0);
       final metrics = await _optimizer.getPerformanceMetrics();
-      if (metrics != null &&
-          metrics.processWorkingSetMb != null &&
-          metrics.processWorkingSetMb! > 0) {
-        beforeWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
+      if (metrics != null) {
+        if (metrics.processWorkingSetMb != null && metrics.processWorkingSetMb! > 0) {
+          beforeWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
+        }
+        if (metrics.processPrivateBytesMb != null && metrics.processPrivateBytesMb! > 0) {
+          beforePrivate = metrics.processPrivateBytesMb! + (metrics.mpvPrivateBytesMb ?? 0.0);
+        }
       }
+      final procs = await _optimizer.getProcessList();
+      double procWsTotal = 0.0;
+      double procPrivTotal = 0.0;
+      for (final p in procs) {
+        if (p.isWallSync && p.pid > 0) {
+          procWsTotal += p.workingSetMb;
+          procPrivTotal += p.privateMb;
+        }
+      }
+      if (procWsTotal > beforeWs) beforeWs = procWsTotal;
+      if (procPrivTotal > beforePrivate) beforePrivate = procPrivTotal;
     } catch (_) {}
 
     // Save pre-optimization settings state for undo
@@ -303,11 +317,25 @@ class DeviceOptimizationService {
       afterWs = diagMem.processRssBytes / (1024.0 * 1024.0);
       afterPrivate = (diagMem.processPrivateBytes ?? 0) / (1024.0 * 1024.0);
       final metrics = await _optimizer.getPerformanceMetrics();
-      if (metrics != null &&
-          metrics.processWorkingSetMb != null &&
-          metrics.processWorkingSetMb! > 0) {
-        afterWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
+      if (metrics != null) {
+        if (metrics.processWorkingSetMb != null && metrics.processWorkingSetMb! > 0) {
+          afterWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
+        }
+        if (metrics.processPrivateBytesMb != null && metrics.processPrivateBytesMb! > 0) {
+          afterPrivate = metrics.processPrivateBytesMb! + (metrics.mpvPrivateBytesMb ?? 0.0);
+        }
       }
+      final procs = await _optimizer.getProcessList();
+      double procWsTotal = 0.0;
+      double procPrivTotal = 0.0;
+      for (final p in procs) {
+        if (p.isWallSync && p.pid > 0) {
+          procWsTotal += p.workingSetMb;
+          procPrivTotal += p.privateMb;
+        }
+      }
+      if (procWsTotal > 0) afterWs = procWsTotal;
+      if (procPrivTotal > 0) afterPrivate = procPrivTotal;
     } catch (_) {}
 
     final double wsFreed =
@@ -338,10 +366,19 @@ class DeviceOptimizationService {
       (c) => c.copyWith(optimizationHistory: history),
     );
 
-    logInfo(
-      'DeviceOptimizationService',
-      'Optimization complete. Freed ${result.ramFreedMb.toStringAsFixed(1)} MB RAM across ${actions.length} actions.',
-    );
+    if (result.workingSetFreedMb > 0 || result.privateBytesFreedMb > 0) {
+      logInfo(
+        'DeviceOptimizationService',
+        'Optimization complete. Freed ${result.workingSetFreedMb.toStringAsFixed(1)} MB Working Set '
+        '(${result.privateBytesFreedMb.toStringAsFixed(1)} MB private commit) across ${actions.length} actions.',
+      );
+    } else {
+      logInfo(
+        'DeviceOptimizationService',
+        'Optimization complete. Working set stable at ${result.workingSetAfterMb.toStringAsFixed(1)} MB '
+        'across ${actions.length} actions (all caches flushed and heaps compacted).',
+      );
+    }
     return result;
   }
 

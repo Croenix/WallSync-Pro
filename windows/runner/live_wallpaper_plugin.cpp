@@ -937,7 +937,7 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
              << L" --d3d11-flip=yes"
              << L" --hwdec=d3d11va,auto-safe"
              << L" --vd-lavc-dr=yes"
-             << L" --vd-lavc-threads=2"
+             << L" --vd-lavc-threads=0"
              << L" --scale=bilinear"
              << L" --cscale=bilinear"
              << L" --demuxer-max-bytes=8MiB"
@@ -945,7 +945,7 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
              << L" --cache=no"
              << L" --cache-secs=1"
               << L" --hr-seek=no"
-             << L" --priority=belownormal"
+             << L" --priority=normal"
              << L" --script-opts=osc-visibility=never"
              << L" --no-config";
 

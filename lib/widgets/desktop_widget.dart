@@ -3638,6 +3638,24 @@ class _DesktopWidgetState extends State<DesktopWidget>
                     ),
                   ),
                 ),
+                const SizedBox(width: 4),
+
+                // Settings Shortcut
+                Tooltip(
+                  message: 'WallSync Settings',
+                  child: InkWell(
+                    onTap: () => _openDashboard('settings'),
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(5),
+                      child: Icon(
+                        Icons.settings_rounded,
+                        size: 16,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ],

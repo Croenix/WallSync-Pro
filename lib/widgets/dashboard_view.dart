@@ -142,7 +142,7 @@ class _DashboardViewState extends State<DashboardView>
   bool _showVideoSettingsExpanded = false;
   bool _isChangingWallpaperFit = false;
   bool _isClearingWallpaperCache = false;
-  String? _hoveredVideoCardId;
+  final ValueNotifier<String?> _hoveredVideoCardNotifier = ValueNotifier<String?>(null);
   Timer? _hoverDebounceTimer;
   String _currentMainTab =
       'wallpapers'; // 'wallpapers' | 'widgets' | 'bug_report'
@@ -1586,6 +1586,7 @@ class _DashboardViewState extends State<DashboardView>
     _watcherDebounce?.cancel();
     _tabCtrl.dispose();
     _previewDateTimeNotifier.dispose();
+    _hoveredVideoCardNotifier.dispose();
     _backgroundFlowController.dispose();
     _gradientScrollCtrl.dispose();
     _animatedBgScrollCtrl.dispose();
@@ -2427,7 +2428,7 @@ class _DashboardViewState extends State<DashboardView>
     _saveDebounce?.cancel();
     _saveDebounce = null;
     final persistStopwatch = Stopwatch()..start();
-    await _settingsService.saveSettings(_settings);
+    await _settingsService.saveSettings(_settings, immediate: true);
     logPerf(
       'DashboardView',
       'Wallpaper settings persisted in ${persistStopwatch.elapsedMilliseconds}ms.',
@@ -3157,10 +3158,20 @@ class _DashboardViewState extends State<DashboardView>
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 350),
+                    layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                      return Stack(
+                        alignment: Alignment.topLeft,
+                        children: <Widget>[
+                          ...previousChildren.map((w) => IgnorePointer(key: w.key, ignoring: true, child: w)),
+                          ?currentChild,
+                        ],
+                      );
+                    },
                     transitionBuilder: (child, animation) {
                       return FadeTransition(
                         opacity: animation,
                         child: SlideTransition(
+                          transformHitTests: false,
                           position:
                               Tween<Offset>(
                                 begin: const Offset(0.0, 0.04),
@@ -8595,26 +8606,29 @@ class _DashboardViewState extends State<DashboardView>
         ? const Color(0xFF38BDF8)
         : (isActive ? const Color(0xFF38BDF8) : const Color(0xFFEC4899));
 
-    final isHoveredVideo = isVideo && _hoveredVideoCardId == wp.id;
+    return ValueListenableBuilder<String?>(
+      valueListenable: _hoveredVideoCardNotifier,
+      builder: (context, hoveredId, _) {
+        final isHoveredVideo = isVideo && hoveredId == wp.id;
 
-    return MouseRegion(
-      onEnter: (_) {
-        if (isVideo) {
-          _hoverDebounceTimer?.cancel();
-          _hoverDebounceTimer = Timer(const Duration(milliseconds: 200), () {
-            if (mounted) setState(() => _hoveredVideoCardId = wp.id);
-          });
-        }
-      },
-      onExit: (_) {
-        if (isVideo) {
-          _hoverDebounceTimer?.cancel();
-          if (_hoveredVideoCardId == wp.id) {
-            setState(() => _hoveredVideoCardId = null);
-          }
-        }
-      },
-      child: Tooltip(
+        return MouseRegion(
+          onEnter: (_) {
+            if (isVideo) {
+              _hoverDebounceTimer?.cancel();
+              _hoverDebounceTimer = Timer(const Duration(milliseconds: 120), () {
+                if (mounted) _hoveredVideoCardNotifier.value = wp.id;
+              });
+            }
+          },
+          onExit: (_) {
+            if (isVideo) {
+              _hoverDebounceTimer?.cancel();
+              if (_hoveredVideoCardNotifier.value == wp.id) {
+                _hoveredVideoCardNotifier.value = null;
+              }
+            }
+          },
+          child: Tooltip(
         message: wp.isPro
             ? (isVideo
                   ? 'WallSync Pro Live Video • ${wp.name}'
@@ -9168,6 +9182,8 @@ class _DashboardViewState extends State<DashboardView>
         ),
       ),
     );
+      },
+    );
   }
 
   Future<void> _showProExclusiveDialog(FirebaseWallpaper wallpaper) async {
@@ -9532,9 +9548,17 @@ class _DashboardViewState extends State<DashboardView>
     bool prioritize = false,
   }) async {
     if (!mounted) return null;
-    if (_downloadedWallpaperIds.contains(wallpaper.id) &&
-        !_wallpaperDownloadTasks.containsKey(wallpaper.id)) {
-      return _firebaseService.downloadWallpaper(wallpaper, (_) {});
+    // When prioritizing (e.g. user selected to apply), check or fetch directly via FirebaseService.
+    // FirebaseService already handles in-flight deduplication, instant disk cache lookup, and validation.
+    if (prioritize ||
+        (_downloadedWallpaperIds.contains(wallpaper.id) &&
+            !_wallpaperDownloadTasks.containsKey(wallpaper.id))) {
+      final cachedOrDownloaded =
+          await _firebaseService.downloadWallpaper(wallpaper, (_) {});
+      if (cachedOrDownloaded != null) {
+        _downloadedWallpaperIds.add(wallpaper.id);
+        return cachedOrDownloaded;
+      }
     }
     _enqueueWallpaper(wallpaper, prioritize: prioritize);
     return _wallpaperDownloadTasks[wallpaper.id]?.future;
@@ -10036,10 +10060,20 @@ class _DashboardViewState extends State<DashboardView>
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
+                    layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+                      return Stack(
+                        alignment: Alignment.topLeft,
+                        children: <Widget>[
+                          ...previousChildren.map((w) => IgnorePointer(key: w.key, ignoring: true, child: w)),
+                          ?currentChild,
+                        ],
+                      );
+                    },
                     transitionBuilder: (child, animation) {
                       return FadeTransition(
                         opacity: animation,
                         child: SlideTransition(
+                          transformHitTests: false,
                           position:
                               Tween<Offset>(
                                 begin: const Offset(0.02, 0),
@@ -25396,11 +25430,14 @@ class _DashboardViewState extends State<DashboardView>
     final cpu = diag.getCpuSnapshot();
     final smooth = diag.getSmoothnessSnapshot();
 
-    return Center(
+    return Column(
       key: key,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-        child: Container(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            child: Center(
+              child: Container(
           width: 760,
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
@@ -26034,208 +26071,227 @@ class _DashboardViewState extends State<DashboardView>
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+    _buildDiagnosticsBottomBar(diag),
+  ],
+);
+}
 
-              // ── Bottom Diagnostics Action Bar — All 8 Export/Action Controls ────────
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildDiagnosticsBottomBar(DiagnosticsService diag) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xF80B0D16),
+        border: Border(
+          top: BorderSide(
+            color: Colors.white.withValues(alpha: 0.10),
+            width: 1.0,
+          ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Row 1: 4 Export Format Controls
+              Row(
                 children: [
-                  const Text(
-                    'Export Diagnostics & System Actions',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  // 1. Generate TXT Report
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.description_rounded,
+                      label: 'Generate TXT Report',
+                      isPrimary: true,
+                      onPressed: () async {
+                        try {
+                          final file = await diag.exportTxtReport();
+                          if (mounted) {
+                            _showAnimatedSnackBar('TXT Report saved: ${file.path}', isSuccess: true);
+                          }
+                        } catch (e) {
+                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                        }
+                      },
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(width: 10),
 
-                  // Row 1: 4 Export Format Controls
-                  Row(
-                    children: [
-                      // 1. Generate TXT Report
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.description_rounded,
-                          label: 'Generate TXT Report',
-                          isPrimary: true,
-                          onPressed: () async {
-                            try {
-                              final file = await diag.exportTxtReport();
-                              if (mounted) {
-                                _showAnimatedSnackBar('TXT Report saved: ${file.path}', isSuccess: true);
-                              }
-                            } catch (e) {
-                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-
-                      // 2. Detailed Diagnostic Trace
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.analytics_rounded,
-                          label: 'Detailed Diagnostic Report',
-                          onPressed: () async {
-                            try {
-                              final file = await diag.exportDetailedReport();
-                              if (mounted) {
-                                _showAnimatedSnackBar('Detailed trace saved: ${file.path}', isSuccess: true);
-                              }
-                            } catch (e) {
-                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-
-                      // 3. Export CSV
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.table_chart_rounded,
-                          label: 'Export CSV',
-                          onPressed: () async {
-                            try {
-                              final file = await diag.exportCsvFile();
-                              if (mounted) {
-                                _showAnimatedSnackBar('CSV exported: ${file.path}', isSuccess: true);
-                              }
-                            } catch (e) {
-                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-
-                      // 4. Export JSON
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.data_object_rounded,
-                          label: 'Export JSON',
-                          onPressed: () async {
-                            try {
-                              final file = await diag.exportJsonFile();
-                              if (mounted) {
-                                _showAnimatedSnackBar('JSON exported: ${file.path}', isSuccess: true);
-                              }
-                            } catch (e) {
-                              if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
-                            }
-                          },
-                        ),
-                      ),
-                    ],
+                  // 2. Detailed Diagnostic Trace
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.analytics_rounded,
+                      label: 'Detailed Diagnostic Report',
+                      onPressed: () async {
+                        try {
+                          final file = await diag.exportDetailedReport();
+                          if (mounted) {
+                            _showAnimatedSnackBar('Detailed trace saved: ${file.path}', isSuccess: true);
+                          }
+                        } catch (e) {
+                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                        }
+                      },
+                    ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(width: 10),
 
-                  // Row 2: 4 Utility & Support Controls
-                  Row(
-                    children: [
-                      // 5. Copy Summary
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.copy_rounded,
-                          label: 'Copy Summary',
-                          onPressed: () async {
-                            final summary = diag.generateSummaryText();
-                            await Clipboard.setData(ClipboardData(text: summary));
-                            if (mounted) {
-                              _showAnimatedSnackBar('Diagnostic summary copied to clipboard!', isSuccess: true);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
+                  // 3. Export CSV
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.table_chart_rounded,
+                      label: 'Export CSV',
+                      onPressed: () async {
+                        try {
+                          final file = await diag.exportCsvFile();
+                          if (mounted) {
+                            _showAnimatedSnackBar('CSV exported: ${file.path}', isSuccess: true);
+                          }
+                        } catch (e) {
+                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
 
-                      // 6. Generate Support Package (ZIP)
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.archive_rounded,
-                          label: 'Generate Support Package',
-                          accentColor: const Color(0xFF10B981),
-                          onPressed: () async {
-                            try {
-                              final zip = await diag.generateSupportPackageZip();
-                              if (mounted) {
-                                _showAnimatedSnackBar('Support package created: ${zip.path}', isSuccess: true);
-                              }
-                            } catch (e) {
-                              if (mounted) _showAnimatedSnackBar('Failed to create package: $e', isSuccess: false);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
+                  // 4. Export JSON
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.data_object_rounded,
+                      label: 'Export JSON',
+                      onPressed: () async {
+                        try {
+                          final file = await diag.exportJsonFile();
+                          if (mounted) {
+                            _showAnimatedSnackBar('JSON exported: ${file.path}', isSuccess: true);
+                          }
+                        } catch (e) {
+                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
 
-                      // 7. Open Export Folder
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.folder_open_rounded,
-                          label: 'Open Export Folder',
-                          accentColor: const Color(0xFFF59E0B),
-                          onPressed: () async {
-                            try {
-                              await diag.openExportFolder();
-                            } catch (e) {
-                              if (mounted) _showAnimatedSnackBar('Could not open folder: $e', isSuccess: false);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
+              // Row 2: 4 Utility & Support Controls
+              Row(
+                children: [
+                  // 5. Copy Summary
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.copy_rounded,
+                      label: 'Copy Summary',
+                      onPressed: () async {
+                        final summary = diag.generateSummaryText();
+                        await Clipboard.setData(ClipboardData(text: summary));
+                        if (mounted) {
+                          _showAnimatedSnackBar('Diagnostic summary copied to clipboard!', isSuccess: true);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
 
-                      // 8. Clear Diagnostics
-                      Expanded(
-                        child: _buildDiagActionButton(
-                          icon: Icons.delete_sweep_rounded,
-                          label: 'Clear Diagnostics',
-                          accentColor: const Color(0xFFF43F5E),
-                          onPressed: () async {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                backgroundColor: const Color(0xFF141724),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-                                ),
-                                title: const Text('Clear All Diagnostics?', style: TextStyle(color: Colors.white, fontSize: 16)),
-                                content: const Text(
-                                  'This will reset all in-memory frame timing metrics, clear telemetry history, and archive the debug log file to a clean state.',
-                                  style: TextStyle(color: Colors.white70, fontSize: 13),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.of(ctx).pop(false),
-                                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
-                                  ),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFF43F5E),
-                                      foregroundColor: Colors.white,
-                                    ),
-                                    onPressed: () => Navigator.of(ctx).pop(true),
-                                    child: const Text('Clear Everything'),
-                                  ),
-                                ],
+                  // 6. Generate Support Package (ZIP)
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.archive_rounded,
+                      label: 'Generate Support Package',
+                      accentColor: const Color(0xFF10B981),
+                      onPressed: () async {
+                        try {
+                          final zip = await diag.generateSupportPackageZip();
+                          if (mounted) {
+                            _showAnimatedSnackBar('Support package created: ${zip.path}', isSuccess: true);
+                          }
+                        } catch (e) {
+                          if (mounted) _showAnimatedSnackBar('Failed to create package: $e', isSuccess: false);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // 7. Open Export Folder
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.folder_open_rounded,
+                      label: 'Open Export Folder',
+                      accentColor: const Color(0xFFF59E0B),
+                      onPressed: () async {
+                        try {
+                          await diag.openExportFolder();
+                        } catch (e) {
+                          if (mounted) _showAnimatedSnackBar('Could not open folder: $e', isSuccess: false);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // 8. Clear Diagnostics
+                  Expanded(
+                    child: _buildDiagActionButton(
+                      icon: Icons.delete_sweep_rounded,
+                      label: 'Clear Diagnostics',
+                      accentColor: const Color(0xFFF43F5E),
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: const Color(0xFF141724),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+                            ),
+                            title: const Text('Clear All Diagnostics?', style: TextStyle(color: Colors.white, fontSize: 16)),
+                            content: const Text(
+                              'This will reset all in-memory frame timing metrics, clear telemetry history, and archive the debug log file to a clean state.',
+                              style: TextStyle(color: Colors.white70, fontSize: 13),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
                               ),
-                            );
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF43F5E),
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('Clear Everything'),
+                              ),
+                            ],
+                          ),
+                        );
 
-                            if (confirmed == true) {
-                              await diag.clearDiagnostics();
-                              setState(() {});
-                              if (mounted) {
-                                _showAnimatedSnackBar('All diagnostics and metrics reset to clean baseline.', isSuccess: true);
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                    ],
+                        if (confirmed == true) {
+                          await diag.clearDiagnostics();
+                          setState(() {});
+                          if (mounted) {
+                            _showAnimatedSnackBar('All diagnostics and metrics reset to clean baseline.', isSuccess: true);
+                          }
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),

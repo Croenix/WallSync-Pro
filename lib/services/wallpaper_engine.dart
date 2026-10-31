@@ -313,19 +313,18 @@ class WallpaperEngine {
         'Transition #${transitionId ?? '-'} confirmed an active owned MPV path before static apply.',
       );
     }
-    logInfo(
-      'WallpaperEngine',
-      'Transition #${transitionId ?? '-'} stopping owned video before applying static wallpaper.',
-    );
+
     final stopVideoStopwatch = Stopwatch()..start();
-    final stopped = await stopAnimatedWallpaper(transitionId: transitionId);
-    final stopVideoMs = stopVideoStopwatch.elapsedMilliseconds;
-    logPerf(
-      'WallpaperEngine',
-      'Transition #${transitionId ?? '-'} owned-video stop completed '
-          'success=$stopped in ${stopVideoMs}ms.',
-    );
-    if (!stopped) return false;
+    var stopVideoMs = 0;
+    Future<bool>? stopFuture;
+    if (restoreVideo) {
+      logInfo(
+        'WallpaperEngine',
+        'Transition #${transitionId ?? '-'} stopping owned video concurrently with static apply.',
+      );
+      stopFuture = stopAnimatedWallpaper(transitionId: transitionId);
+    }
+
     if (isCancelled?.call() ?? false) {
       logInfo(
         'WallpaperEngine',
@@ -347,6 +346,18 @@ class WallpaperEngine {
         'Transition #${transitionId ?? '-'} native C++ setStaticWallpaper failed: $e',
       );
     }
+
+    if (stopFuture != null) {
+      final stopped = await stopFuture;
+      stopVideoMs = stopVideoStopwatch.elapsedMilliseconds;
+      logPerf(
+        'WallpaperEngine',
+        'Transition #${transitionId ?? '-'} owned-video stop completed '
+            'success=$stopped in ${stopVideoMs}ms.',
+      );
+      if (!stopped) return false;
+    }
+
     if (fastNativeOk) {
       final elapsed = sw.elapsedMilliseconds;
       logPerf(

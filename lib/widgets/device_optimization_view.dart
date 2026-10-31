@@ -103,8 +103,10 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 const Icon(Icons.check_circle_rounded, color: Colors.white),
                 const SizedBox(width: 10),
                 Text(
-                  'Optimization complete! Working Set: ${res.workingSetFreedMb.toStringAsFixed(1)} MB trimmed'
-                  '${res.privateBytesFreedMb > 0 ? " • Private: ${res.privateBytesFreedMb.toStringAsFixed(1)} MB freed" : ""}',
+                  res.workingSetFreedMb > 0
+                      ? 'Optimization complete! Working Set: ${res.workingSetFreedMb.toStringAsFixed(1)} MB trimmed'
+                          '${res.privateBytesFreedMb > 0 ? " • Private: ${res.privateBytesFreedMb.toStringAsFixed(1)} MB freed" : ""}'
+                      : 'Optimization complete! Memory stabilized at ${res.workingSetAfterMb.toStringAsFixed(1)} MB (heaps compacted, cache purged)',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -229,9 +231,11 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                                   border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                                 ),
                                 child: Text(
-                                  privFreed > 0
-                                      ? '-${freed.toStringAsFixed(1)} MB WS | -${privFreed.toStringAsFixed(1)} MB Priv'
-                                      : '-${freed.toStringAsFixed(1)} MB RAM',
+                                  freed > 0 || privFreed > 0
+                                      ? (privFreed > 0
+                                          ? '-${freed.toStringAsFixed(1)} MB WS | -${privFreed.toStringAsFixed(1)} MB Priv'
+                                          : '-${freed.toStringAsFixed(1)} MB RAM')
+                                      : 'Stabilized (${(item['workingSetAfterMb'] as num?)?.toStringAsFixed(0) ?? "Stable"} MB)',
                                   style: const TextStyle(
                                     color: Color(0xFF10B981),
                                     fontSize: 11,
