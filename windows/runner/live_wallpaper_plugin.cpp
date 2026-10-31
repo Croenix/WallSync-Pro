@@ -102,7 +102,8 @@ HWND FindDesktopWallpaperTarget(HWND* insert_after, bool* raised_desktop,
   static bool s_cached_raised = false;
   static bool s_cached_layered = false;
 
-  if (s_cached_target && IsWindow(s_cached_target) &&
+  // Ensure target is valid, visible, and insert_after is intact (handles virtual desktop changes)
+  if (s_cached_target && IsWindow(s_cached_target) && IsWindowVisible(s_cached_target) &&
       (!s_cached_insert_after || IsWindow(s_cached_insert_after))) {
     *insert_after = s_cached_insert_after;
     *raised_desktop = s_cached_raised;
@@ -1227,17 +1228,33 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::PollMpvStart() {
             mpv_output_configured_ms_ = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - mpv_launch_started_).count();
           }
+          if (response.find("\"event\":\"playback-restart\"") != std::string::npos) {
+            mpv_frame_decoded_ = true;
+            mpv_frame_ready_ms_ = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - mpv_launch_started_).count();
+          }
           const auto frame_info_data = response.find("\"data\":");
           if (response.find("\"request_id\":4") != std::string::npos &&
               response.find("\"error\":\"success\"") != std::string::npos &&
               frame_info_data != std::string::npos &&
-              response.find("\"picture-type\"", frame_info_data) !=
-                  std::string::npos) {
+              (response.find("\"picture-type\"", frame_info_data) != std::string::npos ||
+               response.find("\"w\":", frame_info_data) != std::string::npos)) {
             mpv_frame_decoded_ = true;
             mpv_frame_ready_ms_ = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - mpv_launch_started_).count();
           }
         }
+      }
+    }
+
+    // Safety fallback: once VO has been configured for 350ms, video frames are active
+    if (!mpv_frame_decoded_ && mpv_output_configured_ms_ > 0.0) {
+      const double elapsed_since_vo = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - mpv_launch_started_).count() - mpv_output_configured_ms_;
+      if (elapsed_since_vo >= 350.0) {
+        mpv_frame_decoded_ = true;
+        mpv_frame_ready_ms_ = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - mpv_launch_started_).count();
       }
     }
 
@@ -1414,6 +1431,7 @@ bool LiveWallpaperPlugin::Impl::SetMpvSettings(const flutter::EncodableMap* args
 bool LiveWallpaperPlugin::Impl::StopMpv() {
   if (mpv_hwnd_ && IsWindow(mpv_hwnd_)) {
     ShowWindow(mpv_hwnd_, SW_HIDE);
+    SetParent(mpv_hwnd_, nullptr);
   }
 
   if (mpv_process_handle_) {
@@ -1487,9 +1505,9 @@ bool LiveWallpaperPlugin::Impl::StopMpv() {
   mpv_frame_ready_ms_ = -1.0;
   mpv_dwm_flush_ms_ = -1.0;
 
-  // Do NOT call SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, nullptr, ...) here.
-  // Modern Windows 11 shell (Windows.UI.Xaml.dll) throws E_INVALIDARG (0x80070057)
-  // causing Explorer.EXE to crash when passed a nullptr wallpaper path.
+  // Flush desktop window composition to seamlessly reveal desktop background
+  DwmFlush();
+
   return true;
 }
 
@@ -2071,6 +2089,7 @@ bool LiveWallpaperPlugin::Impl::SetDesktopIconsVisible(bool visible) {
   HWND def_view = FindDesktopDefView();
   if (!def_view) return false;
   ShowWindow(def_view, visible ? SW_SHOW : SW_HIDE);
+  UpdateWindow(def_view);
   return true;
 }
 
@@ -2193,6 +2212,11 @@ bool LiveWallpaperPlugin::Impl::IsProcessRunning(const std::string& process_name
   std::wstring target_name = Utf8ToWide(process_name);
   std::transform(target_name.begin(), target_name.end(), target_name.begin(), ::towlower);
 
+  std::wstring target_with_exe = target_name;
+  if (target_with_exe.size() < 4 || target_with_exe.substr(target_with_exe.size() - 4) != L".exe") {
+    target_with_exe += L".exe";
+  }
+
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return false;
 
@@ -2204,7 +2228,7 @@ bool LiveWallpaperPlugin::Impl::IsProcessRunning(const std::string& process_name
     do {
       std::wstring exe_name(pe.szExeFile);
       std::transform(exe_name.begin(), exe_name.end(), exe_name.begin(), ::towlower);
-      if (exe_name == target_name) {
+      if (exe_name == target_name || exe_name == target_with_exe) {
         found = true;
         break;
       }
@@ -2271,12 +2295,17 @@ bool LiveWallpaperPlugin::Impl::BoostProcessPriority(bool boost) {
 bool LiveWallpaperPlugin::Impl::SetWindowCloaked(bool cloak) {
   HWND target = root_window_ ? root_window_ : window_;
   if (!target || !IsWindow(target)) return false;
-  BOOL val = cloak ? TRUE : FALSE;
-#ifndef DWMWA_CLOAK
-#define DWMWA_CLOAK 13
-#endif
-  HRESULT hr = DwmSetWindowAttribute(target, DWMWA_CLOAK, &val, sizeof(val));
-  return SUCCEEDED(hr);
+
+  // DWMWA_EXCLUDED_FROM_PEEK stops DWM thumbnail/peek compositing when hidden
+  BOOL exclude_peek = cloak ? TRUE : FALSE;
+  DwmSetWindowAttribute(target, DWMWA_EXCLUDED_FROM_PEEK, &exclude_peek, sizeof(exclude_peek));
+
+  if (cloak) {
+    ShowWindow(target, SW_HIDE);
+  } else {
+    ShowWindow(target, SW_SHOW);
+  }
+  return true;
 }
 
 bool LiveWallpaperPlugin::Impl::CreateFileHardLink(
