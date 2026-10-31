@@ -1,6 +1,13 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <timeapi.h>
+
+// Request high-performance GPU profile from NVIDIA / AMD drivers
+extern "C" {
+  __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+  __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -20,6 +27,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (FAILED(com_result)) {
     return EXIT_FAILURE;
   }
+
+  // Request 1ms system timer precision to eliminate scheduling jitter and jank
+  ::timeBeginPeriod(1);
 
   flutter::DartProject project(L"data");
 
@@ -117,6 +127,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
   }
 
+  ::timeEndPeriod(1);
   ::CoUninitialize();
   return exit_code;
 }

@@ -1723,6 +1723,8 @@ class _DashboardViewState extends State<DashboardView>
     _isWindowVisible = false;
     DiagnosticsService.instance.setWindowVisible(false);
     _backgroundFlowController.stop();
+    unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
+    unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
     await windowManager.hide();
     unawaited(SystemOptimizerService.instance.optimizeMemory());
     unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
@@ -1733,6 +1735,8 @@ class _DashboardViewState extends State<DashboardView>
     _isWindowVisible = false;
     DiagnosticsService.instance.setWindowVisible(false);
     _backgroundFlowController.stop();
+    unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
+    unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
     unawaited(SystemOptimizerService.instance.optimizeMemory());
     unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
   }
@@ -1741,6 +1745,8 @@ class _DashboardViewState extends State<DashboardView>
   void onWindowRestore() {
     _isWindowVisible = true;
     DiagnosticsService.instance.setWindowVisible(true);
+    unawaited(SystemOptimizerService.instance.setWindowCloaked(false));
+    unawaited(SystemOptimizerService.instance.boostProcessPriority(true));
     if (mounted) {
       _backgroundFlowController.repeat();
     }
@@ -1784,6 +1790,8 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _showAndRestoreDashboard() async {
     _isWindowVisible = true;
     DiagnosticsService.instance.setWindowVisible(true);
+    unawaited(SystemOptimizerService.instance.setWindowCloaked(false));
+    unawaited(SystemOptimizerService.instance.boostProcessPriority(true));
     final isVisible = await windowManager.isVisible();
     if (!isVisible) {
       await windowManager.show();
@@ -15607,20 +15615,26 @@ class _DashboardViewState extends State<DashboardView>
       maxGlowOpacity: 0.15,
       blurRadius: 8,
       onTap: () async {
-        // Use native Windows OpenFileDialog via PowerShell — avoids file_picker API instability
+        // Use native Windows COM IFileOpenDialog directly with fallback
         try {
-          final result = await Process.run('powershell', [
-            '-NonInteractive',
-            '-NoProfile',
-            '-WindowStyle',
-            'Hidden',
-            '-Command',
-            'Add-Type -AssemblyName System.Windows.Forms; '
-                r'$ofd = New-Object System.Windows.Forms.OpenFileDialog; '
-                r'$ofd.Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp"; '
-                r'if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $ofd.FileName }',
-          ]);
-          final path = result.stdout.toString().trim();
+          String? path;
+          if (Platform.isWindows) {
+            path = await SystemOptimizerService.instance.pickImageFile(title: 'Select Custom Wallpaper Image');
+          }
+          if (path == null || path.isEmpty) {
+            final result = await Process.run('powershell', [
+              '-NonInteractive',
+              '-NoProfile',
+              '-WindowStyle',
+              'Hidden',
+              '-Command',
+              'Add-Type -AssemblyName System.Windows.Forms; '
+                  r'$ofd = New-Object System.Windows.Forms.OpenFileDialog; '
+                  r'$ofd.Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp"; '
+                  r'if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $ofd.FileName }',
+            ]);
+            path = result.stdout.toString().trim();
+          }
           if (path.isNotEmpty && await File(path).exists()) {
             _updateSettings(
               _settings.copyWith(

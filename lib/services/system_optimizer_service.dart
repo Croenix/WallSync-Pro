@@ -275,6 +275,54 @@ class SystemOptimizerService {
     }
   }
 
+  /// Checks if a process is running using native Win32 toolhelp snapshot without spawning any shell process.
+  Future<bool> isProcessRunning(String processName) async {
+    if (!Platform.isWindows) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('isProcessRunning', {'name': processName});
+      return res ?? false;
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native isProcessRunning call failed: $e');
+      return false;
+    }
+  }
+
+  /// Opens native Windows COM IFileOpenDialog for selecting image files with 0ms overhead and 0 PowerShell memory churn.
+  Future<String?> pickImageFile({String title = 'Select Image'}) async {
+    if (!Platform.isWindows) return null;
+    try {
+      final res = await _channel.invokeMethod<String>('pickImageFile', {'title': title});
+      return res?.isNotEmpty == true ? res : null;
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native pickImageFile call failed: $e');
+      return null;
+    }
+  }
+
+  /// Dynamically boosts process priority to above-normal during active UI interactions for zero-lag responsiveness.
+  Future<bool> boostProcessPriority(bool boost) async {
+    if (!Platform.isWindows) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('boostProcessPriority', {'boost': boost});
+      return res ?? false;
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native boostProcessPriority call failed: $e');
+      return false;
+    }
+  }
+
+  /// Cloaks the window in DWM when hidden or minimized so Windows halts all swapchain composition and frees memory.
+  Future<bool> setWindowCloaked(bool cloak) async {
+    if (!Platform.isWindows) return false;
+    try {
+      final res = await _channel.invokeMethod<bool>('setWindowCloaked', {'cloak': cloak});
+      return res ?? false;
+    } catch (e) {
+      logWarning('SystemOptimizerService', 'Native setWindowCloaked call failed: $e');
+      return false;
+    }
+  }
+
   /// Starts a periodic background memory cleanup to keep RAM overhead under 35MB.
   void startBackgroundMemoryOptimizer({Duration interval = const Duration(minutes: 3)}) {
     _idleOptimizerTimer?.cancel();

@@ -11,6 +11,9 @@
 #include <processthreadsapi.h>
 #include <dxgi.h>
 #include <shobjidl_core.h>
+#include <shobjidl.h>
+#include <tlhelp32.h>
+#include <atomic>
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -227,6 +230,12 @@ class LiveWallpaperPlugin::Impl {
   bool SetTaskbarBlur(int mode);
   bool IsOtherAudioPlaying();
   flutter::EncodableMap GetWindowsAccentColor();
+  bool IsProcessRunning(const std::string& process_name);
+  std::string PickImageFile(const std::string& title);
+  bool BoostProcessPriority(bool boost);
+  bool SetWindowCloaked(bool cloak);
+  void StartLowMemoryMonitor();
+  void StopLowMemoryMonitor();
 
   std::wstring FindMpvExecutable();
   bool SendMpvCommand(const std::string& json_cmd);
@@ -274,6 +283,10 @@ class LiveWallpaperPlugin::Impl {
   HANDLE mpv_stderr_read_ = nullptr;
   std::string mpv_launch_cmd_line_;
   std::string mpv_working_dir_;
+
+  HANDLE low_mem_event_ = nullptr;
+  std::atomic<bool> low_mem_running_{false};
+  std::thread low_mem_thread_;
 };
 
 LiveWallpaperPlugin::Impl::Impl(
@@ -300,6 +313,7 @@ LiveWallpaperPlugin::Impl::Impl(
                                          DEVICE_NOTIFY_WINDOW_HANDLE);
     RefreshBatterySaverStatus();
   }
+  StartLowMemoryMonitor();
 }
 
 LiveWallpaperPlugin::Impl::~Impl() {
@@ -310,6 +324,7 @@ LiveWallpaperPlugin::Impl::~Impl() {
   if (power_notification_) {
     UnregisterPowerSettingNotification(power_notification_);
   }
+  StopLowMemoryMonitor();
   StopMpv();
 }
 
@@ -470,6 +485,54 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
   }
   if (call.method_name() == "getWindowsAccentColor") {
     result->Success(flutter::EncodableValue(GetWindowsAccentColor()));
+    return;
+  }
+  if (call.method_name() == "isProcessRunning") {
+    std::string name = "";
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("name"));
+      if (it != args->end()) {
+        name = GetStringFromEncodable(it->second, "");
+      }
+    }
+    result->Success(flutter::EncodableValue(IsProcessRunning(name)));
+    return;
+  }
+  if (call.method_name() == "pickImageFile") {
+    std::string title = "";
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("title"));
+      if (it != args->end()) {
+        title = GetStringFromEncodable(it->second, "");
+      }
+    }
+    result->Success(flutter::EncodableValue(PickImageFile(title)));
+    return;
+  }
+  if (call.method_name() == "boostProcessPriority") {
+    bool boost = true;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("boost"));
+      if (it != args->end()) {
+        boost = GetBoolFromEncodable(it->second, true);
+      }
+    }
+    result->Success(flutter::EncodableValue(BoostProcessPriority(boost)));
+    return;
+  }
+  if (call.method_name() == "setWindowCloaked") {
+    bool cloak = true;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("cloak"));
+      if (it != args->end()) {
+        cloak = GetBoolFromEncodable(it->second, true);
+      }
+    }
+    result->Success(flutter::EncodableValue(SetWindowCloaked(cloak)));
     return;
   }
   result->NotImplemented();
@@ -1513,6 +1576,7 @@ void LiveWallpaperPlugin::Impl::OptimizeMemory() {
   HANDLE current_proc = GetCurrentProcess();
   EmptyWorkingSet(current_proc);
   SetProcessWorkingSetSize(current_proc, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+  HeapCompact(GetProcessHeap(), 0);
   if (mpv_process_handle_ && mpv_process_handle_ != INVALID_HANDLE_VALUE) {
     EmptyWorkingSet(mpv_process_handle_);
     SetProcessWorkingSetSize(mpv_process_handle_, static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
@@ -1985,6 +2049,125 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsAccentColor() {
     result[flutter::EncodableValue("opaque")] = flutter::EncodableValue(true);
   }
   return result;
+}
+
+bool LiveWallpaperPlugin::Impl::IsProcessRunning(const std::string& process_name) {
+  if (process_name.empty()) return false;
+  std::wstring target_name = Utf8ToWide(process_name);
+  std::transform(target_name.begin(), target_name.end(), target_name.begin(), ::towlower);
+
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+  PROCESSENTRY32W pe{};
+  pe.dwSize = sizeof(pe);
+  bool found = false;
+
+  if (Process32FirstW(snapshot, &pe)) {
+    do {
+      std::wstring exe_name(pe.szExeFile);
+      std::transform(exe_name.begin(), exe_name.end(), exe_name.begin(), ::towlower);
+      if (exe_name == target_name) {
+        found = true;
+        break;
+      }
+    } while (Process32NextW(snapshot, &pe));
+  }
+
+  CloseHandle(snapshot);
+  return found;
+}
+
+std::string LiveWallpaperPlugin::Impl::PickImageFile(const std::string& title) {
+  std::string selected_path = "";
+  HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+  bool need_uninit = SUCCEEDED(hr);
+
+  winrt::com_ptr<IFileOpenDialog> file_dialog;
+  if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                 IID_PPV_ARGS(file_dialog.put())))) {
+    COMDLG_FILTERSPEC filters[] = {
+      { L"Image Files (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)", L"*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp" },
+      { L"PNG Images (*.png)", L"*.png" },
+      { L"JPEG Images (*.jpg;*.jpeg)", L"*.jpg;*.jpeg" },
+      { L"All Files (*.*)", L"*.*" }
+    };
+    file_dialog->SetFileTypes(ARRAYSIZE(filters), filters);
+    file_dialog->SetFileTypeIndex(1);
+    std::wstring wide_title = Utf8ToWide(title);
+    file_dialog->SetTitle(wide_title.empty() ? L"Select Image" : wide_title.c_str());
+
+    DWORD flags = 0;
+    if (SUCCEEDED(file_dialog->GetOptions(&flags))) {
+      file_dialog->SetOptions(flags | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+    }
+
+    HWND parent_hwnd = window_ ? (root_window_ ? root_window_ : window_) : nullptr;
+    if (SUCCEEDED(file_dialog->Show(parent_hwnd))) {
+      winrt::com_ptr<IShellItem> item;
+      if (SUCCEEDED(file_dialog->GetResult(item.put()))) {
+        PWSTR pszFilePath = nullptr;
+        if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath))) {
+          selected_path = WideToUtf8(pszFilePath);
+          CoTaskMemFree(pszFilePath);
+        }
+      }
+    }
+  }
+
+  if (need_uninit) {
+    CoUninitialize();
+  }
+  return selected_path;
+}
+
+bool LiveWallpaperPlugin::Impl::BoostProcessPriority(bool boost) {
+  HANDLE current_proc = GetCurrentProcess();
+  BOOL res = SetPriorityClass(current_proc, boost ? ABOVE_NORMAL_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS);
+  return res != 0;
+}
+
+bool LiveWallpaperPlugin::Impl::SetWindowCloaked(bool cloak) {
+  HWND target = root_window_ ? root_window_ : window_;
+  if (!target || !IsWindow(target)) return false;
+  BOOL val = cloak ? TRUE : FALSE;
+#ifndef DWMWA_CLOAK
+#define DWMWA_CLOAK 13
+#endif
+  HRESULT hr = DwmSetWindowAttribute(target, DWMWA_CLOAK, &val, sizeof(val));
+  return SUCCEEDED(hr);
+}
+
+void LiveWallpaperPlugin::Impl::StartLowMemoryMonitor() {
+  if (low_mem_running_) return;
+  low_mem_event_ = CreateMemoryResourceNotification(LowMemoryResourceNotification);
+  if (!low_mem_event_) return;
+  low_mem_running_ = true;
+  low_mem_thread_ = std::thread([this]() {
+    while (low_mem_running_) {
+      DWORD wait_res = WaitForSingleObject(low_mem_event_, 2000);
+      if (!low_mem_running_) break;
+      if (wait_res == WAIT_OBJECT_0) {
+        OptimizeMemory();
+        for (int i = 0; i < 50 && low_mem_running_; ++i) {
+          Sleep(100);
+        }
+      }
+    }
+  });
+}
+
+void LiveWallpaperPlugin::Impl::StopLowMemoryMonitor() {
+  if (low_mem_running_) {
+    low_mem_running_ = false;
+    if (low_mem_thread_.joinable()) {
+      low_mem_thread_.join();
+    }
+  }
+  if (low_mem_event_) {
+    CloseHandle(low_mem_event_);
+    low_mem_event_ = nullptr;
+  }
 }
 
 LiveWallpaperPlugin::LiveWallpaperPlugin(

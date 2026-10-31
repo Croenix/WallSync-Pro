@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'system_optimizer_service.dart';
 
 /// Snapshot of Steam download and game activity.
 class SteamDownloadSnapshot {
@@ -216,6 +217,11 @@ class SteamMonitorService {
   }
 
   Future<bool> _checkProcessRunning(String processName) async {
+    try {
+      if (Platform.isWindows) {
+        return await SystemOptimizerService.instance.isProcessRunning(processName);
+      }
+    } catch (_) {}
     try {
       final result = await Process.run(
         'tasklist',

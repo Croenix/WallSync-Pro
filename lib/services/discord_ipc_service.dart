@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'system_optimizer_service.dart';
 
 /// Snapshot representing live Discord voice and presence state.
 class DiscordVoiceSnapshot {
@@ -144,6 +145,11 @@ class DiscordIpcService {
   }
 
   Future<bool> _checkProcessRunning(String processName) async {
+    try {
+      if (Platform.isWindows) {
+        return await SystemOptimizerService.instance.isProcessRunning(processName);
+      }
+    } catch (_) {}
     try {
       final result = await Process.run(
         'tasklist',
