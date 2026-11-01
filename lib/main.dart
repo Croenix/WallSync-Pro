@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'config/api.dart';
@@ -15,6 +16,7 @@ import 'services/wallpaper_engine.dart';
 import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
 import 'services/windows_taskbar_service.dart';
+import 'models/taskbar_settings.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
 import 'widgets/splash_screen.dart';
@@ -350,6 +352,30 @@ void main(List<String> args) async {
       .replaceFirst('--instance-id=', '')
       .trim();
 
+  final overlayType = args
+      .firstWhere(
+        (argument) => argument.startsWith('--overlay-type='),
+        orElse: () => '',
+      )
+      .replaceFirst('--overlay-type=', '')
+      .trim();
+
+  final opIdArg = args.firstWhere(
+    (argument) => argument.startsWith('--operation-id='),
+    orElse: () => '',
+  );
+  final overlayOperationId = opIdArg.isNotEmpty
+      ? int.tryParse(opIdArg.substring('--operation-id='.length))
+      : null;
+
+  final revArg = args.firstWhere(
+    (argument) => argument.startsWith('--config-revision='),
+    orElse: () => '',
+  );
+  final overlayConfigRevision = revArg.isNotEmpty
+      ? (int.tryParse(revArg.substring('--config-revision='.length)) ?? 1)
+      : 1;
+
   // ── Step 4: Load settings ──
   final settingsService = SettingsService(
     instanceId: overlayInstanceId.isNotEmpty ? overlayInstanceId : null,
@@ -536,21 +562,36 @@ void main(List<String> args) async {
             (current) => current.copyWith(exitOverlay: false),
           )
         : settings;
+
+    int? overlayHwnd;
+    try {
+      final h = await const MethodChannel('com.example.wallsync/live_wallpaper')
+          .invokeMethod<int>('getNativeWindowHandle');
+      if (h != null && h != 0) overlayHwnd = h;
+    } catch (_) {}
+
     await OverlayLifecycleService.writeCurrentProcessRecord(
       settingsService,
       ready: false,
       state: OverlayLifecycleState.processStarted,
+      stage: DockReadinessStage.processRunning,
+      instanceId: overlayInstanceId,
+      hwnd: overlayHwnd,
+      operationId: overlayOperationId,
+      configurationRevision: overlayConfigRevision,
+      startupTimestamp: overlayEntryPointMs,
       entryPointMs: overlayEntryPointMs,
       settingsLoadedMs: settingsLoadMs,
     );
     final processRegistrationStopwatch = Stopwatch()..start();
     logInfo(
       'OverlayStartup',
-      'Process identity verified and registered; pid=$pid, state=processStarted.',
+      'Process identity verified and registered; pid=$pid, instanceId=$overlayInstanceId, type=$overlayType, opId=$overlayOperationId, configRev=$overlayConfigRevision, state=processStarted, stage=processRunning, hwnd=$overlayHwnd.',
     );
 
     // Configure the transparent, frameless, always-on-top overlay window
-    final isTaskbar = cleanSettings.widgetTemplate.startsWith('taskbar_') ||
+    final isTaskbar = overlayType == 'taskbar_dock' ||
+        cleanSettings.widgetTemplate.startsWith('taskbar_') ||
         overlayInstanceId.startsWith('taskbar');
     final WindowOptions windowOptions = WindowOptions(
       size: Size(cleanSettings.width, cleanSettings.height),
@@ -762,9 +803,21 @@ void main(List<String> args) async {
         );
 
         final windowInitMs = DateTime.now().millisecondsSinceEpoch;
+        if (overlayHwnd == null) {
+          try {
+            final h = await const MethodChannel('com.example.wallsync/live_wallpaper')
+                .invokeMethod<int>('getNativeWindowHandle');
+            if (h != null && h != 0) overlayHwnd = h;
+          } catch (_) {}
+        }
         await OverlayLifecycleService.updateCurrentProcessState(
           settingsService,
           state: OverlayLifecycleState.windowInitialized,
+          stage: DockReadinessStage.windowVisible,
+          hwnd: overlayHwnd,
+          instanceId: overlayInstanceId,
+          operationId: overlayOperationId,
+          configurationRevision: overlayConfigRevision,
           windowInitMs: windowInitMs,
         );
 
@@ -818,6 +871,10 @@ void main(List<String> args) async {
           OverlayLifecycleService.markCurrentProcessReady(
             settingsService,
             readyPublishedMs: readyPublishedMs,
+            hwnd: overlayHwnd,
+            instanceId: overlayInstanceId,
+            operationId: overlayOperationId,
+            configurationRevision: overlayConfigRevision,
           ).whenComplete(() {
             if (identical(readinessRegistration, registration)) {
               readinessRegistration = null;
@@ -883,6 +940,9 @@ void main(List<String> args) async {
       await OverlayLifecycleService.updateCurrentProcessState(
         settingsService,
         state: OverlayLifecycleState.firstFrameRendered,
+        stage: DockReadinessStage.windowInteractive,
+        hwnd: overlayHwnd,
+        instanceId: overlayInstanceId,
         firstFrameMs: firstFrameMs,
       );
 
@@ -1146,45 +1206,13 @@ class DashboardApp extends StatefulWidget {
   State<DashboardApp> createState() => _DashboardAppState();
 }
 
-class _DashboardAppState extends State<DashboardApp> with WindowListener {
+class _DashboardAppState extends State<DashboardApp> {
   late bool _showSplash;
 
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
     _showSplash = !widget.startMinimized;
-  }
-
-  @override
-  void dispose() {
-    windowManager.removeListener(this);
-    super.dispose();
-  }
-
-  @override
-  void onWindowClose() {
-    logInfo('DashboardApp', 'Window close intercepted; hiding dashboard.');
-    unawaited(SettingsService.flushPendingSaves());
-    unawaited(_hideDashboard());
-  }
-
-  Future<void> _hideDashboard() async {
-    try {
-      DiagnosticsService.instance.setWindowVisible(false);
-      unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
-      unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
-      await windowManager.hide();
-      unawaited(SystemOptimizerService.instance.optimizeMemory());
-      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
-    } catch (error, stackTrace) {
-      logError(
-        'DashboardApp',
-        'Failed to hide the dashboard after a close request.',
-        error,
-        stackTrace,
-      );
-    }
   }
 
   @override

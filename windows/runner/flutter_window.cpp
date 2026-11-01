@@ -161,6 +161,7 @@ void FlutterWindow::OnDestroy() {
 }
 
 static const UINT kTaskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
+static const UINT kShowDashboardMessage = RegisterWindowMessageW(L"WallSyncPro_ShowDashboard");
 
 LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
@@ -169,6 +170,13 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == kTaskbarCreatedMessage) {
     if (startup_task_channel_) {
       startup_task_channel_->InvokeMethod("taskbarCreated", nullptr);
+    }
+  } else if (message == kShowDashboardMessage) {
+    ::ShowWindow(hwnd, SW_SHOW);
+    ::ShowWindow(hwnd, SW_RESTORE);
+    ::SetForegroundWindow(hwnd);
+    if (startup_task_channel_) {
+      startup_task_channel_->InvokeMethod("showDashboard", nullptr);
     }
   }
 

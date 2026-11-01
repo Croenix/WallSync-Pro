@@ -774,6 +774,8 @@ class WidgetSettings {
   bool isLocked;
   bool startOnBoot;
   bool exitOverlay;
+  bool closeToTray;
+  bool minimizeToTray;
   bool showOuterFrame;
   bool editorMode;
   double sizeFactor;
@@ -914,6 +916,8 @@ class WidgetSettings {
     this.isLocked = false,
     this.startOnBoot = true,
     this.exitOverlay = false,
+    this.closeToTray = true,
+    this.minimizeToTray = true,
     this.showOuterFrame = true,
     this.widgetTemplate = 'classic',
     this.editorMode = true,
@@ -1425,6 +1429,8 @@ class WidgetSettings {
       isLocked: json['isLocked'] ?? false,
       startOnBoot: json['startOnBoot'] ?? false,
       exitOverlay: json['exitOverlay'] ?? false,
+      closeToTray: json['closeToTray'] ?? true,
+      minimizeToTray: json['minimizeToTray'] ?? true,
       showOuterFrame: json['showOuterFrame'] ?? true,
       widgetTemplate: json['widgetTemplate'] ?? 'classic',
       editorMode: json['editorMode'] ?? false,
@@ -1543,6 +1549,8 @@ class WidgetSettings {
       'isLocked': isLocked,
       'startOnBoot': startOnBoot,
       'exitOverlay': exitOverlay,
+      'closeToTray': closeToTray,
+      'minimizeToTray': minimizeToTray,
       'showOuterFrame': showOuterFrame,
       'widgetTemplate': widgetTemplate,
       'editorMode': editorMode,
@@ -1642,6 +1650,8 @@ class WidgetSettings {
     bool? isLocked,
     bool? startOnBoot,
     bool? exitOverlay,
+    bool? closeToTray,
+    bool? minimizeToTray,
     bool? showOuterFrame,
     String? widgetTemplate,
     bool? editorMode,
@@ -1753,6 +1763,8 @@ class WidgetSettings {
       isLocked: isLocked ?? this.isLocked,
       startOnBoot: startOnBoot ?? this.startOnBoot,
       exitOverlay: exitOverlay ?? this.exitOverlay,
+      closeToTray: closeToTray ?? this.closeToTray,
+      minimizeToTray: minimizeToTray ?? this.minimizeToTray,
       showOuterFrame: showOuterFrame ?? this.showOuterFrame,
       widgetTemplate: widgetTemplate ?? this.widgetTemplate,
       editorMode: editorMode ?? this.editorMode,

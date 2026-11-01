@@ -49,6 +49,7 @@ import '../services/desktop_studio_service.dart';
 import 'desktop_studio_view.dart';
 import 'template_gallery_view.dart';
 import '../models/taskbar_settings.dart';
+import '../models/system_tray_state.dart';
 import '../services/windows_taskbar_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -901,6 +902,13 @@ class _DashboardViewState extends State<DashboardView>
 
   // Overlay lifecycle
   bool _isOverlayRunning = false;
+  SystemTrayState _trayState = SystemTrayState.uninitialized;
+  String? _trayNativeError;
+  bool get isTrayInitialized => _trayState.isReady;
+  bool get isTrayPermanentlyUnavailable => _trayState.isUnavailableOrFailed;
+  bool get canHideToTray => _trayState == SystemTrayState.ready;
+  SystemTrayState get trayState => _trayState;
+  String? get trayNativeError => _trayNativeError;
   bool _isLaunching = false;
   bool _isOverlayExplicitlyClosed = false;
   final _overlayRecoveryPolicy = OverlayRecoveryPolicy();
@@ -914,6 +922,7 @@ class _DashboardViewState extends State<DashboardView>
   // Multi-widget simultaneous instances tracking
   Set<String> _activeRunningWidgetIds = {};
   final Set<String> _launchingWidgetIds = {};
+  final Map<String, int> _widgetGenerations = {};
   final Map<String, DateTime> _widgetLaunchedAt = {};
   final Map<String, OverlayRecoveryPolicy> _widgetRecoveryPolicies = {};
   final Map<String, Timer?> _widgetRecoveryTimers = {};
@@ -1269,6 +1278,16 @@ class _DashboardViewState extends State<DashboardView>
             'Received TaskbarCreated message; reinitializing system tray.',
           );
           await _initSystemTray();
+        } else if (call.method == 'showDashboard') {
+          logInfo(
+            'DashboardView',
+            'Received showDashboard activation message; restoring main window.',
+          );
+          DiagnosticsService.instance.recordWindowEvent(
+            'restored',
+            reason: 'single_instance_activation',
+          );
+          await _showAndRestoreDashboard();
         }
       });
     }
@@ -1618,59 +1637,123 @@ class _DashboardViewState extends State<DashboardView>
   // ── System Tray & Window Lifecycle ────────────────────────────────────────
 
   Future<void> _initSystemTray() async {
-    const maxAttempts = 5;
-    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        if (Platform.isWindows) {
-          final exeDir = File(Platform.resolvedExecutable).parent.path;
-          final candidatePaths = [
-            '$exeDir\\resources\\app_icon.ico',
-            '$exeDir\\WallSync.ico',
-            '$exeDir\\data\\flutter_assets\\assets\\app_icon.png',
-            'assets/app_icon.png',
-          ];
-          bool trayReady = false;
-          for (final path in candidatePaths) {
-            try {
-              if (path.startsWith('assets/') || await File(path).exists()) {
-                await trayManager.setIcon(path);
-                await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
-                await _updateTrayMenu();
-                logInfo(
-                  'OverlayStartup',
-                  'System tray icon and menu are ready from "$path" (attempt $attempt).',
-                );
-                trayReady = true;
-                break;
-              }
-            } catch (_) {}
+    if (_trayState == SystemTrayState.initializing ||
+        _trayState == SystemTrayState.ready ||
+        _trayState == SystemTrayState.unavailable) {
+      return;
+    }
+    _trayState = SystemTrayState.initializing;
+    DiagnosticsService.instance.recordTrayEvent('init_started', stage: 'initializing');
+
+    try {
+      if (Platform.isWindows) {
+        final exeDir = File(Platform.resolvedExecutable).parent.path;
+        final candidatePaths = [
+          '$exeDir\\resources\\app_icon.ico',
+          '$exeDir\\WallSync.ico',
+          '$exeDir\\data\\flutter_assets\\assets\\app_icon.png',
+          'assets/app_icon.png',
+        ];
+        bool trayReady = false;
+        for (final path in candidatePaths) {
+          try {
+            if (path.startsWith('assets/') || await File(path).exists()) {
+              DiagnosticsService.instance.recordTrayEvent(
+                'symbol_lookup',
+                stage: 'probing_icon',
+                details: {'path': path},
+              );
+              await trayManager.setIcon(path);
+              await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
+              _trayState = SystemTrayState.ready;
+              _trayNativeError = null;
+              DiagnosticsService.instance.recordTrayEvent(
+                'icon_created',
+                stage: 'ready',
+                details: {'path': path},
+              );
+              await _updateTrayMenu();
+              logInfo(
+                'OverlayStartup',
+                'System tray icon and menu are ready from "$path" (state=ready).',
+              );
+              trayReady = true;
+              break;
+            }
+          } catch (innerError) {
+            final errText = innerError.toString();
+            if (innerError is ArgumentError ||
+                errText.contains("Couldn't resolve") ||
+                errText.contains('native_') ||
+                errText.contains('No asset with id')) {
+              _trayState = SystemTrayState.unavailable;
+              _trayNativeError = errText;
+              DiagnosticsService.instance.recordTrayEvent(
+                'native_resolution_failed',
+                stage: 'unavailable',
+                error: errText,
+              );
+              logError(
+                'DashboardView',
+                'System tray native asset resolution failure: $errText. Disabling tray integration; main application remains visible on taskbar.',
+              );
+              if (mounted) setState(() {});
+              return;
+            }
           }
-          if (trayReady) return;
         }
-        await trayManager.setIcon('assets/app_icon.png');
-        await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
-        await _updateTrayMenu();
-        return;
-      } catch (e, st) {
-        logWarning(
-          'DashboardView',
-          'Failed to initialize system tray (attempt $attempt of $maxAttempts): $e',
-        );
-        if (attempt == maxAttempts) {
-          logError(
-            'DashboardView',
-            'Exhausted retries initializing system tray',
-            e,
-            st,
-          );
-        } else {
-          await Future.delayed(Duration(milliseconds: 300 * attempt));
+        if (trayReady) {
+          if (mounted) setState(() {});
+          return;
         }
       }
+
+      await trayManager.setIcon('assets/app_icon.png');
+      await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
+      _trayState = SystemTrayState.ready;
+      _trayNativeError = null;
+      DiagnosticsService.instance.recordTrayEvent('ready', stage: 'ready');
+      await _updateTrayMenu();
+      if (mounted) setState(() {});
+      return;
+    } catch (e, st) {
+      final errText = e.toString();
+      if (e is ArgumentError ||
+          errText.contains("Couldn't resolve") ||
+          errText.contains('native_') ||
+          errText.contains('No asset with id')) {
+        _trayState = SystemTrayState.unavailable;
+        _trayNativeError = errText;
+        DiagnosticsService.instance.recordTrayEvent(
+          'native_resolution_failed',
+          stage: 'unavailable',
+          error: errText,
+        );
+        logError(
+          'DashboardView',
+          'System tray native asset resolution failure: $errText. Disabling tray integration; main application remains visible on taskbar.',
+        );
+      } else {
+        _trayState = SystemTrayState.failed;
+        _trayNativeError = errText;
+        DiagnosticsService.instance.recordTrayEvent(
+          'init_failed',
+          stage: 'failed',
+          error: errText,
+        );
+        logError(
+          'DashboardView',
+          'Failed to initialize system tray: $e',
+          e,
+          st,
+        );
+      }
+      if (mounted) setState(() {});
     }
   }
 
   Future<void> _updateTrayMenu() async {
+    if (!canHideToTray) return;
     try {
       final isVideoPlaying =
           _settings.activeWallpaperType == 'video' &&
@@ -1704,7 +1787,27 @@ class _DashboardViewState extends State<DashboardView>
         ],
       );
       await trayManager.setContextMenu(menu);
+      DiagnosticsService.instance.recordTrayEvent('menu_updated', stage: 'ready');
     } catch (e) {
+      final errText = e.toString();
+      if (e is ArgumentError ||
+          errText.contains("Couldn't resolve") ||
+          errText.contains('native_') ||
+          errText.contains('No asset with id')) {
+        _trayState = SystemTrayState.unavailable;
+        _trayNativeError = errText;
+        DiagnosticsService.instance.recordTrayEvent(
+          'native_resolution_failed',
+          stage: 'unavailable',
+          error: errText,
+        );
+        logWarning(
+          'DashboardView',
+          'Disabling system tray updates due to native resolution failure: $e',
+        );
+        if (mounted) setState(() {});
+        return;
+      }
       logError('DashboardView', 'Failed to update tray context menu', e);
     }
   }
@@ -1741,33 +1844,97 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   void onWindowClose() async {
-    logInfo(
-      'DashboardView',
-      'Window close intercepted; hiding to system tray.',
+    DiagnosticsService.instance.recordWindowEvent(
+      'close_requested',
+      reason: canHideToTray ? 'close_to_tray' : 'explicit_exit',
+      details: {
+        'canHideToTray': canHideToTray,
+        'trayState': _trayState.name,
+        'closeToTrayPreference': _settings.closeToTray,
+      },
     );
-    _isWindowVisible = false;
-    DiagnosticsService.instance.setWindowVisible(false);
-    _backgroundFlowController.stop();
-    unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
-    unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
-    await windowManager.hide();
-    unawaited(SystemOptimizerService.instance.optimizeMemory());
-    unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
+
+    if (canHideToTray && _settings.closeToTray) {
+      logInfo(
+        'DashboardView',
+        'Window close intercepted; hiding to system tray (canHideToTray=true).',
+      );
+      DiagnosticsService.instance.recordWindowEvent(
+        'hidden',
+        reason: 'close_to_tray',
+      );
+      _isWindowVisible = false;
+      DiagnosticsService.instance.setWindowVisible(false);
+      _backgroundFlowController.stop();
+      unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
+      unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
+      await windowManager.hide();
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
+    } else {
+      logInfo(
+        'DashboardView',
+        'Window close requested and tray is unavailable or close-to-tray is disabled; exiting application explicitly.',
+      );
+      DiagnosticsService.instance.recordWindowEvent(
+        'close_accepted',
+        reason: 'exit_app',
+      );
+      await _exitApplication();
+    }
   }
 
   @override
   void onWindowMinimize() {
-    _isWindowVisible = false;
-    DiagnosticsService.instance.setWindowVisible(false);
-    _backgroundFlowController.stop();
-    unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
-    unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
-    unawaited(SystemOptimizerService.instance.optimizeMemory());
-    unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
+    DiagnosticsService.instance.recordWindowEvent(
+      'minimize_requested',
+      reason: canHideToTray ? 'minimize_to_tray' : 'minimize_to_taskbar',
+      details: {
+        'canHideToTray': canHideToTray,
+        'trayState': _trayState.name,
+        'minimizeToTrayPreference': _settings.minimizeToTray,
+      },
+    );
+
+    if (canHideToTray && _settings.minimizeToTray) {
+      logInfo(
+        'DashboardView',
+        'Window minimize intercepted; hiding to system tray (canHideToTray=true).',
+      );
+      DiagnosticsService.instance.recordWindowEvent(
+        'hidden',
+        reason: 'minimize_to_tray',
+      );
+      _isWindowVisible = false;
+      DiagnosticsService.instance.setWindowVisible(false);
+      _backgroundFlowController.stop();
+      unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
+      unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
+      unawaited(windowManager.hide());
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
+    } else {
+      logInfo(
+        'DashboardView',
+        'Window minimized to standard Windows taskbar (canHideToTray=$canHideToTray).',
+      );
+      DiagnosticsService.instance.recordWindowEvent(
+        'minimized',
+        reason: 'taskbar_minimize',
+      );
+      _isWindowVisible = false;
+      DiagnosticsService.instance.setWindowVisible(false);
+      _backgroundFlowController.stop();
+      unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
+      unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
+      unawaited(SystemOptimizerService.instance.optimizeMemory());
+      unawaited(SystemOptimizerService.instance.setLowPowerMode(true));
+    }
   }
 
   @override
   void onWindowRestore() {
+    DiagnosticsService.instance.recordWindowEvent('restored');
     _isWindowVisible = true;
     DiagnosticsService.instance.setWindowVisible(true);
     unawaited(SystemOptimizerService.instance.setWindowCloaked(false));
@@ -1785,6 +1952,7 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   void onTrayIconRightMouseDown() {
+    if (!canHideToTray) return;
     trayManager.popUpContextMenu();
   }
 
@@ -2040,6 +2208,10 @@ class _DashboardViewState extends State<DashboardView>
     }
     _launchingWidgetIds.add(widgetId);
     _widgetLaunchedAt[widgetId] = DateTime.now();
+    final generation = (_widgetGenerations[widgetId] ?? 0) + 1;
+    _widgetGenerations[widgetId] = generation;
+    _widgetRecoveryTimers[widgetId]?.cancel();
+    _widgetRecoveryTimers[widgetId] = null;
     final launchStopwatch = Stopwatch()..start();
     try {
       final isTaskbar = widgetId.startsWith('taskbar_');
@@ -2063,6 +2235,13 @@ class _DashboardViewState extends State<DashboardView>
                 'DashboardView',
                 'Widget "$widgetId" is already running live (PID ${existingRecord.pid}); joined existing instance.',
               );
+              DiagnosticsService.instance.recordWidgetLifecycleEvent(
+                widgetId,
+                'ready',
+                pid: existingRecord.pid,
+                hwnd: existingRecord.hwnd,
+                details: 'joined existing instance',
+              );
               setState(() {
                 _activeRunningWidgetIds.add(widgetId);
                 _isOverlayRunning = true;
@@ -2075,6 +2254,15 @@ class _DashboardViewState extends State<DashboardView>
               return;
             }
           }
+          // Dead or stale PID file: remove it so new launch does not read old records
+          await pidFile.delete();
+        } catch (_) {}
+      }
+
+      final lockFile = await instService.lockFile;
+      if (await lockFile.exists()) {
+        try {
+          await lockFile.delete();
         } catch (_) {}
       }
 
@@ -2119,11 +2307,6 @@ class _DashboardViewState extends State<DashboardView>
 
       await instService.save(instSettings);
 
-      _settings = _settings.copyWith(
-        activeWidgetIds: activeIds,
-        widgetTemplate: widgetId,
-      );
-      await _saveSettingsSafely(_settings);
       final settingsPrepMs = stageSettingsStopwatch.elapsedMilliseconds;
 
       final stageSpawnStopwatch = Stopwatch()..start();
@@ -2148,75 +2331,71 @@ class _DashboardViewState extends State<DashboardView>
         logWarning('DashboardView', 'Shadow runtime fallback for $widgetId: $e');
       }
 
-      // Launch overlay process
-      bool launched = false;
-      if (kDebugMode) {
-        final sanitizedId = widgetId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
-        final taskName = 'WallSyncOverlay_$sanitizedId';
-        final tempDir = Platform.environment['TEMP'] ?? Directory.systemTemp.path;
-        final batPath = '$tempDir\\overlay_launch_$sanitizedId.bat';
+      DiagnosticsService.instance.recordWidgetLifecycleEvent(
+        widgetId,
+        'spawnRequested',
+        executable: appPath,
+        args: ['--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
+      );
 
+      // Launch overlay process directly detached (<50ms, no Task Scheduler latency)
+      int? launchedPid;
+      try {
+        final process = await Process.start(
+          appPath,
+          [
+            '--overlay',
+            '--startup-trigger=dashboard',
+            '--instance-id=$widgetId',
+          ],
+          workingDirectory: workingDir,
+          mode: ProcessStartMode.detached,
+        );
+        launchedPid = process.pid;
+        logInfo('DashboardView', 'Overlay "$widgetId" spawned directly (PID $launchedPid).');
+        DiagnosticsService.instance.recordWidgetLifecycleEvent(
+          widgetId,
+          'spawned',
+          pid: launchedPid,
+        );
+      } catch (directErr) {
+        logWarning('DashboardView', 'Direct Process.start failed for $widgetId: $directErr; trying cmd.exe fallback');
         try {
-          final batContent =
-              '@echo off\r\ncd /d "$workingDir"\r\nstart "" "$appPath" --overlay --startup-trigger=dashboard --instance-id=$widgetId\r\n';
-          await File(batPath).writeAsString(batContent, flush: true);
-
-          final createResult = await Process.run('schtasks', [
-            '/create',
-            '/f',
-            '/tn',
-            taskName,
-            '/tr',
-            '"$batPath"',
-            '/sc',
-            'once',
-            '/st',
-            '00:00',
-            '/it',
-          ]);
-          if (createResult.exitCode == 0) {
-            final runResult = await Process.run('schtasks', ['/run', '/tn', taskName]);
-            if (runResult.exitCode == 0) {
-              launched = true;
-              logInfo('DashboardView', 'Overlay "$widgetId" spawned via Task Scheduler ($taskName).');
-            }
-          }
-        } catch (e) {
-          logWarning('DashboardView', 'Task Scheduler spawn failed for $widgetId: $e');
-        } finally {
-          Future.delayed(const Duration(seconds: 15), () async {
-            try {
-              await Process.run('schtasks', ['/delete', '/f', '/tn', taskName]);
-            } catch (_) {}
-            try {
-              final f = File(batPath);
-              if (await f.exists()) await f.delete();
-            } catch (_) {}
-          });
-        }
-      }
-
-      if (!launched) {
-        try {
-          await Process.start(
+          final process = await Process.start(
             'cmd.exe',
             ['/c', 'start', '""', appPath, '--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
             workingDirectory: workingDir,
             mode: ProcessStartMode.detached,
           );
-          launched = true;
-          logInfo('DashboardView', 'Overlay "$widgetId" spawned via cmd.exe start detached.');
-        } catch (_) {
-          await Process.start(
-            appPath,
-            ['--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
-            workingDirectory: workingDir,
-            mode: ProcessStartMode.detached,
+          launchedPid = process.pid;
+          logInfo('DashboardView', 'Overlay "$widgetId" spawned via cmd.exe start detached (PID $launchedPid).');
+          DiagnosticsService.instance.recordWidgetLifecycleEvent(
+            widgetId,
+            'spawned',
+            pid: launchedPid,
+            details: 'via cmd.exe fallback',
           );
-          logInfo('DashboardView', 'Overlay "$widgetId" spawned via direct Process.start.');
+        } catch (cmdErr) {
+          logError('DashboardView', 'Failed to launch overlay process: $cmdErr');
+          DiagnosticsService.instance.recordWidgetLifecycleEvent(
+            widgetId,
+            'failed',
+            details: 'Process spawn exception: $cmdErr',
+          );
         }
       }
       final spawnMs = stageSpawnStopwatch.elapsedMilliseconds;
+
+      if (launchedPid != null) {
+        final inspection = await inspectWindowsProcess(launchedPid);
+        if (inspection != null && inspection.isRunning) {
+          DiagnosticsService.instance.recordWidgetLifecycleEvent(
+            widgetId,
+            'processAlive',
+            pid: launchedPid,
+          );
+        }
+      }
 
       // Verify visible readiness of spawned overlay
       final stageReadinessStopwatch = Stopwatch()..start();
@@ -2227,10 +2406,59 @@ class _DashboardViewState extends State<DashboardView>
           return content.isEmpty ? null : OverlayProcessRecord.tryParse(content);
         },
         inspectProcess: inspectWindowsProcess,
-        timeout: const Duration(seconds: 8),
+        expectedPid: launchedPid,
+        timeout: const Duration(seconds: 10),
         pollInterval: const Duration(milliseconds: 200),
       );
       final readinessWaitMs = stageReadinessStopwatch.elapsedMilliseconds;
+
+      if (!readiness.isReady) {
+        logError(
+          'DashboardView',
+          'Widget "$widgetId" failed to reach verified readiness: status=${readiness.status.name}, '
+          'stage=${readiness.stage.name}, elapsed=${readinessWaitMs}ms.',
+        );
+        DiagnosticsService.instance.recordWidgetLifecycleEvent(
+          widgetId,
+          'failed',
+          pid: launchedPid,
+          details: 'readiness failed: status=${readiness.status.name}, stage=${readiness.stage.name}',
+        );
+        if (launchedPid != null) {
+          try {
+            Process.killPid(launchedPid);
+          } catch (_) {}
+        }
+        final revertedActiveIds = List<String>.from(_settings.activeWidgetIds)..remove(widgetId);
+        _settings = _settings.copyWith(activeWidgetIds: revertedActiveIds);
+        await _saveSettingsSafely(_settings);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 16),
+                  const SizedBox(width: 8),
+                  Text('Failed to start "${_getWidgetTitle(widgetId)}" (${readiness.status.name}).'),
+                ],
+              ),
+              backgroundColor: const Color(0xFF1E293B),
+            ),
+          );
+        }
+        return;
+      }
+
+      if ((_widgetGenerations[widgetId] ?? 0) != generation) {
+        logWarning('DashboardView', 'Widget "$widgetId" launch superseded by a newer operation.');
+        return;
+      }
+
+      _settings = _settings.copyWith(
+        activeWidgetIds: activeIds,
+        widgetTemplate: widgetId,
+      );
+      await _saveSettingsSafely(_settings);
 
       setState(() {
         _activeRunningWidgetIds.add(widgetId);
@@ -2241,6 +2469,14 @@ class _DashboardViewState extends State<DashboardView>
       _widgetRecoveryTimers[widgetId]?.cancel();
       _widgetRecoveryTimers[widgetId] = null;
       unawaited(DiagnosticsService.instance.refreshOverlayPid());
+
+      DiagnosticsService.instance.recordWidgetLifecycleEvent(
+        widgetId,
+        'ready',
+        pid: readiness.record?.pid ?? launchedPid,
+        hwnd: readiness.record?.hwnd,
+        details: 'readiness confirmed in ${readinessWaitMs}ms',
+      );
 
       logInfo(
         'DashboardView',
@@ -2266,6 +2502,11 @@ class _DashboardViewState extends State<DashboardView>
       }
     } catch (e, st) {
       logError('DashboardView', 'Error launching widget overlay $widgetId', e, st);
+      DiagnosticsService.instance.recordWidgetLifecycleEvent(
+        widgetId,
+        'failed',
+        details: 'Exception: $e',
+      );
     } finally {
       _launchingWidgetIds.remove(widgetId);
     }
@@ -2273,10 +2514,18 @@ class _DashboardViewState extends State<DashboardView>
 
   Future<void> _closeWidgetOverlay(String widgetId) async {
     try {
+      final generation = (_widgetGenerations[widgetId] ?? 0) + 1;
+      _widgetGenerations[widgetId] = generation;
       _widgetLaunchedAt.remove(widgetId);
       _widgetRecoveryTimers[widgetId]?.cancel();
       _widgetRecoveryTimers.remove(widgetId);
       _widgetRecoveryPolicies.remove(widgetId);
+
+      DiagnosticsService.instance.recordWidgetLifecycleEvent(
+        widgetId,
+        'exited',
+        details: 'explicit stop',
+      );
 
       final instService = SettingsService(instanceId: widgetId);
       try {
@@ -2397,8 +2646,19 @@ class _DashboardViewState extends State<DashboardView>
         'Widget recovery stopped for "$widgetId" after bounded retry limit '
         '(${policy.attempts} attempts).',
       );
+      DiagnosticsService.instance.recordWidgetLifecycleEvent(
+        widgetId,
+        'recovery_exhausted',
+        details: 'Exceeded max attempts (${policy.attempts})',
+      );
       return;
     }
+    final scheduledGeneration = _widgetGenerations[widgetId] ?? 0;
+    DiagnosticsService.instance.recordWidgetLifecycleEvent(
+      widgetId,
+      'recovery_scheduled',
+      details: 'attempt=${policy.attempts}, delay=${delay.inMilliseconds}ms',
+    );
     logWarning(
       'DashboardView',
       'Scheduling recovery for widget "$widgetId"; attempt=${policy.attempts}, '
@@ -2409,7 +2669,8 @@ class _DashboardViewState extends State<DashboardView>
       if (!mounted ||
           _isOverlayExplicitlyClosed ||
           _launchingWidgetIds.contains(widgetId) ||
-          _activeRunningWidgetIds.contains(widgetId)) {
+          _activeRunningWidgetIds.contains(widgetId) ||
+          (_widgetGenerations[widgetId] ?? 0) != scheduledGeneration) {
         return;
       }
       unawaited(_launchWidgetOverlay(widgetId));
@@ -2869,7 +3130,7 @@ class _DashboardViewState extends State<DashboardView>
       // so readiness is confirmed from the process record below.
       var launchedViaSchtasks = false;
       DateTime? taskSchedulerAcceptedAt;
-      var directStarted = !kDebugMode && await launchDirectly();
+      var directStarted = await launchDirectly();
       if (!directStarted) {
         const taskName = 'DesktopWidgetOverlayLaunch';
         final tempDir =
@@ -3076,16 +3337,39 @@ class _DashboardViewState extends State<DashboardView>
         }
       } else {
         final readinessFailure = switch (readiness.status) {
-          OverlayReadinessStatus.starting =>
+          OverlayReadinessStatus.ready ||
+          OverlayReadinessStatus.dockReady =>
+            'readiness could not be confirmed',
+          OverlayReadinessStatus.starting ||
+          OverlayReadinessStatus.processRunning ||
+          OverlayReadinessStatus.runtimeInitializing ||
+          OverlayReadinessStatus.dockInitializing =>
             'PID ${readiness.record?.pid} is verified running but has not acknowledged its first frame (last state: ${readiness.record?.state.name})',
-          OverlayReadinessStatus.missing => 'no PID record was registered',
+          OverlayReadinessStatus.missing ||
+          OverlayReadinessStatus.processNotFound =>
+            'no PID record was registered',
+          OverlayReadinessStatus.executableMissing =>
+            'the overlay executable is missing',
+          OverlayReadinessStatus.processLaunchFailed =>
+            'process launch failed',
           OverlayReadinessStatus.malformed => 'the PID record is malformed',
-          OverlayReadinessStatus.exited => 'the overlay exited during startup',
+          OverlayReadinessStatus.exited ||
+          OverlayReadinessStatus.processExited =>
+            'the overlay exited during startup',
           OverlayReadinessStatus.identityMismatch =>
             'the PID refers to a different process; no process was terminated',
           OverlayReadinessStatus.unverifiable =>
             'Windows could not verify the overlay process identity',
-          OverlayReadinessStatus.ready => 'readiness could not be confirmed',
+          OverlayReadinessStatus.windowNotCreated =>
+            'native window was not created',
+          OverlayReadinessStatus.windowFound =>
+            'native window was found but not ready',
+          OverlayReadinessStatus.windowVerificationFailed =>
+            'native window verification failed',
+          OverlayReadinessStatus.ipcUnavailable =>
+            'IPC channel is unavailable',
+          OverlayReadinessStatus.timeout =>
+            'overlay initialization timed out',
           OverlayReadinessStatus.failed =>
             'the overlay failed initialization: ${readiness.record?.failureReason ?? 'unspecified error'}',
         };
@@ -3259,6 +3543,8 @@ class _DashboardViewState extends State<DashboardView>
                   'topNavigation.build',
                   _buildTopNavBar,
                 ),
+                if (_trayState.isUnavailableOrFailed)
+                  _buildTrayWarningBanner(),
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 350),
@@ -3399,6 +3685,77 @@ class _DashboardViewState extends State<DashboardView>
         return KeyEventResult.ignored;
       },
       child: result,
+    );
+  }
+
+  Widget _buildTrayWarningBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF451A03).withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFF59E0B),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'System Tray Integration Unavailable',
+                  style: TextStyle(
+                    color: Color(0xFFFCD34D),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  _trayNativeError != null
+                      ? 'Native module unavailable ($_trayNativeError). Window will remain visible and accessible on the Windows taskbar.'
+                      : 'System tray could not be initialized. Closing or minimizing will operate on the Windows taskbar to keep the application accessible.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    fontSize: 11,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () {
+              unawaited(_initSystemTray());
+            },
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: const Size(50, 26),
+              backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+            ),
+            child: const Text(
+              'Retry',
+              style: TextStyle(
+                color: Color(0xFFFCD34D),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -5351,7 +5708,7 @@ class _DashboardViewState extends State<DashboardView>
           type: 'static',
           thumbnailUrl: null,
         );
-        await _persistWallpaperSettings();
+        unawaited(_persistWallpaperSettings());
         if (!_isCurrentWallpaperTransition(requestId)) return;
         _setWallpaperTransitionState(requestId, 'static:$path', 'active');
         if (mounted) {
@@ -6869,7 +7226,7 @@ class _DashboardViewState extends State<DashboardView>
           type: 'video',
           thumbnailUrl: thumb,
         );
-        await _persistWallpaperSettings();
+        unawaited(_persistWallpaperSettings());
         if (!mounted || !_isCurrentWallpaperTransition(requestId)) return;
         _setWallpaperTransitionState(requestId, 'video:$pathOrUrl', 'active');
 
@@ -7029,7 +7386,7 @@ class _DashboardViewState extends State<DashboardView>
           videoWallpaperPaused: false,
         );
         _updateSettings(updated);
-        await _persistWallpaperSettings();
+        unawaited(_persistWallpaperSettings());
         if (!_isCurrentWallpaperTransition(requestId)) return;
         _setWallpaperTransitionState(requestId, 'none:stop-video', 'active');
         _showAnimatedSnackBar('Live video wallpaper stopped.', isSuccess: true);
@@ -9956,7 +10313,7 @@ class _DashboardViewState extends State<DashboardView>
           activeWallpaperAnimatedBg: '',
         );
         _updateSettings(updated);
-        await _persistWallpaperSettings();
+        unawaited(_persistWallpaperSettings());
         if (!_isCurrentWallpaperTransition(requestId)) return;
         _setWallpaperTransitionState(requestId, 'none:clear', 'active');
         if (!mounted) return;
@@ -17999,6 +18356,192 @@ class _DashboardViewState extends State<DashboardView>
               const SizedBox(height: 20),
               const Divider(color: Colors.white10, height: 1),
               const SizedBox(height: 20),
+
+              // Explicit 3-Way Mode Selector Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'DESKTOP TASKBAR OPERATING MODE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.1,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                  Text(
+                    'Select how WallSync integrates with Windows shell',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // 3-Way Mode Selector Cards Row
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth > 700;
+                  final effectiveMode = !isCustomActive
+                      ? DesktopTaskbarMode.windowsTaskbar
+                      : (hideNative
+                          ? DesktopTaskbarMode.dockWithNativeHidden
+                          : DesktopTaskbarMode.dockOnly);
+
+                  Widget buildModeCard({
+                    required DesktopTaskbarMode mode,
+                    required String title,
+                    required String description,
+                    required IconData icon,
+                    required Color accentColor,
+                    required VoidCallback onTap,
+                  }) {
+                    final isSelected = (effectiveMode == mode) ||
+                        (mode == DesktopTaskbarMode.dockWithNativeHidden &&
+                            effectiveMode == DesktopTaskbarMode.customTaskbar);
+                    return Expanded(
+                      flex: isWide ? 1 : 0,
+                      child: InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? accentColor.withValues(alpha: 0.15)
+                                : const Color(0xFF0F172A).withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? accentColor
+                                  : Colors.white.withValues(alpha: 0.08),
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    icon,
+                                    size: 18,
+                                    color: isSelected
+                                        ? accentColor
+                                        : Colors.white.withValues(alpha: 0.7),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.85),
+                                      ),
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 16,
+                                      color: accentColor,
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                description,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  height: 1.35,
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final cards = [
+                    buildModeCard(
+                      mode: DesktopTaskbarMode.windowsTaskbar,
+                      title: 'Standard Windows',
+                      description: 'Native taskbar visible. WallSync dock disabled.',
+                      icon: Icons.desktop_windows_rounded,
+                      accentColor: const Color(0xFF38BDF8),
+                      onTap: () async {
+                        await taskbarService.restoreWindowsTaskbar();
+                        _activeRunningWidgetIds.remove('taskbar_dock');
+                        if (_activeRunningWidgetIds.isEmpty) _isOverlayRunning = false;
+                        _updateTrayMenu();
+                        setState(() => _settings = _settingsService.settings);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    buildModeCard(
+                      mode: DesktopTaskbarMode.dockOnly,
+                      title: 'Dock Alongside',
+                      description: 'Custom dock active alongside standard Windows taskbar.',
+                      icon: Icons.dock_rounded,
+                      accentColor: const Color(0xFF34D399),
+                      onTap: () async {
+                        final success = await taskbarService.enableCustomTaskbar(
+                          hideNativeTaskbar: false,
+                        );
+                        if (success) {
+                          if (!_activeRunningWidgetIds.contains('taskbar_dock')) {
+                            _activeRunningWidgetIds.add('taskbar_dock');
+                          }
+                          _isOverlayRunning = true;
+                          _updateTrayMenu();
+                        }
+                        setState(() => _settings = _settingsService.settings);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    buildModeCard(
+                      mode: DesktopTaskbarMode.dockWithNativeHidden,
+                      title: 'Full Replacement',
+                      description: 'Native taskbar hidden. Dock acts as primary taskbar.',
+                      icon: Icons.space_dashboard_rounded,
+                      accentColor: const Color(0xFFA855F7),
+                      onTap: () async {
+                        final success = await taskbarService.enableCustomTaskbar(
+                          hideNativeTaskbar: true,
+                        );
+                        if (success) {
+                          if (!_activeRunningWidgetIds.contains('taskbar_dock')) {
+                            _activeRunningWidgetIds.add('taskbar_dock');
+                          }
+                          _isOverlayRunning = true;
+                          _updateTrayMenu();
+                        }
+                        setState(() => _settings = _settingsService.settings);
+                      },
+                    ),
+                  ];
+
+                  return isWide
+                      ? Row(children: cards)
+                      : Column(
+                          children: [
+                            cards[0],
+                            const SizedBox(height: 8),
+                            cards[2],
+                            const SizedBox(height: 8),
+                            cards[4],
+                          ],
+                        );
+                },
+              ),
+              const SizedBox(height: 16),
 
               // Master Switch: Enable WallSync Custom Taskbar
               Material(

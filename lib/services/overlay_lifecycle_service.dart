@@ -8,6 +8,7 @@ import 'dart:ui';
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 
+import '../models/taskbar_settings.dart';
 import 'settings_service.dart';
 
 enum OverlayLifecycleState {
@@ -32,6 +33,13 @@ class OverlayProcessRecord {
     required this.executablePath,
     this.ready = true,
     this.state = OverlayLifecycleState.ready,
+    this.instanceId,
+    this.hwnd,
+    this.configurationRevision = 1,
+    this.stage = DockReadinessStage.dockReady,
+    this.operationId,
+    this.startupTimestamp,
+    this.healthCheck = true,
     this.entryPointMs,
     this.settingsLoadedMs,
     this.windowInitMs,
@@ -46,6 +54,13 @@ class OverlayProcessRecord {
   final String? executablePath;
   final bool ready;
   final OverlayLifecycleState state;
+  final String? instanceId;
+  final int? hwnd;
+  final int configurationRevision;
+  final DockReadinessStage stage;
+  final int? operationId;
+  final int? startupTimestamp;
+  final bool healthCheck;
   final int? entryPointMs;
   final int? settingsLoadedMs;
   final int? windowInitMs;
@@ -60,6 +75,13 @@ class OverlayProcessRecord {
     String? executablePath,
     bool? ready,
     OverlayLifecycleState? state,
+    String? instanceId,
+    int? hwnd,
+    int? configurationRevision,
+    DockReadinessStage? stage,
+    int? operationId,
+    int? startupTimestamp,
+    bool? healthCheck,
     int? entryPointMs,
     int? settingsLoadedMs,
     int? windowInitMs,
@@ -73,6 +95,13 @@ class OverlayProcessRecord {
     executablePath: executablePath ?? this.executablePath,
     ready: ready ?? this.ready,
     state: state ?? this.state,
+    instanceId: instanceId ?? this.instanceId,
+    hwnd: hwnd ?? this.hwnd,
+    configurationRevision: configurationRevision ?? this.configurationRevision,
+    stage: stage ?? this.stage,
+    operationId: operationId ?? this.operationId,
+    startupTimestamp: startupTimestamp ?? this.startupTimestamp,
+    healthCheck: healthCheck ?? this.healthCheck,
     entryPointMs: entryPointMs ?? this.entryPointMs,
     settingsLoadedMs: settingsLoadedMs ?? this.settingsLoadedMs,
     windowInitMs: windowInitMs ?? this.windowInitMs,
@@ -88,6 +117,13 @@ class OverlayProcessRecord {
     'executablePath': executablePath,
     'ready': ready,
     'state': state.name,
+    if (instanceId != null) 'instanceId': instanceId,
+    if (hwnd != null) 'hwnd': hwnd,
+    'configurationRevision': configurationRevision,
+    'stage': stage.name,
+    if (operationId != null) 'operationId': operationId,
+    if (startupTimestamp != null) 'startupTimestamp': startupTimestamp,
+    'healthCheck': healthCheck,
     if (entryPointMs != null) 'entryPointMs': entryPointMs,
     if (settingsLoadedMs != null) 'settingsLoadedMs': settingsLoadedMs,
     if (windowInitMs != null) 'windowInitMs': windowInitMs,
@@ -108,6 +144,7 @@ class OverlayProcessRecord {
         executablePath: null,
         ready: true,
         state: OverlayLifecycleState.ready,
+        stage: DockReadinessStage.dockReady,
       );
     }
     try {
@@ -143,6 +180,19 @@ class OverlayProcessRecord {
         state = ready ? OverlayLifecycleState.ready : OverlayLifecycleState.processStarted;
       }
 
+      final rawStage = decoded['stage'];
+      DockReadinessStage stage = ready
+          ? DockReadinessStage.dockReady
+          : DockReadinessStage.processRunning;
+      if (rawStage is String) {
+        stage = DockReadinessStage.values.firstWhere(
+          (s) => s.name == rawStage,
+          orElse: () => ready
+              ? DockReadinessStage.dockReady
+              : DockReadinessStage.processRunning,
+        );
+      }
+
       int? parseMs(dynamic val) => val is int ? val : (val is String ? int.tryParse(val) : null);
 
       return OverlayProcessRecord(
@@ -151,6 +201,13 @@ class OverlayProcessRecord {
         executablePath: executablePath is String ? executablePath : null,
         ready: ready,
         state: state,
+        instanceId: decoded['instanceId'] as String?,
+        hwnd: parseMs(decoded['hwnd']),
+        configurationRevision: (decoded['configurationRevision'] as int?) ?? 1,
+        stage: stage,
+        operationId: parseMs(decoded['operationId']),
+        startupTimestamp: parseMs(decoded['startupTimestamp']),
+        healthCheck: (decoded['healthCheck'] as bool?) ?? true,
         entryPointMs: parseMs(decoded['entryPointMs']),
         settingsLoadedMs: parseMs(decoded['settingsLoadedMs']),
         windowInitMs: parseMs(decoded['windowInitMs']),
@@ -206,13 +263,35 @@ enum OverlayCloseResult {
 
 enum OverlayReadinessStatus {
   ready,
+  dockReady,
   starting,
   missing,
-  malformed,
+  executableMissing,
+  processLaunchFailed,
+  processNotFound,
   exited,
+  processExited,
+  processRunning,
+  runtimeInitializing,
+  windowNotCreated,
+  windowFound,
+  windowVerificationFailed,
+  ipcUnavailable,
+  dockInitializing,
+  timeout,
+  malformed,
   identityMismatch,
   unverifiable,
-  failed,
+  failed;
+
+  bool get isReady => this == ready || this == dockReady;
+  bool get isTerminal =>
+      this == failed ||
+      this == exited ||
+      this == processExited ||
+      this == executableMissing ||
+      this == processLaunchFailed ||
+      this == timeout;
 }
 
 const overlayWindowVisibilityRetryDelays = <Duration>[
@@ -277,6 +356,26 @@ Future<bool> waitForOverlayWindowVisibility({
   return false;
 }
 
+enum WidgetProcessLifecycleState {
+  spawnRequested,
+  spawned,
+  processAlive,
+  runtimeInitializing,
+  windowReady,
+  ipcReady,
+  ready,
+  failed,
+  exited;
+
+  bool get isRunning =>
+      this == WidgetProcessLifecycleState.spawned ||
+      this == WidgetProcessLifecycleState.processAlive ||
+      this == WidgetProcessLifecycleState.runtimeInitializing ||
+      this == WidgetProcessLifecycleState.windowReady ||
+      this == WidgetProcessLifecycleState.ipcReady ||
+      this == WidgetProcessLifecycleState.ready;
+}
+
 class OverlayReadinessResult {
   const OverlayReadinessResult({
     required this.status,
@@ -290,12 +389,30 @@ class OverlayReadinessResult {
   final OverlayProcessInspection? inspection;
   final Duration elapsed;
 
-  bool get isReady => status == OverlayReadinessStatus.ready;
+  bool get isReady => status.isReady;
+  DockReadinessStage get stage {
+    if (record?.stage != null) return record!.stage;
+    if (isReady) return DockReadinessStage.dockReady;
+    if (status == OverlayReadinessStatus.processExited ||
+        status == OverlayReadinessStatus.failed) {
+      return DockReadinessStage.failed;
+    }
+    if (status == OverlayReadinessStatus.processRunning ||
+        status == OverlayReadinessStatus.starting ||
+        status == OverlayReadinessStatus.dockInitializing ||
+        status == OverlayReadinessStatus.windowFound ||
+        status == OverlayReadinessStatus.windowNotCreated ||
+        (inspection != null && inspection!.isRunning)) {
+      return DockReadinessStage.processRunning;
+    }
+    return DockReadinessStage.processNotStarted;
+  }
 }
 
 Future<OverlayReadinessResult> waitForOverlayReadiness({
   required Future<OverlayProcessRecord?> Function() readRecord,
   required OverlayProcessInspector inspectProcess,
+  int? expectedPid,
   Duration timeout = const Duration(seconds: 30),
   Duration pollInterval = const Duration(milliseconds: 250),
   void Function(
@@ -312,11 +429,42 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   int? previousPid;
   OverlayProcessRecord? latestRecord;
   OverlayProcessInspection? latestInspection;
+
+  // Immediate liveness check if an expected PID was provided
+  if (expectedPid != null) {
+    try {
+      final initInsp = await inspectProcess(expectedPid);
+      if (initInsp != null) {
+        latestInspection = initInsp;
+        if (initInsp.isRunning) {
+          status = OverlayReadinessStatus.processRunning;
+        } else {
+          status = OverlayReadinessStatus.processExited;
+        }
+      }
+    } catch (_) {}
+  }
+
   do {
     try {
       latestRecord = await readRecord();
       if (latestRecord == null) {
-        status = OverlayReadinessStatus.missing;
+        if (expectedPid != null) {
+          final insp = await inspectProcess(expectedPid);
+          if (insp != null) {
+            latestInspection = insp;
+            if (!insp.isRunning) {
+              status = OverlayReadinessStatus.processExited;
+              break;
+            } else {
+              status = OverlayReadinessStatus.processRunning;
+            }
+          } else {
+            status = OverlayReadinessStatus.starting;
+          }
+        } else {
+          status = OverlayReadinessStatus.missing;
+        }
       } else {
         latestInspection = await inspectProcess(latestRecord.pid);
         if (latestInspection == null) {
@@ -324,13 +472,31 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
         } else if (!latestInspection.matches(latestRecord)) {
           status = OverlayReadinessStatus.identityMismatch;
         } else if (!latestInspection.isRunning) {
-          status = OverlayReadinessStatus.exited;
-        } else if (latestRecord.state == OverlayLifecycleState.failedOrTimedOut) {
+          status = OverlayReadinessStatus.processExited;
+        } else if (latestRecord.state ==
+                OverlayLifecycleState.failedOrTimedOut ||
+            latestRecord.stage == DockReadinessStage.failed) {
           status = OverlayReadinessStatus.failed;
-        } else if (!latestRecord.ready) {
-          status = OverlayReadinessStatus.starting;
+        } else if (latestRecord.ready &&
+            (latestRecord.stage == DockReadinessStage.dockReady ||
+                latestRecord.state == OverlayLifecycleState.ready)) {
+          status = latestRecord.instanceId == 'taskbar_dock'
+              ? OverlayReadinessStatus.dockReady
+              : OverlayReadinessStatus.ready;
         } else {
-          status = OverlayReadinessStatus.ready;
+          switch (latestRecord.stage) {
+            case DockReadinessStage.processRunning:
+              status = OverlayReadinessStatus.processRunning;
+            case DockReadinessStage.windowNotCreated:
+              status = OverlayReadinessStatus.windowNotCreated;
+            case DockReadinessStage.windowFound:
+              status = OverlayReadinessStatus.windowFound;
+            case DockReadinessStage.windowVisible:
+            case DockReadinessStage.windowInteractive:
+              status = OverlayReadinessStatus.dockInitializing;
+            default:
+              status = OverlayReadinessStatus.starting;
+          }
         }
       }
     } on FormatException {
@@ -348,7 +514,7 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
       previousStatus = status;
       previousPid = latestRecord?.pid;
     }
-    if (status == OverlayReadinessStatus.ready) {
+    if (status.isReady) {
       return OverlayReadinessResult(
         status: status,
         record: latestRecord,
@@ -356,12 +522,15 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
         elapsed: stopwatch.elapsed,
       );
     }
+    if (status == OverlayReadinessStatus.processExited) {
+      break;
+    }
     if (stopwatch.elapsed >= timeout) break;
     await Future<void>.delayed(pollInterval);
   } while (stopwatch.elapsed < timeout);
 
   // Final reconciliation check right at timeout boundary
-  if (status != OverlayReadinessStatus.ready) {
+  if (!status.isReady) {
     try {
       final finalRecord = await readRecord();
       if (finalRecord != null && finalRecord.ready) {
@@ -370,7 +539,9 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
             finalInspection.matches(finalRecord) &&
             finalInspection.isRunning) {
           return OverlayReadinessResult(
-            status: OverlayReadinessStatus.ready,
+            status: finalRecord.instanceId == 'taskbar_dock'
+                ? OverlayReadinessStatus.dockReady
+                : OverlayReadinessStatus.ready,
             record: finalRecord,
             inspection: finalInspection,
             elapsed: stopwatch.elapsed,
@@ -380,8 +551,26 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
     } catch (_) {}
   }
 
+  var finalStatus = status;
+  if (!status.isReady) {
+    if (status == OverlayReadinessStatus.starting ||
+        status == OverlayReadinessStatus.missing ||
+        status == OverlayReadinessStatus.processRunning ||
+        status == OverlayReadinessStatus.dockInitializing ||
+        status == OverlayReadinessStatus.windowNotCreated ||
+        status == OverlayReadinessStatus.windowFound) {
+      finalStatus = OverlayReadinessStatus.timeout;
+    }
+  }
+
+  if (latestRecord == null && expectedPid != null && latestInspection == null) {
+    try {
+      latestInspection = await inspectProcess(expectedPid);
+    } catch (_) {}
+  }
+
   return OverlayReadinessResult(
-    status: status,
+    status: finalStatus,
     record: latestRecord,
     inspection: latestInspection,
     elapsed: stopwatch.elapsed,
@@ -534,6 +723,13 @@ class OverlayLifecycleService {
     SettingsService settingsService, {
     bool ready = false,
     OverlayLifecycleState state = OverlayLifecycleState.processStarted,
+    DockReadinessStage stage = DockReadinessStage.dockReady,
+    String? instanceId,
+    int? hwnd,
+    int? configurationRevision,
+    int? operationId,
+    int? startupTimestamp,
+    bool healthCheck = true,
     int? entryPointMs,
     int? settingsLoadedMs,
     int? windowInitMs,
@@ -581,6 +777,14 @@ class OverlayLifecycleService {
         executablePath: record.executablePath,
         ready: ready,
         state: state,
+        instanceId: instanceId ?? existingRecord?.instanceId,
+        hwnd: hwnd ?? existingRecord?.hwnd,
+        configurationRevision:
+            configurationRevision ?? existingRecord?.configurationRevision ?? 1,
+        stage: stage,
+        operationId: operationId ?? existingRecord?.operationId,
+        startupTimestamp: startupTimestamp ?? existingRecord?.startupTimestamp,
+        healthCheck: healthCheck,
         entryPointMs: entryPointMs ?? existingRecord?.entryPointMs,
         settingsLoadedMs: settingsLoadedMs ?? existingRecord?.settingsLoadedMs,
         windowInitMs: windowInitMs ?? existingRecord?.windowInitMs,
@@ -636,7 +840,7 @@ class OverlayLifecycleService {
       logInfo(
         'OverlayLifecycleService',
         'Registered overlay process identity: PID ${record.pid}, '
-            'state=${state.name}, ready=$ready, executable=${record.executablePath ?? '<inaccessible>'} '
+            'state=${state.name}, stage=${stage.displayName}, ready=$ready, executable=${record.executablePath ?? '<inaccessible>'} '
             '(identity ${identityMs}ms, PID-file lock ${lockWaitMs}ms, '
             'write ${writeStopwatch.elapsedMilliseconds}ms, '
             'total ${stopwatch.elapsedMilliseconds}ms).',
@@ -653,7 +857,14 @@ class OverlayLifecycleService {
   static Future<void> updateCurrentProcessState(
     SettingsService settingsService, {
     required OverlayLifecycleState state,
+    DockReadinessStage? stage,
     bool? ready,
+    String? instanceId,
+    int? hwnd,
+    int? configurationRevision,
+    int? operationId,
+    int? startupTimestamp,
+    bool healthCheck = true,
     int? entryPointMs,
     int? settingsLoadedMs,
     int? windowInitMs,
@@ -664,7 +875,18 @@ class OverlayLifecycleService {
   }) => writeCurrentProcessRecord(
     settingsService,
     state: state,
+    stage:
+        stage ??
+        (state == OverlayLifecycleState.ready
+            ? DockReadinessStage.dockReady
+            : DockReadinessStage.processRunning),
     ready: ready ?? (state == OverlayLifecycleState.ready),
+    instanceId: instanceId,
+    hwnd: hwnd,
+    configurationRevision: configurationRevision,
+    operationId: operationId,
+    startupTimestamp: startupTimestamp,
+    healthCheck: healthCheck,
     entryPointMs: entryPointMs,
     settingsLoadedMs: settingsLoadedMs,
     windowInitMs: windowInitMs,
@@ -677,20 +899,34 @@ class OverlayLifecycleService {
   static Future<void> markCurrentProcessReady(
     SettingsService settingsService, {
     int? readyPublishedMs,
+    int? hwnd,
+    String? instanceId,
+    int? configurationRevision,
+    int? operationId,
   }) => updateCurrentProcessState(
     settingsService,
     state: OverlayLifecycleState.ready,
+    stage: DockReadinessStage.dockReady,
     ready: true,
+    hwnd: hwnd,
+    instanceId: instanceId,
+    configurationRevision: configurationRevision,
+    operationId: operationId,
     readyPublishedMs: readyPublishedMs ?? DateTime.now().millisecondsSinceEpoch,
   );
 
   static Future<void> markCurrentProcessFailed(
     SettingsService settingsService, {
     required String reason,
+    int? hwnd,
+    String? instanceId,
   }) => updateCurrentProcessState(
     settingsService,
     state: OverlayLifecycleState.failedOrTimedOut,
+    stage: DockReadinessStage.failed,
     ready: false,
+    hwnd: hwnd,
+    instanceId: instanceId,
     failureReason: reason,
   );
 

@@ -51,8 +51,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
   }
 
-#if defined(NDEBUG)
-  // If another dashboard instance is already running, activate and restore it (release mode only)
+  // If another dashboard instance is already running, activate and restore it
   if (!is_overlay && !is_wallpaper) {
     bool is_debug_or_flutter = ::IsDebuggerPresent();
     for (const auto& arg : command_line_arguments) {
@@ -68,6 +67,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       HWND existing_window = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"WallSync Pro");
       if (existing_window) {
         if (!is_startup_bootstrap) {
+          UINT show_msg = ::RegisterWindowMessageW(L"WallSyncPro_ShowDashboard");
+          ::PostMessageW(existing_window, show_msg, 0, 0);
           ::ShowWindow(existing_window, SW_SHOW);
           ::ShowWindow(existing_window, SW_RESTORE);
           ::SetForegroundWindow(existing_window);
@@ -79,7 +80,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       }
     }
   }
-#endif
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

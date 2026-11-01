@@ -52,6 +52,15 @@ add_custom_command(
     "$<TARGET_FILE_DIR:${BINARY_NAME}>/WallSync.ico"
 )
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cnativeapi.dll")
+  add_custom_command(
+    TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/cnativeapi.dll"
+      "$<TARGET_FILE_DIR:${BINARY_NAME}>/cnativeapi.dll"
+  )
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../plugins")
   add_custom_command(
     TARGET ${BINARY_NAME} POST_BUILD

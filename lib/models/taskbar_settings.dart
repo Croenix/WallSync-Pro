@@ -18,6 +18,57 @@ enum DesktopTaskbarMode {
   disabled,
 }
 
+/// 12 explicit stages for custom dock / taskbar startup and lifecycle verification.
+enum DockReadinessStage {
+  processNotStarted,
+  processStarting,
+  processRunning,
+  windowNotCreated,
+  windowFound,
+  windowVerified,
+  windowVisible,
+  windowInteractive,
+  dockReady,
+  failed,
+  stopping,
+  stopped,
+}
+
+extension DockReadinessStageX on DockReadinessStage {
+  String get displayName {
+    switch (this) {
+      case DockReadinessStage.processNotStarted:
+        return 'Process Not Started';
+      case DockReadinessStage.processStarting:
+        return 'Process Starting';
+      case DockReadinessStage.processRunning:
+        return 'Process Running';
+      case DockReadinessStage.windowNotCreated:
+        return 'Window Not Created';
+      case DockReadinessStage.windowFound:
+        return 'Window Found';
+      case DockReadinessStage.windowVerified:
+        return 'Window Verified';
+      case DockReadinessStage.windowVisible:
+        return 'Window Visible';
+      case DockReadinessStage.windowInteractive:
+        return 'Window Interactive';
+      case DockReadinessStage.dockReady:
+        return 'Dock Ready';
+      case DockReadinessStage.failed:
+        return 'Failed';
+      case DockReadinessStage.stopping:
+        return 'Stopping';
+      case DockReadinessStage.stopped:
+        return 'Stopped';
+    }
+  }
+
+  bool get isReady => this == DockReadinessStage.dockReady;
+  bool get isTerminal =>
+      this == DockReadinessStage.failed || this == DockReadinessStage.stopped;
+}
+
 /// Explicit lifecycle and verification states for taskbar replacement.
 enum TaskbarReplacementState {
   /// Custom dock and taskbar replacement disabled.

@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/models/taskbar_settings.dart';
+import 'package:wall_sync/services/overlay_lifecycle_service.dart';
 import 'package:wall_sync/services/settings_service.dart';
 import 'package:wall_sync/services/windows_taskbar_service.dart';
 
@@ -168,6 +170,7 @@ void main() {
       methodCalls.clear();
       mockTaskbarVisible = true;
       shouldFailHide = false;
+      WindowsTaskbarService.instance.setDependencies(isTest: true);
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel(channelName), (call) async {
@@ -337,6 +340,119 @@ void main() {
       expect(dockSettings.taskbarShowCpu, false);
       expect(dockSettings.taskbarShowWeather, true);
       expect(dockSettings.widgetTemplate, 'taskbar_dock');
+    });
+
+    test('Dock spawner failure triggers rollback and does NOT report success', () async {
+      final service = WindowsTaskbarService();
+      service.setDependencies(
+        taskbarSpawner: () async => false, // simulates dock spawn failure
+      );
+      await service.init();
+
+      final success = await service.enableCustomTaskbar(hideNativeTaskbar: true);
+      expect(success, false);
+      expect(service.state, TaskbarReplacementState.failedToActivate);
+      expect(service.isCustomTaskbarActive, false);
+      expect(mockTaskbarVisible, true);
+    });
+
+    test('Operation ID cancellation supersedes stale activation', () async {
+      final service = WindowsTaskbarService();
+
+      service.setDependencies(
+        taskbarSpawner: () async {
+          // Simulate slow spawner
+          await Future.delayed(const Duration(milliseconds: 50));
+          return true;
+        },
+      );
+      await service.init();
+
+      // Launch first activation
+      final future1 = service.enableCustomTaskbar(hideNativeTaskbar: true);
+      // Immediately restore (or cancel) which increments operation ID
+      await service.restoreWindowsTaskbar();
+
+      final result1 = await future1;
+      expect(result1, false); // Must return false, cannot report false activation success!
+      expect(service.state, isNot(TaskbarReplacementState.wallSyncTaskbarActive));
+      expect(service.state, isNot(TaskbarReplacementState.windowsTaskbarHidden));
+      expect(mockTaskbarVisible, true);
+    });
+
+    test('verifyDockWindow returns structured Win32 properties', () async {
+      final service = WindowsTaskbarService();
+      await service.init();
+
+      final verification = await service.verifyDockWindow(9999);
+      expect(verification['found'], true);
+      expect(verification['hwnd'], 123456);
+      expect(verification['pidMatches'], true);
+      expect(verification['isVisible'], true);
+      expect(verification['onMonitor'], true);
+      expect(verification['rect']['width'], 1920);
+    });
+  });
+
+  group('DockReadinessStage & OverlayProcessRecord Tests', () {
+    test('12 DockReadinessStages have valid display names and predicates', () {
+      expect(DockReadinessStage.values.length, 12);
+      expect(DockReadinessStage.processNotStarted.displayName, 'Process Not Started');
+      expect(DockReadinessStage.processStarting.displayName, 'Process Starting');
+      expect(DockReadinessStage.processRunning.displayName, 'Process Running');
+      expect(DockReadinessStage.windowNotCreated.displayName, 'Window Not Created');
+      expect(DockReadinessStage.windowFound.displayName, 'Window Found');
+      expect(DockReadinessStage.windowVerified.displayName, 'Window Verified');
+      expect(DockReadinessStage.windowVisible.displayName, 'Window Visible');
+      expect(DockReadinessStage.windowInteractive.displayName, 'Window Interactive');
+      expect(DockReadinessStage.dockReady.displayName, 'Dock Ready');
+      expect(DockReadinessStage.failed.displayName, 'Failed');
+      expect(DockReadinessStage.stopping.displayName, 'Stopping');
+      expect(DockReadinessStage.stopped.displayName, 'Stopped');
+
+      expect(DockReadinessStage.dockReady.isReady, true);
+      expect(DockReadinessStage.processRunning.isReady, false);
+      expect(DockReadinessStage.failed.isTerminal, true);
+      expect(DockReadinessStage.stopped.isTerminal, true);
+      expect(DockReadinessStage.dockReady.isTerminal, false);
+    });
+
+    test('OverlayProcessRecord roundtrip with 12-stage handshake fields', () {
+      final record = OverlayProcessRecord(
+        pid: 14200,
+        creationTime: 13350000000,
+        executablePath: r'C:\WallSync\WallSync.exe',
+        ready: true,
+        instanceId: 'taskbar_dock',
+        hwnd: 78910,
+        configurationRevision: 5,
+        stage: DockReadinessStage.dockReady,
+        operationId: 42,
+        startupTimestamp: 1730460000000,
+        healthCheck: true,
+      );
+
+      final json = record.toJson();
+      expect(json['pid'], 14200);
+      expect(json['instanceId'], 'taskbar_dock');
+      expect(json['hwnd'], 78910);
+      expect(json['configurationRevision'], 5);
+      expect(json['stage'], 'dockReady');
+      expect(json['operationId'], 42);
+      expect(json['startupTimestamp'], 1730460000000);
+      expect(json['healthCheck'], true);
+
+      final parsed = OverlayProcessRecord.tryParse(jsonEncode(json));
+      expect(parsed, isNotNull);
+      expect(parsed!.pid, 14200);
+      expect(parsed.instanceId, 'taskbar_dock');
+      expect(parsed.hwnd, 78910);
+      expect(parsed.configurationRevision, 5);
+      expect(parsed.stage, DockReadinessStage.dockReady);
+      expect(parsed.operationId, 42);
+      expect(parsed.startupTimestamp, 1730460000000);
+      expect(parsed.healthCheck, true);
+      expect(parsed.ready, true);
     });
   });
 }

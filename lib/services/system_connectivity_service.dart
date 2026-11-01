@@ -59,8 +59,8 @@ class SystemConnectivityService {
     retryDelay: retryDelay,
   );
 
-  static const Duration _pollInterval = Duration(seconds: 5);
-  static const Duration _commandTimeout = Duration(seconds: 8);
+  static const Duration _pollInterval = Duration(seconds: 30);
+  static const Duration _commandTimeout = Duration(seconds: 4);
   static const int _maxReadAttempts = 2;
   final StreamController<SystemConnectivitySnapshot> _controller =
       StreamController<SystemConnectivitySnapshot>.broadcast();
@@ -116,19 +116,20 @@ class SystemConnectivityService {
   Future<void> _readStatus(int generation) async {
     if (!Platform.isWindows && _readStatusOverride == null) return;
     const script = r'''
-$wifiAdapters = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -match 'Wi-?Fi|WLAN' -or $_.InterfaceDescription -match 'Wi-?Fi|Wireless' })
 $wifi = $null
-if ($wifiAdapters.Count -gt 0) {
-  $wifi = [bool](@($wifiAdapters | Where-Object { $_.Status -eq 'Up' }).Count -gt 0)
-}
-$bluetoothAdapters = @(Get-PnpDevice -Class Bluetooth -PresentOnly -ErrorAction SilentlyContinue |
-  Where-Object { $_.FriendlyName -match 'Bluetooth' -and $_.InstanceId -match '^(USB|PCI)' })
-$bluetooth = $null
-if ($bluetoothAdapters.Count -gt 0) {
-  $bluetooth = [bool](@($bluetoothAdapters | Where-Object { $_.Status -eq 'OK' }).Count -gt 0)
-}
-[PSCustomObject]@{ wifi = $wifi; bluetooth = $bluetooth } | ConvertTo-Json -Compress
+$bt = $null
+try {
+  $w = netsh wlan show interfaces
+  if ($w -match 'State\s*:\s*connected') { $wifi = $true }
+  elseif ($w -match 'State\s*:\s*disconnected') { $wifi = $true }
+  elseif ($w -match 'There is no wireless interface') { $wifi = $false }
+} catch {}
+try {
+  $b = Get-Service bthserv -ErrorAction SilentlyContinue
+  if ($b -and $b.Status -eq 'Running') { $bt = $true }
+  elseif ($b) { $bt = $false }
+} catch {}
+[PSCustomObject]@{ wifi = $wifi; bluetooth = $bt } | ConvertTo-Json -Compress
 ''';
     Object? lastError;
     StackTrace? lastStackTrace;

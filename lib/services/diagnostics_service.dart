@@ -1746,6 +1746,83 @@ class DiagnosticsService {
     }
   }
 
+  /// Records a structured diagnostic event for the main application window lifecycle.
+  void recordWindowEvent(
+    String event, {
+    String? reason,
+    Map<String, dynamic>? details,
+  }) {
+    final detailStr = (details != null && details.isNotEmpty)
+        ? ' | details=$details'
+        : '';
+    final reasonStr = reason != null ? ' | reason=$reason' : '';
+    final message = 'MainWindow event=$event$reasonStr$detailStr';
+    recordHistoryEntry(
+      severity: 'INFO',
+      category: 'MainWindow',
+      message: message,
+    );
+    logInfo('MainWindow', message);
+  }
+
+  /// Records a structured diagnostic event for the system tray lifecycle.
+  void recordTrayEvent(
+    String event, {
+    String? stage,
+    String? error,
+    Map<String, dynamic>? details,
+  }) {
+    final stageStr = stage != null ? ' | stage=$stage' : '';
+    final errorStr = error != null ? ' | error=$error' : '';
+    final detailStr = (details != null && details.isNotEmpty)
+        ? ' | details=$details'
+        : '';
+    final message = 'SystemTray event=$event$stageStr$errorStr$detailStr';
+    final severity = error != null ? 'WARN' : 'INFO';
+    recordHistoryEntry(
+      severity: severity,
+      category: 'SystemTray',
+      message: message,
+    );
+    if (error != null) {
+      logWarning('SystemTray', message);
+    } else {
+      logInfo('SystemTray', message);
+    }
+  }
+
+  /// Records a structured diagnostic event for widget and overlay process lifecycles.
+  void recordWidgetLifecycleEvent(
+    String widgetId,
+    String stage, {
+    int? pid,
+    int? exitCode,
+    int? hwnd,
+    String? executable,
+    List<String>? args,
+    String? details,
+  }) {
+    final pidStr = pid != null ? ' | pid=$pid' : '';
+    final exitStr = exitCode != null ? ' | exitCode=$exitCode' : '';
+    final hwndStr = hwnd != null ? ' | hwnd=0x${hwnd.toRadixString(16)}' : '';
+    final exeStr = executable != null ? ' | exe="$executable"' : '';
+    final argsStr = (args != null && args.isNotEmpty) ? ' | args=$args' : '';
+    final detailStr = details != null ? ' | details=$details' : '';
+    final message =
+        'WidgetLifecycle widget="$widgetId" | stage=$stage$pidStr$exitStr$hwndStr$exeStr$argsStr$detailStr';
+    final isFailure = stage == 'failed' || stage == 'exited' || (exitCode != null && exitCode != 0);
+    recordHistoryEntry(
+      severity: isFailure ? 'WARN' : 'INFO',
+      category: 'WidgetLifecycle',
+      message: message,
+    );
+    if (isFailure) {
+      logWarning('WidgetLifecycle', message);
+    } else {
+      logInfo('WidgetLifecycle', message);
+    }
+  }
+
   List<DiagnosticLogEntry> getHistoryEntries({
     Duration? timeRange,
     String? severity,

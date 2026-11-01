@@ -270,6 +270,8 @@ class LiveWallpaperPlugin::Impl {
   flutter::EncodableMap GetWindowsTaskbarInfo();
   bool SetWindowsTaskbarVisibility(bool visible);
   bool RestoreWindowsTaskbar();
+  int64_t GetNativeWindowHandle();
+  flutter::EncodableMap VerifyDockWindow(DWORD pid, const std::string& instance_id);
   flutter::EncodableMap FindWindowByTitleOrPid(const std::string& title_query, DWORD pid_query);
   bool IsOtherAudioPlaying();
   flutter::EncodableMap GetWindowsAccentColor();
@@ -552,6 +554,23 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
   }
   if (call.method_name() == "restoreWindowsTaskbar") {
     result->Success(flutter::EncodableValue(RestoreWindowsTaskbar()));
+    return;
+  }
+  if (call.method_name() == "getNativeWindowHandle") {
+    result->Success(flutter::EncodableValue(GetNativeWindowHandle()));
+    return;
+  }
+  if (call.method_name() == "verifyDockWindow") {
+    int pid_query = 0;
+    std::string instance_id = "";
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_pid = args->find(flutter::EncodableValue("pid"));
+      if (it_pid != args->end()) pid_query = GetIntFromEncodable(it_pid->second, 0);
+      auto it_inst = args->find(flutter::EncodableValue("instanceId"));
+      if (it_inst != args->end()) instance_id = GetStringFromEncodable(it_inst->second, "");
+    }
+    result->Success(flutter::EncodableValue(VerifyDockWindow(static_cast<DWORD>(pid_query), instance_id)));
     return;
   }
   if (call.method_name() == "findWindowByTitleOrPid") {
@@ -2382,6 +2401,117 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::FindWindowByTitleOrPid(
     rect_map[flutter::EncodableValue("height")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.bottom - ctx.rect.top));
     res[flutter::EncodableValue("rect")] = flutter::EncodableValue(rect_map);
   }
+  return res;
+}
+
+int64_t LiveWallpaperPlugin::Impl::GetNativeWindowHandle() {
+  HWND target = root_window_ ? root_window_ : window_;
+  return reinterpret_cast<int64_t>(target);
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyDockWindow(
+    DWORD pid, const std::string& instance_id) {
+  flutter::EncodableMap res;
+  res[flutter::EncodableValue("found")] = flutter::EncodableValue(false);
+  res[flutter::EncodableValue("hwnd")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  res[flutter::EncodableValue("pidMatches")] = flutter::EncodableValue(false);
+  res[flutter::EncodableValue("isVisible")] = flutter::EncodableValue(false);
+  res[flutter::EncodableValue("isIconic")] = flutter::EncodableValue(false);
+  res[flutter::EncodableValue("isEnabled")] = flutter::EncodableValue(false);
+  res[flutter::EncodableValue("onMonitor")] = flutter::EncodableValue(false);
+
+  flutter::EncodableMap empty_rect;
+  empty_rect[flutter::EncodableValue("left")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  empty_rect[flutter::EncodableValue("top")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  empty_rect[flutter::EncodableValue("right")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  empty_rect[flutter::EncodableValue("bottom")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  empty_rect[flutter::EncodableValue("width")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  empty_rect[flutter::EncodableValue("height")] = flutter::EncodableValue(static_cast<int64_t>(0));
+  res[flutter::EncodableValue("rect")] = flutter::EncodableValue(empty_rect);
+
+  if (pid == 0) return res;
+
+  struct DockSearchCtx {
+    DWORD target_pid = 0;
+    std::string instance_id;
+    HWND best_hwnd = nullptr;
+    RECT best_rect{};
+    bool best_visible = false;
+  } ctx;
+  ctx.target_pid = pid;
+  ctx.instance_id = instance_id;
+
+  EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+    auto* c = reinterpret_cast<DockSearchCtx*>(lParam);
+    DWORD wpid = 0;
+    GetWindowThreadProcessId(hwnd, &wpid);
+    if (wpid != c->target_pid) return TRUE;
+
+    if (!IsWindow(hwnd)) return TRUE;
+
+    RECT r{};
+    GetWindowRect(hwnd, &r);
+    int w = r.right - r.left;
+    int h = r.bottom - r.top;
+    bool vis = (IsWindowVisible(hwnd) != FALSE);
+
+    if (!c->instance_id.empty()) {
+      wchar_t title_buf[512] = {0};
+      GetWindowTextW(hwnd, title_buf, 512);
+      std::string title = WideToUtf8(title_buf);
+      if (title.find(c->instance_id) != std::string::npos) {
+        c->best_hwnd = hwnd;
+        c->best_rect = r;
+        c->best_visible = vis;
+        return FALSE;
+      }
+    }
+
+    if (vis && w > 0 && h > 0) {
+      c->best_hwnd = hwnd;
+      c->best_rect = r;
+      c->best_visible = vis;
+      return FALSE;
+    }
+
+    if (!c->best_hwnd && (w > 0 || h > 0)) {
+      c->best_hwnd = hwnd;
+      c->best_rect = r;
+      c->best_visible = vis;
+    }
+    return TRUE;
+  }, reinterpret_cast<LPARAM>(&ctx));
+
+  if (ctx.best_hwnd != nullptr && IsWindow(ctx.best_hwnd)) {
+    HWND h = ctx.best_hwnd;
+    DWORD found_pid = 0;
+    GetWindowThreadProcessId(h, &found_pid);
+    bool visible = (IsWindowVisible(h) != FALSE);
+    bool iconic = (IsIconic(h) != FALSE);
+    bool enabled = (IsWindowEnabled(h) != FALSE);
+    HMONITOR mon = MonitorFromWindow(h, MONITOR_DEFAULTTONULL);
+
+    int w = ctx.best_rect.right - ctx.best_rect.left;
+    int hgt = ctx.best_rect.bottom - ctx.best_rect.top;
+
+    res[flutter::EncodableValue("found")] = flutter::EncodableValue(true);
+    res[flutter::EncodableValue("hwnd")] = flutter::EncodableValue(reinterpret_cast<int64_t>(h));
+    res[flutter::EncodableValue("pidMatches")] = flutter::EncodableValue(found_pid == pid);
+    res[flutter::EncodableValue("isVisible")] = flutter::EncodableValue(visible);
+    res[flutter::EncodableValue("isIconic")] = flutter::EncodableValue(iconic);
+    res[flutter::EncodableValue("isEnabled")] = flutter::EncodableValue(enabled);
+    res[flutter::EncodableValue("onMonitor")] = flutter::EncodableValue(mon != nullptr);
+
+    flutter::EncodableMap rect_map;
+    rect_map[flutter::EncodableValue("left")] = flutter::EncodableValue(static_cast<int64_t>(ctx.best_rect.left));
+    rect_map[flutter::EncodableValue("top")] = flutter::EncodableValue(static_cast<int64_t>(ctx.best_rect.top));
+    rect_map[flutter::EncodableValue("right")] = flutter::EncodableValue(static_cast<int64_t>(ctx.best_rect.right));
+    rect_map[flutter::EncodableValue("bottom")] = flutter::EncodableValue(static_cast<int64_t>(ctx.best_rect.bottom));
+    rect_map[flutter::EncodableValue("width")] = flutter::EncodableValue(static_cast<int64_t>(w));
+    rect_map[flutter::EncodableValue("height")] = flutter::EncodableValue(static_cast<int64_t>(hgt));
+    res[flutter::EncodableValue("rect")] = flutter::EncodableValue(rect_map);
+  }
+
   return res;
 }
 
