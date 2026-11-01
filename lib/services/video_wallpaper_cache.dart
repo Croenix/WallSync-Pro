@@ -13,6 +13,16 @@ class VideoWallpaperCache {
   final _settingsService = SettingsService();
   final Map<String, Future<File>> _downloads = {};
 
+  static final Map<String, int> _cachedFileSizes = {};
+  static DateTime? _lastCacheSweep;
+  static List<File>? _cachedFiles;
+
+  static void invalidateFileCache() {
+    _lastCacheSweep = null;
+    _cachedFiles = null;
+    _cachedFileSizes.clear();
+  }
+
   /// Normalizes dynamic video URLs (e.g. converting preview page URLs to direct stream/download URLs).
   static String normalizeVideoUrl(String rawUrl) {
     final trimmed = rawUrl.trim();
@@ -113,22 +123,37 @@ class VideoWallpaperCache {
         .toString();
 
     // Check if video is already downloaded under either raw or normalized key.
-    // Pre-list the directory once (async) and then search both keys without re-listing.
-    List<FileSystemEntity> entities;
-    try {
-      entities = await cacheDir.list(followLinks: false).toList();
-    } catch (_) {
-      entities = const [];
+    final now = DateTime.now();
+    List<File> files;
+    if (_cachedFiles != null &&
+        _lastCacheSweep != null &&
+        now.difference(_lastCacheSweep!) < const Duration(seconds: 15)) {
+      files = _cachedFiles!;
+    } else {
+      try {
+        final rawEntities = await cacheDir.list(followLinks: false).toList();
+        files = rawEntities.whereType<File>().toList();
+        _cachedFiles = files;
+        _lastCacheSweep = now;
+      } catch (_) {
+        files = const [];
+      }
     }
+
     for (final key in {rawUrlKey, normalizedUrlKey}) {
       final cachePrefix = '$key.';
-      for (final entity in entities) {
-        if (entity is File &&
-            entity.uri.pathSegments.last.startsWith(cachePrefix) &&
-            _supportedExtensions.contains(_extension(entity.path)) &&
-            await entity.length() > 0) {
-          onProgress?.call(1);
-          return entity;
+      for (final file in files) {
+        if (file.uri.pathSegments.last.startsWith(cachePrefix) &&
+            _supportedExtensions.contains(_extension(file.path))) {
+          int size = _cachedFileSizes[file.path] ?? 0;
+          if (size <= 0) {
+            size = await file.length();
+            _cachedFileSizes[file.path] = size;
+          }
+          if (size > 0) {
+            onProgress?.call(1);
+            return file;
+          }
         }
       }
     }
@@ -197,6 +222,7 @@ class VideoWallpaperCache {
         final targetFile = File('${cacheDir.path}\\$rawUrlKey.$extension');
         if (await targetFile.exists()) await targetFile.delete();
         await tempFile.rename(targetFile.path);
+        invalidateFileCache();
 
         final durationMs = sw.elapsedMilliseconds;
         final fileSizeMb = (await targetFile.length()) / (1024 * 1024);

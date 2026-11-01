@@ -270,6 +270,7 @@ class LiveWallpaperPlugin::Impl {
   flutter::EncodableMap GetWindowsTaskbarInfo();
   bool SetWindowsTaskbarVisibility(bool visible);
   bool RestoreWindowsTaskbar();
+  flutter::EncodableMap FindWindowByTitleOrPid(const std::string& title_query, DWORD pid_query);
   bool IsOtherAudioPlaying();
   flutter::EncodableMap GetWindowsAccentColor();
   bool IsProcessRunning(const std::string& process_name);
@@ -551,6 +552,19 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
   }
   if (call.method_name() == "restoreWindowsTaskbar") {
     result->Success(flutter::EncodableValue(RestoreWindowsTaskbar()));
+    return;
+  }
+  if (call.method_name() == "findWindowByTitleOrPid") {
+    std::string title_query = "";
+    int pid_query = 0;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_title = args->find(flutter::EncodableValue("title"));
+      if (it_title != args->end()) title_query = GetStringFromEncodable(it_title->second);
+      auto it_pid = args->find(flutter::EncodableValue("pid"));
+      if (it_pid != args->end()) pid_query = GetIntFromEncodable(it_pid->second, 0);
+    }
+    result->Success(flutter::EncodableValue(FindWindowByTitleOrPid(title_query, static_cast<DWORD>(pid_query))));
     return;
   }
   if (call.method_name() == "isOtherAudioPlaying") {
@@ -2275,22 +2289,41 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsTaskbarInfo() {
 }
 
 bool LiveWallpaperPlugin::Impl::SetWindowsTaskbarVisibility(bool visible) {
-  int cmd = visible ? SW_SHOW : SW_HIDE;
   HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
   if (tray) {
-    ShowWindow(tray, cmd);
-    if (visible) {
+    if (!visible) {
+      LONG_PTR style = GetWindowLongPtrW(tray, GWL_STYLE);
+      SetWindowLongPtrW(tray, GWL_STYLE, style & ~WS_VISIBLE);
+      ShowWindow(tray, SW_HIDE);
       SetWindowPos(tray, nullptr, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED);
+    } else {
+      LONG_PTR style = GetWindowLongPtrW(tray, GWL_STYLE);
+      SetWindowLongPtrW(tray, GWL_STYLE, style | WS_VISIBLE);
+      ShowWindow(tray, SW_SHOW);
+      SetWindowPos(tray, HWND_TOPMOST, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+      SetWindowPos(tray, HWND_NOTOPMOST, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
   }
 
   HWND sec_tray = nullptr;
   while ((sec_tray = FindWindowExW(nullptr, sec_tray, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr) {
-    ShowWindow(sec_tray, cmd);
-    if (visible) {
+    if (!visible) {
+      LONG_PTR style = GetWindowLongPtrW(sec_tray, GWL_STYLE);
+      SetWindowLongPtrW(sec_tray, GWL_STYLE, style & ~WS_VISIBLE);
+      ShowWindow(sec_tray, SW_HIDE);
       SetWindowPos(sec_tray, nullptr, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED);
+    } else {
+      LONG_PTR style = GetWindowLongPtrW(sec_tray, GWL_STYLE);
+      SetWindowLongPtrW(sec_tray, GWL_STYLE, style | WS_VISIBLE);
+      ShowWindow(sec_tray, SW_SHOW);
+      SetWindowPos(sec_tray, HWND_TOPMOST, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+      SetWindowPos(sec_tray, HWND_NOTOPMOST, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
   }
 
@@ -2298,6 +2331,58 @@ bool LiveWallpaperPlugin::Impl::SetWindowsTaskbarVisibility(bool visible) {
   RedrawWindow(nullptr, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 
   return true;
+}
+
+struct WindowSearchContext {
+  std::string title_query;
+  DWORD pid_query = 0;
+  HWND matched_hwnd = nullptr;
+  bool is_visible = false;
+  RECT rect{};
+};
+
+static BOOL CALLBACK EnumWindowsSearchCallback(HWND hwnd, LPARAM lParam) {
+  auto* ctx = reinterpret_cast<WindowSearchContext*>(lParam);
+  if (ctx->pid_query != 0) {
+    DWORD win_pid = 0;
+    GetWindowThreadProcessId(hwnd, &win_pid);
+    if (win_pid != ctx->pid_query) return TRUE;
+  }
+  if (!ctx->title_query.empty()) {
+    wchar_t buf[512] = {0};
+    GetWindowTextW(hwnd, buf, 512);
+    std::string s = WideToUtf8(buf);
+    if (s.find(ctx->title_query) == std::string::npos) return TRUE;
+  }
+  ctx->matched_hwnd = hwnd;
+  ctx->is_visible = (IsWindowVisible(hwnd) != FALSE);
+  GetWindowRect(hwnd, &ctx->rect);
+  return FALSE;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::FindWindowByTitleOrPid(
+    const std::string& title_query, DWORD pid_query) {
+  flutter::EncodableMap res;
+  WindowSearchContext ctx;
+  ctx.title_query = title_query;
+  ctx.pid_query = pid_query;
+  EnumWindows(EnumWindowsSearchCallback, reinterpret_cast<LPARAM>(&ctx));
+
+  bool found = (ctx.matched_hwnd != nullptr);
+  res[flutter::EncodableValue("found")] = flutter::EncodableValue(found);
+  res[flutter::EncodableValue("hwnd")] = flutter::EncodableValue(reinterpret_cast<int64_t>(ctx.matched_hwnd));
+  res[flutter::EncodableValue("visible")] = flutter::EncodableValue(ctx.is_visible);
+  if (found) {
+    flutter::EncodableMap rect_map;
+    rect_map[flutter::EncodableValue("left")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.left));
+    rect_map[flutter::EncodableValue("top")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.top));
+    rect_map[flutter::EncodableValue("right")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.right));
+    rect_map[flutter::EncodableValue("bottom")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.bottom));
+    rect_map[flutter::EncodableValue("width")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.right - ctx.rect.left));
+    rect_map[flutter::EncodableValue("height")] = flutter::EncodableValue(static_cast<int64_t>(ctx.rect.bottom - ctx.rect.top));
+    res[flutter::EncodableValue("rect")] = flutter::EncodableValue(rect_map);
+  }
+  return res;
 }
 
 bool LiveWallpaperPlugin::Impl::RestoreWindowsTaskbar() {

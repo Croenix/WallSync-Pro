@@ -9,6 +9,7 @@ import 'package:win32/win32.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import '../services/settings_service.dart';
 import 'animated_backgrounds.dart';
@@ -562,6 +563,36 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 }
               });
             }
+          }
+
+          if (isTaskbar &&
+              (updated.taskbarSettings.taskbarPosition !=
+                      _settings.taskbarSettings.taskbarPosition ||
+                  widthDelta >= 3.0 ||
+                  heightDelta >= 3.0)) {
+            try {
+              final primaryDisplay =
+                  await ScreenRetriever.instance.getPrimaryDisplay();
+              final screenSize = primaryDisplay.size;
+              final posType = updated.taskbarSettings.taskbarPosition;
+              Offset targetPos;
+              if (posType == 'top') {
+                targetPos = Offset((screenSize.width - updated.width) / 2, 8);
+              } else if (posType == 'left') {
+                targetPos = Offset(8, (screenSize.height - updated.height) / 2);
+              } else if (posType == 'right') {
+                targetPos = Offset(
+                  screenSize.width - updated.width - 8,
+                  (screenSize.height - updated.height) / 2,
+                );
+              } else {
+                targetPos = Offset(
+                  (screenSize.width - updated.width) / 2,
+                  screenSize.height - updated.height - 10,
+                );
+              }
+              await windowManager.setPosition(targetPos);
+            } catch (_) {}
           }
         } catch (_) {}
 

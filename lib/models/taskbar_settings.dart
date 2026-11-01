@@ -20,17 +20,32 @@ enum DesktopTaskbarMode {
 
 /// Explicit lifecycle and verification states for taskbar replacement.
 enum TaskbarReplacementState {
+  /// Custom dock and taskbar replacement disabled.
+  disabled,
+
   /// Standard Windows taskbar is active and verified visible.
   windowsTaskbarActive,
 
   /// Preparing resources, templates, and baseline settings.
   preparing,
 
+  /// Verified native Windows taskbar HWND and initial bounds.
+  nativeTaskbarDetected,
+
+  /// Spawning or initializing custom dock / taskbar window process.
+  customTaskbarCreating,
+
+  /// Custom taskbar / dock window verified running, visible, and interactive.
+  customTaskbarReady,
+
   /// Launching/positioning the custom taskbar or dock.
   starting,
 
   /// WallSync custom taskbar or dock is verified active and interactive.
   wallSyncTaskbarActive,
+
+  /// Native Windows taskbar hide operation pending.
+  nativeTaskbarHidePending,
 
   /// Native Windows taskbar has been safely hidden and desktop work area updated.
   windowsTaskbarHidden,
@@ -54,14 +69,24 @@ enum TaskbarReplacementState {
 extension TaskbarReplacementStateX on TaskbarReplacementState {
   String get displayName {
     switch (this) {
+      case TaskbarReplacementState.disabled:
+        return 'Custom Taskbar Disabled';
       case TaskbarReplacementState.windowsTaskbarActive:
         return 'Windows Taskbar Active';
       case TaskbarReplacementState.preparing:
         return 'WallSync Taskbar Preparing';
+      case TaskbarReplacementState.nativeTaskbarDetected:
+        return 'Native Taskbar Detected';
+      case TaskbarReplacementState.customTaskbarCreating:
+        return 'Custom Taskbar Creating';
+      case TaskbarReplacementState.customTaskbarReady:
+        return 'Custom Taskbar Ready';
       case TaskbarReplacementState.starting:
         return 'WallSync Taskbar Starting';
       case TaskbarReplacementState.wallSyncTaskbarActive:
         return 'WallSync Taskbar Active';
+      case TaskbarReplacementState.nativeTaskbarHidePending:
+        return 'Native Hide Pending';
       case TaskbarReplacementState.windowsTaskbarHidden:
         return 'Windows Taskbar Hidden';
       case TaskbarReplacementState.restoring:
@@ -78,14 +103,19 @@ extension TaskbarReplacementStateX on TaskbarReplacementState {
   }
 
   bool get isHealthy =>
+      this == TaskbarReplacementState.disabled ||
       this == TaskbarReplacementState.windowsTaskbarActive ||
       this == TaskbarReplacementState.wallSyncTaskbarActive ||
       this == TaskbarReplacementState.windowsTaskbarHidden ||
-      this == TaskbarReplacementState.restoredSuccessfully;
+      this == TaskbarReplacementState.restoredSuccessfully ||
+      this == TaskbarReplacementState.customTaskbarReady;
 
   bool get isProcessing =>
       this == TaskbarReplacementState.preparing ||
       this == TaskbarReplacementState.starting ||
+      this == TaskbarReplacementState.nativeTaskbarDetected ||
+      this == TaskbarReplacementState.customTaskbarCreating ||
+      this == TaskbarReplacementState.nativeTaskbarHidePending ||
       this == TaskbarReplacementState.restoring;
 
   bool get isError =>

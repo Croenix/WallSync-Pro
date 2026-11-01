@@ -2106,13 +2106,7 @@ class _DashboardViewState extends State<DashboardView>
 
       // Compute distinct coordinates if not set, or if colliding with default/stale positions
       if (instSettings.posX == null || instSettings.posY == null) {
-        if (isTaskbar) {
-          final count = _activeRunningWidgetIds.where((id) => id.startsWith('taskbar_')).length;
-          instSettings = instSettings.copyWith(
-            posX: 380.0 + (count * 360.0),
-            posY: 960.0,
-          );
-        } else {
+        if (!isTaskbar) {
           final count = _activeRunningWidgetIds.where((id) => !id.startsWith('taskbar_')).length;
           final staggerX = 80.0 + ((count % 3) * 380.0);
           final staggerY = 80.0 + ((count ~/ 3) * 260.0);
@@ -2489,6 +2483,11 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _saveSettingsSafely(WidgetSettings settings) async {
     try {
       await _settingsService.saveSettings(settings);
+      if (WindowsTaskbarService.instance.isCustomTaskbarActive ||
+          _activeRunningWidgetIds.contains('taskbar_dock') ||
+          settings.widgetTemplate.startsWith('taskbar_')) {
+        unawaited(WindowsTaskbarService.instance.syncDockSettings(settings));
+      }
     } catch (error, stackTrace) {
       logError(
         'DashboardView',
@@ -17869,16 +17868,21 @@ class _DashboardViewState extends State<DashboardView>
         Color stateColor;
         IconData stateIcon;
         switch (state) {
+          case TaskbarReplacementState.disabled:
           case TaskbarReplacementState.windowsTaskbarActive:
             stateColor = const Color(0xFF38BDF8);
             stateIcon = Icons.window_rounded;
             break;
           case TaskbarReplacementState.preparing:
+          case TaskbarReplacementState.nativeTaskbarDetected:
+          case TaskbarReplacementState.customTaskbarCreating:
+          case TaskbarReplacementState.nativeTaskbarHidePending:
           case TaskbarReplacementState.starting:
           case TaskbarReplacementState.restoring:
             stateColor = const Color(0xFFF59E0B);
             stateIcon = Icons.hourglass_top_rounded;
             break;
+          case TaskbarReplacementState.customTaskbarReady:
           case TaskbarReplacementState.wallSyncTaskbarActive:
             stateColor = const Color(0xFF10B981);
             stateIcon = Icons.dock_rounded;
@@ -17997,35 +18001,50 @@ class _DashboardViewState extends State<DashboardView>
               const SizedBox(height: 20),
 
               // Master Switch: Enable WallSync Custom Taskbar
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF38BDF8),
-                value: isCustomActive,
-                onChanged: (enabled) async {
-                  if (enabled) {
-                    await taskbarService.enableCustomTaskbar(
-                      hideNativeTaskbar: hideNative,
-                    );
-                  } else {
-                    await taskbarService.restoreWindowsTaskbar();
-                  }
-                  setState(() {
-                    _settings = _settingsService.settings;
-                  });
-                },
-                title: const Text(
-                  'Enable WallSync Custom Taskbar',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeColor: const Color(0xFF38BDF8),
+                  value: isCustomActive,
+                  onChanged: (enabled) async {
+                    if (enabled) {
+                      final success = await taskbarService.enableCustomTaskbar(
+                        hideNativeTaskbar: hideNative,
+                      );
+                      if (success) {
+                        if (!_activeRunningWidgetIds.contains('taskbar_dock')) {
+                          _activeRunningWidgetIds.add('taskbar_dock');
+                        }
+                        _isOverlayRunning = true;
+                        _updateTrayMenu();
+                      }
+                    } else {
+                      await taskbarService.restoreWindowsTaskbar();
+                      _activeRunningWidgetIds.remove('taskbar_dock');
+                      if (_activeRunningWidgetIds.isEmpty) {
+                        _isOverlayRunning = false;
+                      }
+                      _updateTrayMenu();
+                    }
+                    setState(() {
+                      _settings = _settingsService.settings;
+                    });
+                  },
+                  title: const Text(
+                    'Enable WallSync Custom Taskbar',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                subtitle: Text(
-                  'Transactionally positions and activates WallSync dock on desktop as a taskbar replacement.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withValues(alpha: 0.65),
+                  subtitle: Text(
+                    'Transactionally positions and activates WallSync dock on desktop as a taskbar replacement.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.65),
+                    ),
                   ),
                 ),
               ),
@@ -18033,37 +18052,41 @@ class _DashboardViewState extends State<DashboardView>
               const SizedBox(height: 8),
 
               // Secondary Switch: Hide Native Windows Taskbar
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFFA855F7),
-                value: hideNative,
-                onChanged: (hide) async {
-                  final updatedTaskbar = _settings.taskbarSettings.copyWith(
-                    nativeTaskbarHideEnabled: hide,
-                  );
-                  final updatedSettings = _settings.copyWith(
-                    taskbarSettings: updatedTaskbar,
-                  );
-                  await _settingsService.save(updatedSettings);
-                  setState(() => _settings = updatedSettings);
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeColor: const Color(0xFFA855F7),
+                  value: hideNative,
+                  onChanged: (hide) async {
+                    final updatedTaskbar = _settings.taskbarSettings.copyWith(
+                      nativeTaskbarHideEnabled: hide,
+                    );
+                    final updatedSettings = _settings.copyWith(
+                      taskbarSettings: updatedTaskbar,
+                    );
+                    await _settingsService.save(updatedSettings);
+                    await taskbarService.syncDockSettings(updatedSettings);
+                    setState(() => _settings = updatedSettings);
 
-                  if (isCustomActive) {
-                    await taskbarService.setWindowsTaskbarVisibility(!hide);
-                  }
-                },
-                title: const Text(
-                  'Hide Native Windows Taskbar',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    if (isCustomActive) {
+                      await taskbarService.setWindowsTaskbarVisibility(!hide);
+                    }
+                  },
+                  title: const Text(
+                    'Hide Native Windows Taskbar',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                subtitle: Text(
-                  'Safely hides Shell_TrayWnd across primary & secondary displays and refreshes work area.',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: Colors.white.withValues(alpha: 0.55),
+                  subtitle: Text(
+                    'Safely hides Shell_TrayWnd across primary & secondary displays and refreshes work area.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.white.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
               ),

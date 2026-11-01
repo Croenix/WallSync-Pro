@@ -79,6 +79,10 @@ void main() {
   group('TaskbarReplacementState Display and Flags Tests', () {
     test('State display names and predicates are accurate', () {
       expect(
+        TaskbarReplacementState.disabled.displayName,
+        'Custom Taskbar Disabled',
+      );
+      expect(
         TaskbarReplacementState.windowsTaskbarActive.displayName,
         'Windows Taskbar Active',
       );
@@ -87,12 +91,28 @@ void main() {
         'WallSync Taskbar Preparing',
       );
       expect(
+        TaskbarReplacementState.nativeTaskbarDetected.displayName,
+        'Native Taskbar Detected',
+      );
+      expect(
+        TaskbarReplacementState.customTaskbarCreating.displayName,
+        'Custom Taskbar Creating',
+      );
+      expect(
+        TaskbarReplacementState.customTaskbarReady.displayName,
+        'Custom Taskbar Ready',
+      );
+      expect(
         TaskbarReplacementState.starting.displayName,
         'WallSync Taskbar Starting',
       );
       expect(
         TaskbarReplacementState.wallSyncTaskbarActive.displayName,
         'WallSync Taskbar Active',
+      );
+      expect(
+        TaskbarReplacementState.nativeTaskbarHidePending.displayName,
+        'Native Hide Pending',
       );
       expect(
         TaskbarReplacementState.windowsTaskbarHidden.displayName,
@@ -123,9 +143,13 @@ void main() {
       expect(TaskbarReplacementState.wallSyncTaskbarActive.isHealthy, true);
       expect(TaskbarReplacementState.windowsTaskbarHidden.isHealthy, true);
       expect(TaskbarReplacementState.restoredSuccessfully.isHealthy, true);
+      expect(TaskbarReplacementState.customTaskbarReady.isHealthy, true);
 
       expect(TaskbarReplacementState.preparing.isProcessing, true);
       expect(TaskbarReplacementState.starting.isProcessing, true);
+      expect(TaskbarReplacementState.nativeTaskbarDetected.isProcessing, true);
+      expect(TaskbarReplacementState.customTaskbarCreating.isProcessing, true);
+      expect(TaskbarReplacementState.nativeTaskbarHidePending.isProcessing, true);
       expect(TaskbarReplacementState.restoring.isProcessing, true);
 
       expect(TaskbarReplacementState.failedToActivate.isError, true);
@@ -265,6 +289,54 @@ void main() {
       expect(mockTaskbarVisible, true);
       expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
       expect(service.isCustomTaskbarActive, false);
+    });
+
+    test('Custom taskbar dock spawner and closer lifecycle verification', () async {
+      final service = WindowsTaskbarService();
+      bool spawnerCalled = false;
+      bool closerCalled = false;
+
+      service.setDependencies(
+        taskbarSpawner: () async {
+          spawnerCalled = true;
+          return true;
+        },
+        taskbarCloser: () async {
+          closerCalled = true;
+        },
+      );
+
+      await service.init();
+      final activated = await service.enableCustomTaskbar(hideNativeTaskbar: true);
+      expect(activated, true);
+      expect(spawnerCalled, true);
+      expect(service.isCustomTaskbarActive, true);
+
+      final restored = await service.restoreWindowsTaskbar();
+      expect(restored, true);
+      expect(closerCalled, true);
+      expect(service.isCustomTaskbarActive, false);
+    });
+
+    test('syncDockSettings updates dock instance settings file', () async {
+      final service = WindowsTaskbarService();
+      await service.init();
+
+      final currentSettings = SettingsService().settings.copyWith(
+        taskbarAccentColor: 0xFFFF5722,
+        taskbarBgColor: 0xEE101015,
+        taskbarShowCpu: false,
+        taskbarShowWeather: true,
+      );
+
+      await service.syncDockSettings(currentSettings);
+      final dockSettings = await SettingsService(instanceId: 'taskbar_dock').loadSettings();
+
+      expect(dockSettings.taskbarAccentColor, 0xFFFF5722);
+      expect(dockSettings.taskbarBgColor, 0xEE101015);
+      expect(dockSettings.taskbarShowCpu, false);
+      expect(dockSettings.taskbarShowWeather, true);
+      expect(dockSettings.widgetTemplate, 'taskbar_dock');
     });
   });
 }

@@ -550,7 +550,8 @@ void main(List<String> args) async {
     );
 
     // Configure the transparent, frameless, always-on-top overlay window
-    final isTaskbar = cleanSettings.widgetTemplate.startsWith('taskbar_');
+    final isTaskbar = cleanSettings.widgetTemplate.startsWith('taskbar_') ||
+        overlayInstanceId.startsWith('taskbar');
     final WindowOptions windowOptions = WindowOptions(
       size: Size(cleanSettings.width, cleanSettings.height),
       minimumSize: isTaskbar ? const Size(120, 36) : const Size(180, 60),
@@ -646,7 +647,48 @@ void main(List<String> args) async {
           }
         }
 
-        if (requestedPosition != null) {
+        if (isTaskbar) {
+          try {
+            final primaryDisplay = await ScreenRetriever.instance
+                .getPrimaryDisplay()
+                .timeout(const Duration(milliseconds: 300));
+            final screenSize = primaryDisplay.size;
+            final posType = cleanSettings.taskbarSettings.taskbarPosition;
+            Offset taskbarPos;
+            if (posType == 'top') {
+              taskbarPos = Offset(
+                (screenSize.width - cleanSettings.width) / 2,
+                8,
+              );
+            } else if (posType == 'left') {
+              taskbarPos = Offset(
+                8,
+                (screenSize.height - cleanSettings.height) / 2,
+              );
+            } else if (posType == 'right') {
+              taskbarPos = Offset(
+                screenSize.width - cleanSettings.width - 8,
+                (screenSize.height - cleanSettings.height) / 2,
+              );
+            } else {
+              // 'bottom' default
+              taskbarPos = Offset(
+                (screenSize.width - cleanSettings.width) / 2,
+                screenSize.height - cleanSettings.height - 10,
+              );
+            }
+            await timeWindowOperation(
+              'setPosition',
+              () => windowManager.setPosition(taskbarPos),
+            );
+            logInfo(
+              'OverlayStartup',
+              'Taskbar dock positioned at $posType: $taskbarPos',
+            );
+          } catch (_) {
+            await timeWindowOperation('center', windowManager.center);
+          }
+        } else if (requestedPosition != null) {
           final position = requestedPosition;
           await timeWindowOperation(
             'setPosition',
@@ -656,27 +698,6 @@ void main(List<String> args) async {
             'Main',
             'Window position set to (${position.dx}, ${position.dy})',
           );
-        } else if (isTaskbar) {
-          try {
-            final primaryDisplay = await ScreenRetriever.instance
-                .getPrimaryDisplay()
-                .timeout(const Duration(milliseconds: 200));
-            final screenSize = primaryDisplay.size;
-            final taskbarPos = Offset(
-              (screenSize.width - cleanSettings.width) / 2,
-              screenSize.height - cleanSettings.height - 12,
-            );
-            await timeWindowOperation(
-              'setPosition',
-              () => windowManager.setPosition(taskbarPos),
-            );
-            logInfo(
-              'OverlayStartup',
-              'Taskbar dock positioned at bottom center: $taskbarPos',
-            );
-          } catch (_) {
-            await timeWindowOperation('center', windowManager.center);
-          }
         } else {
           await timeWindowOperation('center', windowManager.center);
           logInfo(
