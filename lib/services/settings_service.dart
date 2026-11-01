@@ -832,6 +832,8 @@ class WidgetSettings {
   bool taskbarShowTime;
   bool taskbarShowWeather;
   bool taskbarShowMedia;
+  String activeDockTemplateId;
+  String? activeDockTemplateJson;
 
   double? separatorWidth;
   double? separatorHeight;
@@ -962,6 +964,8 @@ class WidgetSettings {
     this.taskbarShowTime = true,
     this.taskbarShowWeather = true,
     this.taskbarShowMedia = true,
+    this.activeDockTemplateId = 'wallsync.preset.centered_dock',
+    this.activeDockTemplateJson,
     List<int>? customGradientColors,
     List<RecentWallpaperItem>? recentWallpapers,
     List<CustomWidgetElement>? customElements,
@@ -1486,6 +1490,8 @@ class WidgetSettings {
       taskbarShowTime: json['taskbarShowTime'] ?? true,
       taskbarShowWeather: json['taskbarShowWeather'] ?? true,
       taskbarShowMedia: json['taskbarShowMedia'] ?? true,
+      activeDockTemplateId: json['activeDockTemplateId'] ?? 'wallsync.preset.centered_dock',
+      activeDockTemplateJson: json['activeDockTemplateJson'] as String?,
     );
   }
 
@@ -1581,6 +1587,8 @@ class WidgetSettings {
       'taskbarShowTime': taskbarShowTime,
       'taskbarShowWeather': taskbarShowWeather,
       'taskbarShowMedia': taskbarShowMedia,
+      'activeDockTemplateId': activeDockTemplateId,
+      'activeDockTemplateJson': activeDockTemplateJson,
       'customElements': customElements.map((e) => e.toJson()).toList(),
       'savedCustomWidgets': savedCustomWidgets.map((w) => w.toJson()).toList(),
       'recentWallpapers': recentWallpapers.map((r) => r.toJson()).toList(),
@@ -1679,6 +1687,8 @@ class WidgetSettings {
     bool? taskbarShowTime,
     bool? taskbarShowWeather,
     bool? taskbarShowMedia,
+    String? activeDockTemplateId,
+    String? activeDockTemplateJson,
     List<RecentWallpaperItem>? recentWallpapers,
     List<CustomWidgetElement>? customElements,
     List<SavedCustomWidget>? savedCustomWidgets,
@@ -1790,6 +1800,8 @@ class WidgetSettings {
       taskbarShowTime: taskbarShowTime ?? this.taskbarShowTime,
       taskbarShowWeather: taskbarShowWeather ?? this.taskbarShowWeather,
       taskbarShowMedia: taskbarShowMedia ?? this.taskbarShowMedia,
+      activeDockTemplateId: activeDockTemplateId ?? this.activeDockTemplateId,
+      activeDockTemplateJson: activeDockTemplateJson ?? this.activeDockTemplateJson,
       recentWallpapers: recentWallpapers ?? List.from(this.recentWallpapers),
       customElements:
           customElements ??
@@ -1999,6 +2011,8 @@ class SettingsService {
   }
 
   WidgetSettings _cachedSettings = WidgetSettings();
+  WidgetSettings get settings => _cachedSettings;
+  WidgetSettings get cachedSettings => _cachedSettings;
   String? _lastPersistedJsonStr;
   bool _settingsLoadSucceeded = false;
 
