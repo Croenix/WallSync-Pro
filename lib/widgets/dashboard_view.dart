@@ -44,6 +44,10 @@ import 'desktop_widget.dart';
 import 'live_video_preview.dart';
 import 'custom_widget_renderer.dart';
 import 'custom_widget_builder.dart';
+import '../models/desktop_studio_template.dart';
+import '../services/desktop_studio_service.dart';
+import 'desktop_studio_view.dart';
+import 'template_gallery_view.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DashboardView — the main customizer window
@@ -3299,6 +3303,26 @@ class _DashboardViewState extends State<DashboardView>
                               key: const ValueKey('taskbar'),
                             ),
                           )
+                        : _currentMainTab == 'desktop_studio'
+                        ? _profileDashboardSection(
+                            'desktopStudio.build',
+                            () => DesktopStudioView(
+                              key: const ValueKey('desktop_studio'),
+                              onOpenGallery: () => setState(() => _currentMainTab = 'templates'),
+                            ),
+                          )
+                        : _currentMainTab == 'templates'
+                        ? _profileDashboardSection(
+                            'templates.build',
+                            () => TemplateGalleryView(
+                              key: const ValueKey('templates'),
+                              onEditInStudio: (template) => setState(() => _currentMainTab = 'desktop_studio'),
+                              onCreateNew: () {
+                                DesktopStudioService().selectTemplate(DesktopStudioTemplate.customLayout());
+                                setState(() => _currentMainTab = 'desktop_studio');
+                              },
+                            ),
+                          )
                         : _currentMainTab == 'device_optimization'
                         ? _profileDashboardSection(
                             'deviceOptimization.build',
@@ -3537,6 +3561,20 @@ class _DashboardViewState extends State<DashboardView>
                             'Taskbar',
                             'taskbar',
                             Icons.dock_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Studio',
+                            'desktop_studio',
+                            Icons.tune_rounded,
+                            compact: compact,
+                          ),
+                          const SizedBox(width: 3),
+                          _buildMainTabButton(
+                            'Templates',
+                            'templates',
+                            Icons.grid_view_rounded,
                             compact: compact,
                           ),
                           const SizedBox(width: 3),

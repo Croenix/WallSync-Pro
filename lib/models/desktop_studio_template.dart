@@ -1414,3 +1414,4 @@ class DesktopStudioTemplate {
         customLayout(),
       ];
 }
+

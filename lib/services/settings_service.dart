@@ -2010,7 +2010,12 @@ class SettingsService {
     return File('${directory.path}/$name');
   }
 
-  WidgetSettings _cachedSettings = WidgetSettings();
+  static final Map<String, WidgetSettings> _globalCachedSettings = {};
+  WidgetSettings get _cachedSettings =>
+      _globalCachedSettings[instanceId ?? '__global__'] ??= WidgetSettings();
+  set _cachedSettings(WidgetSettings val) {
+    _globalCachedSettings[instanceId ?? '__global__'] = val;
+  }
   WidgetSettings get settings => _cachedSettings;
   WidgetSettings get cachedSettings => _cachedSettings;
   String? _lastPersistedJsonStr;

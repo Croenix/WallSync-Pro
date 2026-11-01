@@ -22,6 +22,7 @@ import '../services/steam_monitor_service.dart';
 import '../services/device_optimization_service.dart';
 import '../services/live_wallpaper_manager.dart';
 import 'custom_widget_renderer.dart';
+import '../models/desktop_studio_template.dart';
 
 Future<Uint8List> _decodeMediaThumbnailAsync(String encoded, String owner) async {
   final stopwatch = Stopwatch()..start();
@@ -3111,7 +3112,333 @@ class _DesktopWidgetState extends State<DesktopWidget>
     );
   }
 
+  Widget _buildStudioTemplateDockLayout(DesktopStudioTemplate template) {
+    final appearance = template.appearance;
+    final layout = template.layout;
+
+    return Container(
+      height: layout.thickness,
+      padding: EdgeInsets.symmetric(
+        horizontal: layout.paddingHorizontal,
+        vertical: layout.paddingVertical,
+      ),
+      decoration: BoxDecoration(
+        color: Color(appearance.backgroundColor),
+        borderRadius: BorderRadius.circular(appearance.borderRadius),
+        border: Border.all(
+          color: Color(appearance.borderColor),
+          width: appearance.borderWidth,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(appearance.shadowColor),
+            blurRadius: appearance.shadowBlur,
+            spreadRadius: appearance.shadowSpread,
+          ),
+        ],
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (int i = 0; i < template.elements.length; i++) ...[
+              _buildStudioElement(template.elements[i], appearance),
+              if (i < template.elements.length - 1 &&
+                  template.elements[i].type != DockElementType.spacer)
+                SizedBox(width: layout.itemSpacing),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudioElement(DockItemElement elem, DockAppearanceConfig appearance) {
+    final iconSize = appearance.iconSize;
+    final activeColor = Color(appearance.activeIndicatorColor);
+
+    switch (elem.type) {
+      case DockElementType.appLauncher:
+        return Tooltip(
+          message: 'WallSync Dashboard — Click to open',
+          child: InkWell(
+            onTap: () => _openDashboard('desktop_studio'),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    activeColor.withValues(alpha: 0.3),
+                    const Color(0xFF818CF8).withValues(alpha: 0.2),
+                  ],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: activeColor.withValues(alpha: 0.5),
+                  width: 1.0,
+                ),
+              ),
+              child: Icon(
+                Icons.widgets_rounded,
+                size: iconSize,
+                color: activeColor,
+              ),
+            ),
+          ),
+        );
+
+      case DockElementType.pinnedApp:
+      case DockElementType.customAction:
+        return Tooltip(
+          message: elem.label.isNotEmpty ? elem.label : 'Application',
+          child: InkWell(
+            onTap: () => _openDashboard('desktop_studio'),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Icon(
+                // ignore: non_const_argument_for_const_parameter
+                IconData(elem.iconCodePoint, fontFamily: 'MaterialIcons'),
+                size: iconSize,
+                color: elem.customColor != null
+                    ? Color(elem.customColor!)
+                    : Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+          ),
+        );
+
+      case DockElementType.runningTasks:
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.code_rounded, size: iconSize, color: Colors.white),
+            const SizedBox(width: 8),
+            Icon(Icons.terminal_rounded, size: iconSize, color: Colors.white70),
+            const SizedBox(width: 8),
+            Icon(Icons.folder_open_rounded, size: iconSize, color: Colors.white70),
+          ],
+        );
+
+      case DockElementType.clock:
+        return Tooltip(
+          message: 'WallSync Clock',
+          child: InkWell(
+            onTap: () => _openDashboard('widgets'),
+            child: Text(
+              '$_hours:$_minutes',
+              style: TextStyle(
+                fontSize: iconSize * 0.65,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 0.6,
+                fontFamily: 'Segoe UI',
+              ),
+            ),
+          ),
+        );
+
+      case DockElementType.date:
+        final now = DateTime.now();
+        final monthNames = [
+          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        ];
+        return Text(
+          '${monthNames[now.month - 1]} ${now.day}',
+          style: TextStyle(
+            fontSize: iconSize * 0.55,
+            fontWeight: FontWeight.w600,
+            color: Colors.white70,
+            fontFamily: 'Segoe UI',
+          ),
+        );
+
+      case DockElementType.weatherSlot:
+        final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
+        return Tooltip(
+          message: 'Local Weather',
+          child: InkWell(
+            onTap: () => _openDashboard('widgets'),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.wb_sunny_rounded, size: iconSize * 0.8, color: const Color(0xFFFBBF24)),
+                const SizedBox(width: 4),
+                Text(
+                  tempStr,
+                  style: TextStyle(
+                    fontSize: iconSize * 0.55,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    fontFamily: 'Segoe UI',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+      case DockElementType.mediaControls:
+        final isPlaying = _mediaInfo.isPlaying;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: () => MediaSessionService().previous(),
+              child: Icon(Icons.skip_previous_rounded, size: iconSize * 0.75, color: Colors.white70),
+            ),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: () {
+                if (isPlaying) {
+                  MediaSessionService().pause();
+                } else {
+                  MediaSessionService().play();
+                }
+              },
+              child: Icon(
+                isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                size: iconSize * 0.95,
+                color: activeColor,
+              ),
+            ),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: () => MediaSessionService().next(),
+              child: Icon(Icons.skip_next_rounded, size: iconSize * 0.75, color: Colors.white70),
+            ),
+          ],
+        );
+
+      case DockElementType.volumeSlider:
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.volume_up_rounded, size: iconSize * 0.8, color: Colors.white70),
+            const SizedBox(width: 4),
+            Container(
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: 0.7,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: activeColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
+      case DockElementType.networkStatus:
+        return Icon(Icons.wifi_rounded, size: iconSize * 0.8, color: Colors.white70);
+
+      case DockElementType.batteryStatus:
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.battery_charging_full_rounded, size: iconSize * 0.8, color: const Color(0xFF10B981)),
+            const SizedBox(width: 3),
+            Text(
+              '95%',
+              style: TextStyle(
+                fontSize: iconSize * 0.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.white70,
+                fontFamily: 'Segoe UI',
+              ),
+            ),
+          ],
+        );
+
+      case DockElementType.cpuSparkline:
+        final cpuCol = _cpuUsage > 85
+            ? const Color(0xFFF43F5E)
+            : (_cpuUsage > 60 ? const Color(0xFFF59E0B) : const Color(0xFF38BDF8));
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.memory_rounded, size: iconSize * 0.75, color: cpuCol),
+            const SizedBox(width: 4),
+            Text(
+              'CPU ${_cpuUsage.toStringAsFixed(0)}%',
+              style: TextStyle(
+                fontSize: iconSize * 0.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                fontFamily: 'Segoe UI',
+              ),
+            ),
+          ],
+        );
+
+      case DockElementType.ramSparkline:
+        final ramCol = _ramUsage > 85
+            ? const Color(0xFFF43F5E)
+            : (_ramUsage > 70 ? const Color(0xFFF59E0B) : const Color(0xFFA855F7));
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.storage_rounded, size: iconSize * 0.75, color: ramCol),
+            const SizedBox(width: 4),
+            Text(
+              'RAM ${_ramUsage.toStringAsFixed(0)}%',
+              style: TextStyle(
+                fontSize: iconSize * 0.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                fontFamily: 'Segoe UI',
+              ),
+            ),
+          ],
+        );
+
+      case DockElementType.separator:
+        return Container(
+          width: 1.2,
+          height: 18,
+          color: Colors.white.withValues(alpha: 0.18),
+        );
+
+      case DockElementType.spacer:
+        return const SizedBox(width: 18);
+
+      case DockElementType.quickSettings:
+        return Tooltip(
+          message: 'Device Optimization',
+          child: InkWell(
+            onTap: () => _openDashboard('device_optimization'),
+            child: Icon(Icons.tune_rounded, size: iconSize * 0.8, color: Colors.white70),
+          ),
+        );
+
+      default:
+        return Icon(Icons.widgets_rounded, size: iconSize, color: Colors.white70);
+    }
+  }
+
   Widget _buildTaskbarDockLayout() {
+    if (_settings.activeDockTemplateJson != null &&
+        _settings.activeDockTemplateJson!.isNotEmpty) {
+      try {
+        final decoded =
+            jsonDecode(_settings.activeDockTemplateJson!) as Map<String, dynamic>;
+        final template = DesktopStudioTemplate.fromJson(decoded);
+        return _buildStudioTemplateDockLayout(template);
+      } catch (_) {}
+    }
     final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
     final locStr = _settings.weatherLocation.isNotEmpty ? _settings.weatherLocation : 'Local';
     final hasMedia = _mediaInfo.title.isNotEmpty || _mediaInfo.isPlaying;
