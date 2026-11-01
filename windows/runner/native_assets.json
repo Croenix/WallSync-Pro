@@ -1,0 +1,11 @@
+{
+  "format-version": [1, 0, 0],
+  "native-assets": {
+    "windows_x64": {
+      "package:cnativeapi/cnativeapi.dart": [
+        "relative",
+        "cnativeapi.dll"
+      ]
+    }
+  }
+}

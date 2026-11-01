@@ -149,7 +149,8 @@ class _DashboardViewState extends State<DashboardView>
   bool _showVideoSettingsExpanded = false;
   bool _isChangingWallpaperFit = false;
   bool _isClearingWallpaperCache = false;
-  final ValueNotifier<String?> _hoveredVideoCardNotifier = ValueNotifier<String?>(null);
+  final ValueNotifier<String?> _hoveredVideoCardNotifier =
+      ValueNotifier<String?>(null);
   Timer? _hoverDebounceTimer;
   String _currentMainTab =
       'wallpapers'; // 'wallpapers' | 'widgets' | 'bug_report'
@@ -726,22 +727,19 @@ class _DashboardViewState extends State<DashboardView>
             isConnectivityIcon ? 'Icon size' : 'Font size',
             isConnectivityIcon
                 ? (element.width > 0
-                    ? element.width
-                    : (element.fontSize > 0 ? element.fontSize : 24.0))
+                      ? element.width
+                      : (element.fontSize > 0 ? element.fontSize : 24.0))
                 : element.fontSize,
             8,
             120,
-            (value) => _updateCustomWidgetElement(
-              element.id,
-              (item) {
-                item.fontSize = value;
-                if (isConnectivityIcon) {
-                  item.width = value;
-                  item.height = value;
-                }
-                return item;
-              },
-            ),
+            (value) => _updateCustomWidgetElement(element.id, (item) {
+              item.fontSize = value;
+              if (isConnectivityIcon) {
+                item.width = value;
+                item.height = value;
+              }
+              return item;
+            }),
             '${(isConnectivityIcon ? (element.width > 0 ? element.width : (element.fontSize > 0 ? element.fontSize : 24.0)) : element.fontSize).round()} ${isConnectivityIcon ? 'px' : 'pt'}',
           ),
           sliderControl(
@@ -834,17 +832,22 @@ class _DashboardViewState extends State<DashboardView>
   int _lastUserTime = 0;
 
   void _updateSystemStats() {
-    SystemOptimizerService.instance.getPerformanceMetrics().then((metrics) {
-      if (!mounted) return;
-      if (metrics != null) {
-        if (metrics.cpuPercent != null) _cpuUsage = metrics.cpuPercent!;
-        if (metrics.ramLoadPercent != null) _ramUsage = metrics.ramLoadPercent!;
-        return;
-      }
-      _updateSystemStatsFallback();
-    }).catchError((_) {
-      _updateSystemStatsFallback();
-    });
+    SystemOptimizerService.instance
+        .getPerformanceMetrics()
+        .then((metrics) {
+          if (!mounted) return;
+          if (metrics != null) {
+            if (metrics.cpuPercent != null) _cpuUsage = metrics.cpuPercent!;
+            if (metrics.ramLoadPercent != null) {
+              _ramUsage = metrics.ramLoadPercent!;
+            }
+            return;
+          }
+          _updateSystemStatsFallback();
+        })
+        .catchError((_) {
+          _updateSystemStatsFallback();
+        });
   }
 
   void _updateSystemStatsFallback() {
@@ -857,7 +860,8 @@ class _DashboardViewState extends State<DashboardView>
         final int idle =
             (idleTime.ref.dwHighDateTime << 32) | idleTime.ref.dwLowDateTime;
         final int kernel =
-            (kernelTime.ref.dwHighDateTime << 32) | kernelTime.ref.dwLowDateTime;
+            (kernelTime.ref.dwHighDateTime << 32) |
+            kernelTime.ref.dwLowDateTime;
         final int user =
             (userTime.ref.dwHighDateTime << 32) | userTime.ref.dwLowDateTime;
 
@@ -927,7 +931,8 @@ class _DashboardViewState extends State<DashboardView>
   final Map<String, OverlayRecoveryPolicy> _widgetRecoveryPolicies = {};
   final Map<String, Timer?> _widgetRecoveryTimers = {};
   List<DiskSnapshot> _cachedDisks = [];
-  String _taskbarColorMode = 'bg'; // 'bg' | 'border' | 'accent' | 'text' | 'icon'
+  String _taskbarColorMode =
+      'bg'; // 'bg' | 'border' | 'accent' | 'text' | 'icon'
 
   // Background Download Queue
   final List<FirebaseWallpaper> _downloadQueue = [];
@@ -1113,16 +1118,18 @@ class _DashboardViewState extends State<DashboardView>
     _mediaInfo = MediaSessionService().current;
     if (_mediaInfo.thumbnail.isNotEmpty) {
       final initialThumb = _mediaInfo.thumbnail;
-      compute(base64Decode, initialThumb).then((bytes) {
-        if (mounted && _mediaInfo.thumbnail == initialThumb) {
-          setState(() => _thumbnailBytes = bytes);
-        }
-      }).catchError((error, stackTrace) {
-        logWarning(
-          'DashboardView',
-          'Initial media artwork base64 decoding failed: $error\n$stackTrace',
-        );
-      });
+      compute(base64Decode, initialThumb)
+          .then((bytes) {
+            if (mounted && _mediaInfo.thumbnail == initialThumb) {
+              setState(() => _thumbnailBytes = bytes);
+            }
+          })
+          .catchError((error, stackTrace) {
+            logWarning(
+              'DashboardView',
+              'Initial media artwork base64 decoding failed: $error\n$stackTrace',
+            );
+          });
     }
     _updatePlaybackPosition(_mediaInfo);
     _mediaSubscription = MediaSessionService().mediaStream.listen((info) {
@@ -1153,19 +1160,21 @@ class _DashboardViewState extends State<DashboardView>
         // Cache thumbnail bytes on change to prevent reloading flickering off-thread
         if (thumbChanged) {
           final targetThumb = info.thumbnail;
-          compute(base64Decode, targetThumb).then((bytes) {
-            if (mounted && _mediaInfo.thumbnail == targetThumb) {
-              setState(() => _thumbnailBytes = bytes);
-            }
-          }).catchError((error, stackTrace) {
-            if (mounted) {
-              setState(() => _thumbnailBytes = null);
-              logWarning(
-                'DashboardView',
-                'Media artwork base64 decoding failed: $error\n$stackTrace',
-              );
-            }
-          });
+          compute(base64Decode, targetThumb)
+              .then((bytes) {
+                if (mounted && _mediaInfo.thumbnail == targetThumb) {
+                  setState(() => _thumbnailBytes = bytes);
+                }
+              })
+              .catchError((error, stackTrace) {
+                if (mounted) {
+                  setState(() => _thumbnailBytes = null);
+                  logWarning(
+                    'DashboardView',
+                    'Media artwork base64 decoding failed: $error\n$stackTrace',
+                  );
+                }
+              });
         } else if (info.thumbnail.isEmpty) {
           _thumbnailBytes = null;
         }
@@ -1173,7 +1182,8 @@ class _DashboardViewState extends State<DashboardView>
         _mediaInfo = info;
         _updatePlaybackPosition(info);
 
-        final mediaPreviewVisible = _currentMainTab == 'widgets' &&
+        final mediaPreviewVisible =
+            _currentMainTab == 'widgets' &&
             ((_settings.widgetTemplate == 'sleep_weather' &&
                     _settings.showMediaControl &&
                     _tabCtrl.index == 0) ||
@@ -1478,7 +1488,9 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _loadWallpapers({bool forceRefresh = false}) async {
     final generation = ++_wallpaperLoadGeneration;
     final totalStopwatch = Stopwatch()..start();
-    if (mounted && _wallpapers.isEmpty) setState(() => _loadingWallpapers = true);
+    if (mounted && _wallpapers.isEmpty) {
+      setState(() => _loadingWallpapers = true);
+    }
     try {
       final catalogStopwatch = Stopwatch()..start();
       final rawList = await _firebaseService.fetchWallpapers(
@@ -1636,14 +1648,42 @@ class _DashboardViewState extends State<DashboardView>
 
   // ── System Tray & Window Lifecycle ────────────────────────────────────────
 
+  static bool _isTrayCompatibilityFailure(Object error, [String? explicitText]) {
+    final text = explicitText ?? error.toString();
+    return error is MissingPluginException ||
+        error is ArgumentError ||
+        text.contains("Couldn't resolve native function") ||
+        text.contains('native_image_from_file') ||
+        text.contains('No available native assets') ||
+        text.contains('No asset with id') ||
+        text.contains('package:cnativeapi') ||
+        text.contains('cnativeapi');
+  }
+
   Future<void> _initSystemTray() async {
     if (_trayState == SystemTrayState.initializing ||
-        _trayState == SystemTrayState.ready ||
-        _trayState == SystemTrayState.unavailable) {
+        _trayState == SystemTrayState.ready) {
       return;
     }
+
+    final canRetry =
+        _trayState == SystemTrayState.unavailable ||
+        _trayState == SystemTrayState.failed;
+    if (canRetry) {
+      _trayNativeError = null;
+      logInfo(
+        'DashboardView',
+        'Retrying system tray initialization after compatibility fallback.',
+      );
+    }
+
     _trayState = SystemTrayState.initializing;
-    DiagnosticsService.instance.recordTrayEvent('init_started', stage: 'initializing');
+    DiagnosticsService.instance.recordTrayEvent(
+      'init_started',
+      stage: 'initializing',
+    );
+
+    String? lastCompatibilityError;
 
     try {
       if (Platform.isWindows) {
@@ -1657,49 +1697,73 @@ class _DashboardViewState extends State<DashboardView>
         bool trayReady = false;
         for (final path in candidatePaths) {
           try {
-            if (path.startsWith('assets/') || await File(path).exists()) {
-              DiagnosticsService.instance.recordTrayEvent(
-                'symbol_lookup',
-                stage: 'probing_icon',
-                details: {'path': path},
-              );
-              await trayManager.setIcon(path);
-              await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
-              _trayState = SystemTrayState.ready;
-              _trayNativeError = null;
-              DiagnosticsService.instance.recordTrayEvent(
-                'icon_created',
-                stage: 'ready',
-                details: {'path': path},
-              );
-              await _updateTrayMenu();
-              logInfo(
-                'OverlayStartup',
-                'System tray icon and menu are ready from "$path" (state=ready).',
-              );
-              trayReady = true;
-              break;
-            }
+            final fileExists =
+                path.startsWith('assets/') || await File(path).exists();
+            if (!fileExists) continue;
+
+            DiagnosticsService.instance.recordTrayEvent(
+              'symbol_lookup',
+              stage: 'probing_icon',
+              details: {'path': path},
+            );
+            await trayManager.setIcon(path);
+            await trayManager.setToolTip(
+              'WallSync Pro - Live Wallpapers & Widgets',
+            );
+            _trayState = SystemTrayState.ready;
+            _trayNativeError = null;
+            DiagnosticsService.instance.recordTrayEvent(
+              'icon_created',
+              stage: 'ready',
+              details: {'path': path},
+            );
+            await _updateTrayMenu();
+            logInfo(
+              'OverlayStartup',
+              'System tray icon and menu are ready from "$path" (state=ready).',
+            );
+            trayReady = true;
+            break;
+          } on MissingPluginException catch (e) {
+            final errText = e.toString();
+            lastCompatibilityError = errText;
+            DiagnosticsService.instance.recordTrayEvent(
+              'native_resolution_failed',
+              stage: 'unavailable',
+              error: errText,
+            );
+            logWarning(
+              'DashboardView',
+              'Tray manager plugin is unavailable in this runtime; trying the next tray icon candidate: $errText',
+            );
+          } on ArgumentError catch (e) {
+            final errText = e.toString();
+            lastCompatibilityError = errText;
+            DiagnosticsService.instance.recordTrayEvent(
+              'native_resolution_failed',
+              stage: 'unavailable',
+              error: errText,
+            );
+            logWarning(
+              'DashboardView',
+              'Tray icon asset resolution is unavailable; trying the next candidate: $errText',
+            );
           } catch (innerError) {
             final errText = innerError.toString();
-            if (innerError is ArgumentError ||
-                errText.contains("Couldn't resolve") ||
-                errText.contains('native_') ||
-                errText.contains('No asset with id')) {
-              _trayState = SystemTrayState.unavailable;
-              _trayNativeError = errText;
+            if (_isTrayCompatibilityFailure(innerError, errText)) {
+              lastCompatibilityError = errText;
               DiagnosticsService.instance.recordTrayEvent(
                 'native_resolution_failed',
                 stage: 'unavailable',
                 error: errText,
               );
-              logError(
+              logWarning(
                 'DashboardView',
-                'System tray native asset resolution failure: $errText. Disabling tray integration; main application remains visible on taskbar.',
+                'System tray native asset resolution failure: $errText. Trying the next fallback path.',
               );
-              if (mounted) setState(() {});
-              return;
+              continue;
             }
+            rethrow;
           }
         }
         if (trayReady) {
@@ -1708,30 +1772,42 @@ class _DashboardViewState extends State<DashboardView>
         }
       }
 
-      await trayManager.setIcon('assets/app_icon.png');
-      await trayManager.setToolTip('WallSync Pro - Live Wallpapers & Widgets');
-      _trayState = SystemTrayState.ready;
-      _trayNativeError = null;
-      DiagnosticsService.instance.recordTrayEvent('ready', stage: 'ready');
-      await _updateTrayMenu();
-      if (mounted) setState(() {});
-      return;
-    } catch (e, st) {
-      final errText = e.toString();
-      if (e is ArgumentError ||
-          errText.contains("Couldn't resolve") ||
-          errText.contains('native_') ||
-          errText.contains('No asset with id')) {
-        _trayState = SystemTrayState.unavailable;
-        _trayNativeError = errText;
+      try {
+        await trayManager.setIcon('assets/app_icon.png');
+        await trayManager.setToolTip(
+          'WallSync Pro - Live Wallpapers & Widgets',
+        );
+        _trayState = SystemTrayState.ready;
+        _trayNativeError = null;
+        DiagnosticsService.instance.recordTrayEvent('ready', stage: 'ready');
+        await _updateTrayMenu();
+        if (mounted) setState(() {});
+        return;
+      } on MissingPluginException catch (e) {
+        final errText = e.toString();
+        lastCompatibilityError = errText;
         DiagnosticsService.instance.recordTrayEvent(
           'native_resolution_failed',
           stage: 'unavailable',
           error: errText,
         );
-        logError(
+        logWarning(
           'DashboardView',
-          'System tray native asset resolution failure: $errText. Disabling tray integration; main application remains visible on taskbar.',
+          'Tray manager plugin is unavailable in this runtime; shell compatibility mode remains active: $errText',
+        );
+      }
+    } catch (e, st) {
+      final errText = e.toString();
+      if (_isTrayCompatibilityFailure(e, errText)) {
+        lastCompatibilityError = errText;
+        DiagnosticsService.instance.recordTrayEvent(
+          'native_resolution_failed',
+          stage: 'unavailable',
+          error: errText,
+        );
+        logWarning(
+          'DashboardView',
+          'System tray native asset resolution failure: $errText. Falling back to shell-compatible taskbar behavior.',
         );
       } else {
         _trayState = SystemTrayState.failed;
@@ -1747,9 +1823,15 @@ class _DashboardViewState extends State<DashboardView>
           e,
           st,
         );
+        if (mounted) setState(() {});
+        return;
       }
-      if (mounted) setState(() {});
     }
+
+    _trayState = SystemTrayState.unavailable;
+    _trayNativeError =
+        lastCompatibilityError ?? 'System tray is unavailable in this build.';
+    if (mounted) setState(() {});
   }
 
   Future<void> _updateTrayMenu() async {
@@ -1787,7 +1869,10 @@ class _DashboardViewState extends State<DashboardView>
         ],
       );
       await trayManager.setContextMenu(menu);
-      DiagnosticsService.instance.recordTrayEvent('menu_updated', stage: 'ready');
+      DiagnosticsService.instance.recordTrayEvent(
+        'menu_updated',
+        stage: 'ready',
+      );
     } catch (e) {
       final errText = e.toString();
       if (e is ArgumentError ||
@@ -2099,7 +2184,9 @@ class _DashboardViewState extends State<DashboardView>
           final instRecord = OverlayProcessRecord.tryParse(instContent);
           if (instRecord != null) {
             final instInspection = await inspectWindowsProcess(instRecord.pid);
-            if (instInspection != null && instInspection.isRunning && instInspection.matches(instRecord)) {
+            if (instInspection != null &&
+                instInspection.isRunning &&
+                instInspection.matches(instRecord)) {
               runningWidgetIds.add(widgetId);
               if (instRecord.ready) {
                 _widgetLaunchedAt.remove(widgetId);
@@ -2114,7 +2201,8 @@ class _DashboardViewState extends State<DashboardView>
 
         // Check if this widget is within its 15-second startup grace period
         final launchedAt = _widgetLaunchedAt[widgetId];
-        if (launchedAt != null && now.difference(launchedAt) < const Duration(seconds: 15)) {
+        if (launchedAt != null &&
+            now.difference(launchedAt) < const Duration(seconds: 15)) {
           runningWidgetIds.add(widgetId);
         }
       }
@@ -2124,7 +2212,8 @@ class _DashboardViewState extends State<DashboardView>
       final anyRunning = isRunning || runningWidgetIds.isNotEmpty;
       final wasRunning = _isOverlayRunning;
       if (mounted) {
-        final idsChanged = _activeRunningWidgetIds.length != runningWidgetIds.length ||
+        final idsChanged =
+            _activeRunningWidgetIds.length != runningWidgetIds.length ||
             !_activeRunningWidgetIds.containsAll(runningWidgetIds);
         if (_isOverlayRunning != anyRunning || idsChanged) {
           setState(() {
@@ -2143,7 +2232,8 @@ class _DashboardViewState extends State<DashboardView>
             !_launchingWidgetIds.contains(widgetId) &&
             _widgetRecoveryTimers[widgetId] == null) {
           final launchedAt = _widgetLaunchedAt[widgetId];
-          if (launchedAt == null || now.difference(launchedAt) >= const Duration(seconds: 15)) {
+          if (launchedAt == null ||
+              now.difference(launchedAt) >= const Duration(seconds: 15)) {
             _scheduleWidgetRecovery(widgetId);
           }
         }
@@ -2228,34 +2318,46 @@ class _DashboardViewState extends State<DashboardView>
         try {
           final content = (await _safeReadPidFile(pidFile)).trim();
           final existingRecord = OverlayProcessRecord.tryParse(content);
-          if (existingRecord != null && existingRecord.ready) {
+          if (existingRecord != null) {
             final inspection = await inspectWindowsProcess(existingRecord.pid);
-            if (inspection != null && inspection.isRunning && inspection.matches(existingRecord)) {
-              logInfo(
-                'DashboardView',
-                'Widget "$widgetId" is already running live (PID ${existingRecord.pid}); joined existing instance.',
-              );
-              DiagnosticsService.instance.recordWidgetLifecycleEvent(
-                widgetId,
-                'ready',
-                pid: existingRecord.pid,
-                hwnd: existingRecord.hwnd,
-                details: 'joined existing instance',
-              );
-              setState(() {
-                _activeRunningWidgetIds.add(widgetId);
-                _isOverlayRunning = true;
-              });
-              _updateTrayMenu();
-              _widgetRecoveryPolicies[widgetId]?.reset();
-              _widgetRecoveryTimers[widgetId]?.cancel();
-              _widgetRecoveryTimers[widgetId] = null;
-              unawaited(DiagnosticsService.instance.refreshOverlayPid());
-              return;
+            if (inspection != null &&
+                inspection.isRunning &&
+                inspection.matches(existingRecord)) {
+              if (existingRecord.ready) {
+                logInfo(
+                  'DashboardView',
+                  'Widget "$widgetId" is already running live (PID ${existingRecord.pid}); joined existing instance.',
+                );
+                DiagnosticsService.instance.recordWidgetLifecycleEvent(
+                  widgetId,
+                  'ready',
+                  pid: existingRecord.pid,
+                  hwnd: existingRecord.hwnd,
+                  details: 'joined existing instance',
+                );
+                setState(() {
+                  _activeRunningWidgetIds.add(widgetId);
+                  _isOverlayRunning = true;
+                });
+                _updateTrayMenu();
+                _widgetRecoveryPolicies[widgetId]?.reset();
+                _widgetRecoveryTimers[widgetId]?.cancel();
+                _widgetRecoveryTimers[widgetId] = null;
+                unawaited(DiagnosticsService.instance.refreshOverlayPid());
+                return;
+              } else {
+                logInfo(
+                  'DashboardView',
+                  'Widget "$widgetId" process PID ${existingRecord.pid} is already starting up; awaiting existing instance.',
+                );
+              }
+            } else {
+              // Dead or stale PID file: remove it so new launch does not read old records
+              await pidFile.delete();
             }
+          } else {
+            await pidFile.delete();
           }
-          // Dead or stale PID file: remove it so new launch does not read old records
-          await pidFile.delete();
         } catch (_) {}
       }
 
@@ -2267,11 +2369,13 @@ class _DashboardViewState extends State<DashboardView>
       }
 
       final stageSettingsStopwatch = Stopwatch()..start();
-      final defaults = WidgetSettings.templateDefaults[widgetId] ?? {
-        'width': isTaskbar ? 340.0 : 360.0,
-        'height': isTaskbar ? 44.0 : 200.0,
-        'sizeFactor': isTaskbar ? 0.85 : 1.0,
-      };
+      final defaults =
+          WidgetSettings.templateDefaults[widgetId] ??
+          {
+            'width': isTaskbar ? 340.0 : 360.0,
+            'height': isTaskbar ? 44.0 : 200.0,
+            'sizeFactor': isTaskbar ? 0.85 : 1.0,
+          };
 
       WidgetSettings instSettings;
       try {
@@ -2295,13 +2399,12 @@ class _DashboardViewState extends State<DashboardView>
       // Compute distinct coordinates if not set, or if colliding with default/stale positions
       if (instSettings.posX == null || instSettings.posY == null) {
         if (!isTaskbar) {
-          final count = _activeRunningWidgetIds.where((id) => !id.startsWith('taskbar_')).length;
+          final count = _activeRunningWidgetIds
+              .where((id) => !id.startsWith('taskbar_'))
+              .length;
           final staggerX = 80.0 + ((count % 3) * 380.0);
           final staggerY = 80.0 + ((count ~/ 3) * 260.0);
-          instSettings = instSettings.copyWith(
-            posX: staggerX,
-            posY: staggerY,
-          );
+          instSettings = instSettings.copyWith(posX: staggerX, posY: staggerY);
         }
       }
 
@@ -2328,14 +2431,21 @@ class _DashboardViewState extends State<DashboardView>
           workingDir = runtimeDir.path;
         }
       } catch (e) {
-        logWarning('DashboardView', 'Shadow runtime fallback for $widgetId: $e');
+        logWarning(
+          'DashboardView',
+          'Shadow runtime fallback for $widgetId: $e',
+        );
       }
 
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
         widgetId,
         'spawnRequested',
         executable: appPath,
-        args: ['--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
+        args: [
+          '--overlay',
+          '--startup-trigger=dashboard',
+          '--instance-id=$widgetId',
+        ],
       );
 
       // Launch overlay process directly detached (<50ms, no Task Scheduler latency)
@@ -2352,23 +2462,40 @@ class _DashboardViewState extends State<DashboardView>
           mode: ProcessStartMode.detached,
         );
         launchedPid = process.pid;
-        logInfo('DashboardView', 'Overlay "$widgetId" spawned directly (PID $launchedPid).');
+        logInfo(
+          'DashboardView',
+          'Overlay "$widgetId" spawned directly (PID $launchedPid).',
+        );
         DiagnosticsService.instance.recordWidgetLifecycleEvent(
           widgetId,
           'spawned',
           pid: launchedPid,
         );
       } catch (directErr) {
-        logWarning('DashboardView', 'Direct Process.start failed for $widgetId: $directErr; trying cmd.exe fallback');
+        logWarning(
+          'DashboardView',
+          'Direct Process.start failed for $widgetId: $directErr; trying cmd.exe fallback',
+        );
         try {
           final process = await Process.start(
             'cmd.exe',
-            ['/c', 'start', '""', appPath, '--overlay', '--startup-trigger=dashboard', '--instance-id=$widgetId'],
+            [
+              '/c',
+              'start',
+              '""',
+              appPath,
+              '--overlay',
+              '--startup-trigger=dashboard',
+              '--instance-id=$widgetId',
+            ],
             workingDirectory: workingDir,
             mode: ProcessStartMode.detached,
           );
           launchedPid = process.pid;
-          logInfo('DashboardView', 'Overlay "$widgetId" spawned via cmd.exe start detached (PID $launchedPid).');
+          logInfo(
+            'DashboardView',
+            'Overlay "$widgetId" spawned via cmd.exe start detached (PID $launchedPid).',
+          );
           DiagnosticsService.instance.recordWidgetLifecycleEvent(
             widgetId,
             'spawned',
@@ -2376,7 +2503,10 @@ class _DashboardViewState extends State<DashboardView>
             details: 'via cmd.exe fallback',
           );
         } catch (cmdErr) {
-          logError('DashboardView', 'Failed to launch overlay process: $cmdErr');
+          logError(
+            'DashboardView',
+            'Failed to launch overlay process: $cmdErr',
+          );
           DiagnosticsService.instance.recordWidgetLifecycleEvent(
             widgetId,
             'failed',
@@ -2403,7 +2533,9 @@ class _DashboardViewState extends State<DashboardView>
         readRecord: () async {
           if (!await pidFile.exists()) return null;
           final content = (await _safeReadPidFile(pidFile)).trim();
-          return content.isEmpty ? null : OverlayProcessRecord.tryParse(content);
+          return content.isEmpty
+              ? null
+              : OverlayProcessRecord.tryParse(content);
         },
         inspectProcess: inspectWindowsProcess,
         expectedPid: launchedPid,
@@ -2416,20 +2548,22 @@ class _DashboardViewState extends State<DashboardView>
         logError(
           'DashboardView',
           'Widget "$widgetId" failed to reach verified readiness: status=${readiness.status.name}, '
-          'stage=${readiness.stage.name}, elapsed=${readinessWaitMs}ms.',
+              'stage=${readiness.stage.name}, elapsed=${readinessWaitMs}ms.',
         );
         DiagnosticsService.instance.recordWidgetLifecycleEvent(
           widgetId,
           'failed',
           pid: launchedPid,
-          details: 'readiness failed: status=${readiness.status.name}, stage=${readiness.stage.name}',
+          details:
+              'readiness failed: status=${readiness.status.name}, stage=${readiness.stage.name}',
         );
         if (launchedPid != null) {
           try {
             Process.killPid(launchedPid);
           } catch (_) {}
         }
-        final revertedActiveIds = List<String>.from(_settings.activeWidgetIds)..remove(widgetId);
+        final revertedActiveIds = List<String>.from(_settings.activeWidgetIds)
+          ..remove(widgetId);
         _settings = _settings.copyWith(activeWidgetIds: revertedActiveIds);
         await _saveSettingsSafely(_settings);
         if (mounted) {
@@ -2437,9 +2571,15 @@ class _DashboardViewState extends State<DashboardView>
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 16),
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    color: Color(0xFFEF4444),
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
-                  Text('Failed to start "${_getWidgetTitle(widgetId)}" (${readiness.status.name}).'),
+                  Text(
+                    'Failed to start "${_getWidgetTitle(widgetId)}" (${readiness.status.name}).',
+                  ),
                 ],
               ),
               backgroundColor: const Color(0xFF1E293B),
@@ -2450,7 +2590,10 @@ class _DashboardViewState extends State<DashboardView>
       }
 
       if ((_widgetGenerations[widgetId] ?? 0) != generation) {
-        logWarning('DashboardView', 'Widget "$widgetId" launch superseded by a newer operation.');
+        logWarning(
+          'DashboardView',
+          'Widget "$widgetId" launch superseded by a newer operation.',
+        );
         return;
       }
 
@@ -2481,8 +2624,8 @@ class _DashboardViewState extends State<DashboardView>
       logInfo(
         'DashboardView',
         'Widget "$widgetId" launch confirmed: readiness=${readiness.status.name}, '
-        'settingsPrep=${settingsPrepMs}ms, spawn=${spawnMs}ms, '
-        'readinessWait=${readinessWaitMs}ms, total=${launchStopwatch.elapsedMilliseconds}ms.',
+            'settingsPrep=${settingsPrepMs}ms, spawn=${spawnMs}ms, '
+            'readinessWait=${readinessWaitMs}ms, total=${launchStopwatch.elapsedMilliseconds}ms.',
       );
 
       if (mounted) {
@@ -2490,9 +2633,15 @@ class _DashboardViewState extends State<DashboardView>
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 16),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF10B981),
+                  size: 16,
+                ),
                 const SizedBox(width: 8),
-                Text('"${_getWidgetTitle(widgetId)}" launched and running live!'),
+                Text(
+                  '"${_getWidgetTitle(widgetId)}" launched and running live!',
+                ),
               ],
             ),
             duration: const Duration(seconds: 2),
@@ -2501,7 +2650,12 @@ class _DashboardViewState extends State<DashboardView>
         );
       }
     } catch (e, st) {
-      logError('DashboardView', 'Error launching widget overlay $widgetId', e, st);
+      logError(
+        'DashboardView',
+        'Error launching widget overlay $widgetId',
+        e,
+        st,
+      );
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
         widgetId,
         'failed',
@@ -2549,7 +2703,8 @@ class _DashboardViewState extends State<DashboardView>
         }
       } catch (_) {}
 
-      final activeIds = List<String>.from(_settings.activeWidgetIds)..remove(widgetId);
+      final activeIds = List<String>.from(_settings.activeWidgetIds)
+        ..remove(widgetId);
       _settings = _settings.copyWith(activeWidgetIds: activeIds);
       await _saveSettingsSafely(_settings);
 
@@ -2632,7 +2787,8 @@ class _DashboardViewState extends State<DashboardView>
       return;
     }
     final launchedAt = _widgetLaunchedAt[widgetId];
-    if (launchedAt != null && DateTime.now().difference(launchedAt) < const Duration(seconds: 15)) {
+    if (launchedAt != null &&
+        DateTime.now().difference(launchedAt) < const Duration(seconds: 15)) {
       return;
     }
     final policy = _widgetRecoveryPolicies.putIfAbsent(
@@ -2644,7 +2800,7 @@ class _DashboardViewState extends State<DashboardView>
       logError(
         'DashboardView',
         'Widget recovery stopped for "$widgetId" after bounded retry limit '
-        '(${policy.attempts} attempts).',
+            '(${policy.attempts} attempts).',
       );
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
         widgetId,
@@ -2662,7 +2818,7 @@ class _DashboardViewState extends State<DashboardView>
     logWarning(
       'DashboardView',
       'Scheduling recovery for widget "$widgetId"; attempt=${policy.attempts}, '
-      'delay=${delay.inMilliseconds}ms.',
+          'delay=${delay.inMilliseconds}ms.',
     );
     _widgetRecoveryTimers[widgetId] = Timer(delay, () {
       _widgetRecoveryTimers[widgetId] = null;
@@ -2688,10 +2844,15 @@ class _DashboardViewState extends State<DashboardView>
 
   Future<void> _recoverOverlay() async {
     if (_isOverlayExplicitlyClosed) return;
-    logInfo('DashboardView', 'Attempting overlay recovery launch for active widgets.');
+    logInfo(
+      'DashboardView',
+      'Attempting overlay recovery launch for active widgets.',
+    );
     final targets = _settings.activeWidgetIds.isNotEmpty
         ? _settings.activeWidgetIds
-        : (_settings.widgetTemplate.isNotEmpty ? [_settings.widgetTemplate] : <String>['clock_card']);
+        : (_settings.widgetTemplate.isNotEmpty
+              ? [_settings.widgetTemplate]
+              : <String>['clock_card']);
     for (final id in targets) {
       if (!_activeRunningWidgetIds.contains(id)) {
         await _launchWidgetOverlay(id);
@@ -2711,7 +2872,8 @@ class _DashboardViewState extends State<DashboardView>
         s.activeWallpaperType != _settings.activeWallpaperType ||
         s.videoWallpaperPaused != _settings.videoWallpaperPaused;
     final templateChanged = s.widgetTemplate != _settings.widgetTemplate;
-    final customElementsChanged = s.widgetTemplate == 'custom' &&
+    final customElementsChanged =
+        s.widgetTemplate == 'custom' &&
         s.customElements != _settings.customElements;
     final shouldSaveImmediately = templateChanged || customElementsChanged;
 
@@ -2926,7 +3088,9 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _launchOverlay() => _overlayLaunchGate.run(() async {
     final target = _activeTemplate.isNotEmpty
         ? _activeTemplate
-        : (_settings.widgetTemplate.isNotEmpty ? _settings.widgetTemplate : 'clock_card');
+        : (_settings.widgetTemplate.isNotEmpty
+              ? _settings.widgetTemplate
+              : 'clock_card');
     await _launchWidgetOverlay(target);
   });
 
@@ -3017,7 +3181,9 @@ class _DashboardViewState extends State<DashboardView>
             _updateTrayMenu();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Applied "${_getWidgetTitle(_settings.widgetTemplate)}" to Desktop!'),
+                content: Text(
+                  'Applied "${_getWidgetTitle(_settings.widgetTemplate)}" to Desktop!',
+                ),
                 duration: const Duration(seconds: 2),
                 backgroundColor: const Color(0xFF10B981),
               ),
@@ -3283,32 +3449,36 @@ class _DashboardViewState extends State<DashboardView>
       if (readiness.isReady && readiness.record != null) {
         final rec = readiness.record!;
         final acknowledgedMs = DateTime.now().millisecondsSinceEpoch;
-        final flutterInitMs = (rec.entryPointMs != null && rec.creationTime != null)
+        final flutterInitMs =
+            (rec.entryPointMs != null && rec.creationTime != null)
             ? '${rec.entryPointMs! - rec.creationTime!}ms'
             : 'unavailable';
-        final widgetConfigMs = (rec.settingsLoadedMs != null && rec.entryPointMs != null)
+        final widgetConfigMs =
+            (rec.settingsLoadedMs != null && rec.entryPointMs != null)
             ? '${rec.settingsLoadedMs! - rec.entryPointMs!}ms'
             : 'unavailable';
-        final firstFrameMs = (rec.firstFrameMs != null && rec.settingsLoadedMs != null)
+        final firstFrameMs =
+            (rec.firstFrameMs != null && rec.settingsLoadedMs != null)
             ? '${rec.firstFrameMs! - rec.settingsLoadedMs!}ms'
             : 'unavailable';
-        final visibleConfirmMs = (rec.windowInitMs != null && rec.firstFrameMs != null)
+        final visibleConfirmMs =
+            (rec.windowInitMs != null && rec.firstFrameMs != null)
             ? '${rec.windowInitMs! - rec.firstFrameMs!}ms'
             : (rec.readyPublishedMs != null && rec.firstFrameMs != null)
-                ? '${rec.readyPublishedMs! - rec.firstFrameMs!}ms'
-                : 'unavailable';
+            ? '${rec.readyPublishedMs! - rec.firstFrameMs!}ms'
+            : 'unavailable';
 
         logPerf(
           'OverlayStartup',
           'Overlay startup stages confirmed: PID ${rec.pid} | '
-          'runtime prep: ${runtimePrepMs}ms, '
-          'process creation: ${processCreationMs}ms, '
-          'flutter init: $flutterInitMs, '
-          'widget config: $widgetConfigMs, '
-          'first frame: $firstFrameMs, '
-          'visible confirm: $visibleConfirmMs | '
-          'complete launch phase: ${launchStopwatch.elapsedMilliseconds}ms'
-          '${taskSchedulerAcceptedAt == null ? '' : ', since Task Scheduler accepted ${DateTime.now().difference(taskSchedulerAcceptedAt).inMilliseconds}ms'}.',
+              'runtime prep: ${runtimePrepMs}ms, '
+              'process creation: ${processCreationMs}ms, '
+              'flutter init: $flutterInitMs, '
+              'widget config: $widgetConfigMs, '
+              'first frame: $firstFrameMs, '
+              'visible confirm: $visibleConfirmMs | '
+              'complete launch phase: ${launchStopwatch.elapsedMilliseconds}ms'
+              '${taskSchedulerAcceptedAt == null ? '' : ', since Task Scheduler accepted ${DateTime.now().difference(taskSchedulerAcceptedAt).inMilliseconds}ms'}.',
         );
         logInfo(
           'OverlayStartup',
@@ -3337,8 +3507,7 @@ class _DashboardViewState extends State<DashboardView>
         }
       } else {
         final readinessFailure = switch (readiness.status) {
-          OverlayReadinessStatus.ready ||
-          OverlayReadinessStatus.dockReady =>
+          OverlayReadinessStatus.ready || OverlayReadinessStatus.dockReady =>
             'readiness could not be confirmed',
           OverlayReadinessStatus.starting ||
           OverlayReadinessStatus.processRunning ||
@@ -3350,8 +3519,7 @@ class _DashboardViewState extends State<DashboardView>
             'no PID record was registered',
           OverlayReadinessStatus.executableMissing =>
             'the overlay executable is missing',
-          OverlayReadinessStatus.processLaunchFailed =>
-            'process launch failed',
+          OverlayReadinessStatus.processLaunchFailed => 'process launch failed',
           OverlayReadinessStatus.malformed => 'the PID record is malformed',
           OverlayReadinessStatus.exited ||
           OverlayReadinessStatus.processExited =>
@@ -3366,10 +3534,8 @@ class _DashboardViewState extends State<DashboardView>
             'native window was found but not ready',
           OverlayReadinessStatus.windowVerificationFailed =>
             'native window verification failed',
-          OverlayReadinessStatus.ipcUnavailable =>
-            'IPC channel is unavailable',
-          OverlayReadinessStatus.timeout =>
-            'overlay initialization timed out',
+          OverlayReadinessStatus.ipcUnavailable => 'IPC channel is unavailable',
+          OverlayReadinessStatus.timeout => 'overlay initialization timed out',
           OverlayReadinessStatus.failed =>
             'the overlay failed initialization: ${readiness.record?.failureReason ?? 'unspecified error'}',
         };
@@ -3504,7 +3670,7 @@ class _DashboardViewState extends State<DashboardView>
         logInfo(
           'DashboardView',
           '[PERF] DashboardView build #$buildId post-frame callback reached: '
-          'totalPostFrameSpan=${elapsed}ms (syncBuild=${syncBuildMs}ms, layoutPaintScheduling=${elapsed - syncBuildMs}ms; not raster time)',
+              'totalPostFrameSpan=${elapsed}ms (syncBuild=${syncBuildMs}ms, layoutPaintScheduling=${elapsed - syncBuildMs}ms; not raster time)',
         );
       }
     });
@@ -3543,20 +3709,26 @@ class _DashboardViewState extends State<DashboardView>
                   'topNavigation.build',
                   _buildTopNavBar,
                 ),
-                if (_trayState.isUnavailableOrFailed)
-                  _buildTrayWarningBanner(),
+                if (_trayState.isUnavailableOrFailed) _buildTrayWarningBanner(),
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 350),
-                    layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-                      return Stack(
-                        alignment: Alignment.topLeft,
-                        children: <Widget>[
-                          ...previousChildren.map((w) => IgnorePointer(key: w.key, ignoring: true, child: w)),
-                          ?currentChild,
-                        ],
-                      );
-                    },
+                    layoutBuilder:
+                        (Widget? currentChild, List<Widget> previousChildren) {
+                          return Stack(
+                            alignment: Alignment.topLeft,
+                            children: <Widget>[
+                              ...previousChildren.map(
+                                (w) => IgnorePointer(
+                                  key: w.key,
+                                  ignoring: true,
+                                  child: w,
+                                ),
+                              ),
+                              ?currentChild,
+                            ],
+                          );
+                        },
                     transitionBuilder: (child, animation) {
                       return FadeTransition(
                         opacity: animation,
@@ -3602,7 +3774,8 @@ class _DashboardViewState extends State<DashboardView>
                             'desktopStudio.build',
                             () => DesktopStudioView(
                               key: const ValueKey('desktop_studio'),
-                              onOpenGallery: () => setState(() => _currentMainTab = 'templates'),
+                              onOpenGallery: () =>
+                                  setState(() => _currentMainTab = 'templates'),
                             ),
                           )
                         : _currentMainTab == 'templates'
@@ -3610,10 +3783,16 @@ class _DashboardViewState extends State<DashboardView>
                             'templates.build',
                             () => TemplateGalleryView(
                               key: const ValueKey('templates'),
-                              onEditInStudio: (template) => setState(() => _currentMainTab = 'desktop_studio'),
+                              onEditInStudio: (template) => setState(
+                                () => _currentMainTab = 'desktop_studio',
+                              ),
                               onCreateNew: () {
-                                DesktopStudioService().selectTemplate(DesktopStudioTemplate.customLayout());
-                                setState(() => _currentMainTab = 'desktop_studio');
+                                DesktopStudioService().selectTemplate(
+                                  DesktopStudioTemplate.customLayout(),
+                                );
+                                setState(
+                                  () => _currentMainTab = 'desktop_studio',
+                                );
                               },
                             ),
                           )
@@ -3675,7 +3854,9 @@ class _DashboardViewState extends State<DashboardView>
             WindowsTaskbarService.instance.restoreWindowsTaskbar();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Emergency Taskbar Restoration Triggered (Ctrl+Alt+Shift+R)'),
+                content: Text(
+                  'Emergency Taskbar Restoration Triggered (Ctrl+Alt+Shift+R)',
+                ),
                 duration: Duration(seconds: 3),
               ),
             );
@@ -3714,7 +3895,7 @@ class _DashboardViewState extends State<DashboardView>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'System Tray Integration Unavailable',
+                  'Tray Compatibility Mode',
                   style: TextStyle(
                     color: Color(0xFFFCD34D),
                     fontWeight: FontWeight.w600,
@@ -3723,8 +3904,8 @@ class _DashboardViewState extends State<DashboardView>
                 ),
                 Text(
                   _trayNativeError != null
-                      ? 'Native module unavailable ($_trayNativeError). Window will remain visible and accessible on the Windows taskbar.'
-                      : 'System tray could not be initialized. Closing or minimizing will operate on the Windows taskbar to keep the application accessible.',
+                      ? 'Shell tray is unavailable in this build ($_trayNativeError). WallSync keeps the app accessible through the Windows taskbar and desktop shell controls.'
+                      : 'System tray is unavailable in this build. The app will continue to behave like a desktop personalization shell without hidden-to-tray mode.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 11,
@@ -3814,7 +3995,9 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+                          color: const Color(
+                            0xFF38BDF8,
+                          ).withValues(alpha: 0.25),
                           blurRadius: 12,
                           spreadRadius: 1,
                         ),
@@ -3873,7 +4056,9 @@ class _DashboardViewState extends State<DashboardView>
                         borderRadius: BorderRadius.circular(7),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.45),
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.45),
                             blurRadius: 10,
                             offset: const Offset(0, 1),
                           ),
@@ -4016,7 +4201,9 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                       onPressed: _loadWallpapers,
                       tooltip: 'Refresh Wallpapers',
-                      hoverColor: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                      hoverColor: const Color(
+                        0xFF38BDF8,
+                      ).withValues(alpha: 0.12),
                     ),
                   const SizedBox(width: 8),
                   Tooltip(
@@ -4042,7 +4229,9 @@ class _DashboardViewState extends State<DashboardView>
                         boxShadow: _isOverlayRunning
                             ? [
                                 BoxShadow(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.15),
                                   blurRadius: 10,
                                 ),
                               ]
@@ -4062,7 +4251,9 @@ class _DashboardViewState extends State<DashboardView>
                               boxShadow: _isOverlayRunning
                                   ? [
                                       BoxShadow(
-                                        color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                                        color: const Color(
+                                          0xFF10B981,
+                                        ).withValues(alpha: 0.8),
                                         blurRadius: 8,
                                         spreadRadius: 1,
                                       ),
@@ -4073,7 +4264,9 @@ class _DashboardViewState extends State<DashboardView>
                           if (!compact) ...[
                             const SizedBox(width: 7.5),
                             Text(
-                              _isOverlayRunning ? 'Desktop Active' : 'Desktop Off',
+                              _isOverlayRunning
+                                  ? 'Desktop Active'
+                                  : 'Desktop Off',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: _isOverlayRunning
@@ -4656,7 +4849,8 @@ class _DashboardViewState extends State<DashboardView>
     }
 
     final isHeroVideo = heroWp?.isVideo ?? (activeType == 'video');
-    final heroName = heroWp?.name ??
+    final heroName =
+        heroWp?.name ??
         (localPath != null
             ? localPath.split(RegExp(r'[/\\]')).last
             : 'Custom Wallpaper');
@@ -4677,8 +4871,9 @@ class _DashboardViewState extends State<DashboardView>
         ),
         boxShadow: [
           BoxShadow(
-            color: (isActive ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
-                .withValues(alpha: 0.16),
+            color:
+                (isActive ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
+                    .withValues(alpha: 0.16),
             blurRadius: 24,
             offset: const Offset(0, 4),
           ),
@@ -4694,31 +4889,31 @@ class _DashboardViewState extends State<DashboardView>
                 opacity: 0.38,
                 child: heroWp != null
                     ? (heroWp.url.startsWith('asset://')
-                        ? Image.asset(
-                            heroWp.url.replaceFirst('asset://', ''),
-                            fit: BoxFit.cover,
-                            cacheWidth: 800,
-                            cacheHeight: 450,
-                          )
-                        : (heroWp.isVideo)
-                            ? VideoThumbnailWidget(
-                                wallpaper: heroWp,
-                                fit: BoxFit.cover,
-                              )
-                            : SafeNetworkImage(
-                                url: _thumbnailUrlFor(
-                                  heroWp.thumbnailUrl ?? heroWp.url,
-                                ),
-                                fallbackUrl: heroWp.thumbnailUrl ?? heroWp.url,
-                                fit: BoxFit.cover,
-                              ))
+                          ? Image.asset(
+                              heroWp.url.replaceFirst('asset://', ''),
+                              fit: BoxFit.cover,
+                              cacheWidth: 800,
+                              cacheHeight: 450,
+                            )
+                          : (heroWp.isVideo)
+                          ? VideoThumbnailWidget(
+                              wallpaper: heroWp,
+                              fit: BoxFit.cover,
+                            )
+                          : SafeNetworkImage(
+                              url: _thumbnailUrlFor(
+                                heroWp.thumbnailUrl ?? heroWp.url,
+                              ),
+                              fallbackUrl: heroWp.thumbnailUrl ?? heroWp.url,
+                              fit: BoxFit.cover,
+                            ))
                     : (localPath != null && File(localPath).existsSync()
-                        ? Image.file(
-                            File(localPath),
-                            fit: BoxFit.cover,
-                            cacheWidth: 800,
-                          )
-                        : const SizedBox.shrink()),
+                          ? Image.file(
+                              File(localPath),
+                              fit: BoxFit.cover,
+                              cacheWidth: 800,
+                            )
+                          : const SizedBox.shrink()),
               ),
             ),
             // Obsidian Multi-Stop Gradient Filter
@@ -4755,13 +4950,21 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                           decoration: BoxDecoration(
                             color: isActive
-                                ? const Color(0xFF10B981).withValues(alpha: 0.18)
-                                : const Color(0xFF38BDF8).withValues(alpha: 0.16),
+                                ? const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.18)
+                                : const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.16),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: isActive
-                                  ? const Color(0xFF10B981).withValues(alpha: 0.45)
-                                  : const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                                  ? const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.45)
+                                  : const Color(
+                                      0xFF38BDF8,
+                                    ).withValues(alpha: 0.35),
                             ),
                           ),
                           child: Row(
@@ -4777,10 +4980,11 @@ class _DashboardViewState extends State<DashboardView>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: (isActive
-                                              ? const Color(0xFF10B981)
-                                              : const Color(0xFF38BDF8))
-                                          .withValues(alpha: 0.8),
+                                      color:
+                                          (isActive
+                                                  ? const Color(0xFF10B981)
+                                                  : const Color(0xFF38BDF8))
+                                              .withValues(alpha: 0.8),
                                       blurRadius: 6,
                                     ),
                                   ],
@@ -5016,18 +5220,18 @@ class _DashboardViewState extends State<DashboardView>
                                     cacheHeight: 225,
                                   )
                                 : (heroWp.isVideo)
-                                    ? VideoThumbnailWidget(
-                                        wallpaper: heroWp,
-                                        fit: BoxFit.cover,
-                                      )
-                                    : SafeNetworkImage(
-                                        url: _thumbnailUrlFor(
-                                          heroWp.thumbnailUrl ?? heroWp.url,
-                                        ),
-                                        fallbackUrl:
-                                            heroWp.thumbnailUrl ?? heroWp.url,
-                                        fit: BoxFit.cover,
-                                      ))
+                                ? VideoThumbnailWidget(
+                                    wallpaper: heroWp,
+                                    fit: BoxFit.cover,
+                                  )
+                                : SafeNetworkImage(
+                                    url: _thumbnailUrlFor(
+                                      heroWp.thumbnailUrl ?? heroWp.url,
+                                    ),
+                                    fallbackUrl:
+                                        heroWp.thumbnailUrl ?? heroWp.url,
+                                    fit: BoxFit.cover,
+                                  ))
                           else if (localPath != null &&
                               File(localPath).existsSync())
                             Image.file(
@@ -5280,7 +5484,9 @@ class _DashboardViewState extends State<DashboardView>
                         const SizedBox(width: 6),
                         _buildWallpaperSubTabChip(
                           id: 'static',
-                          label: isUltraCompact ? 'Static' : 'Static 4K Gallery',
+                          label: isUltraCompact
+                              ? 'Static'
+                              : 'Static 4K Gallery',
                           icon: Icons.photo_library_rounded,
                           activeColor: const Color(0xFF38BDF8),
                           count: staticCount > 0 ? staticCount : null,
@@ -5315,7 +5521,9 @@ class _DashboardViewState extends State<DashboardView>
                     controller: _wallpaperSearchCtrl,
                     style: const TextStyle(fontSize: 12, color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: isUltraCompact ? 'Search' : (isCompact ? 'Search...' : 'Search wallpapers...'),
+                      hintText: isUltraCompact
+                          ? 'Search'
+                          : (isCompact ? 'Search...' : 'Search wallpapers...'),
                       hintStyle: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.4),
@@ -5358,10 +5566,15 @@ class _DashboardViewState extends State<DashboardView>
                   icon: const Icon(Icons.add_rounded, size: 15),
                   label: Text(
                     isUltraCompact ? '+' : (isCompact ? 'Custom' : '+ Custom'),
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.18),
+                    backgroundColor: const Color(
+                      0xFF38BDF8,
+                    ).withValues(alpha: 0.18),
                     foregroundColor: const Color(0xFF38BDF8),
                     side: BorderSide(
                       color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
@@ -5437,7 +5650,10 @@ class _DashboardViewState extends State<DashboardView>
             if (count != null && count > 0) ...[
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 1.5,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? activeColor.withValues(alpha: 0.35)
@@ -6138,8 +6354,9 @@ class _DashboardViewState extends State<DashboardView>
             ),
             boxShadow: [
               BoxShadow(
-                color: (isActive ? themeColor : Colors.black)
-                    .withValues(alpha: isActive ? 0.35 : 0.45),
+                color: (isActive ? themeColor : Colors.black).withValues(
+                  alpha: isActive ? 0.35 : 0.45,
+                ),
                 blurRadius: isActive ? 20 : 12,
                 offset: const Offset(0, 4),
               ),
@@ -6182,20 +6399,21 @@ class _DashboardViewState extends State<DashboardView>
                         colors: isActive
                             ? [const Color(0xFF059669), const Color(0xFF10B981)]
                             : (item.isVideo
-                                ? [
-                                    const Color(0xFF0284C7),
-                                    const Color(0xFF6366F1),
-                                  ]
-                                : [
-                                    const Color(0xFFEC4899),
-                                    const Color(0xFF8B5CF6),
-                                  ]),
+                                  ? [
+                                      const Color(0xFF0284C7),
+                                      const Color(0xFF6366F1),
+                                    ]
+                                  : [
+                                      const Color(0xFFEC4899),
+                                      const Color(0xFF8B5CF6),
+                                    ]),
                       ),
                       borderRadius: BorderRadius.circular(7),
                       boxShadow: [
                         BoxShadow(
-                          color: (isActive ? const Color(0xFF10B981) : themeColor)
-                              .withValues(alpha: 0.45),
+                          color:
+                              (isActive ? const Color(0xFF10B981) : themeColor)
+                                  .withValues(alpha: 0.45),
                           blurRadius: 6,
                           offset: const Offset(0, 2),
                         ),
@@ -6208,8 +6426,8 @@ class _DashboardViewState extends State<DashboardView>
                           isActive
                               ? Icons.check_circle_rounded
                               : (item.isVideo
-                                  ? Icons.videocam_rounded
-                                  : Icons.photo_library_rounded),
+                                    ? Icons.videocam_rounded
+                                    : Icons.photo_library_rounded),
                           size: 11,
                           color: Colors.white,
                         ),
@@ -6343,10 +6561,11 @@ class _DashboardViewState extends State<DashboardView>
                           borderRadius: BorderRadius.circular(9),
                           boxShadow: [
                             BoxShadow(
-                              color: (isActive
-                                      ? const Color(0xFF10B981)
-                                      : themeColor)
-                                  .withValues(alpha: 0.4),
+                              color:
+                                  (isActive
+                                          ? const Color(0xFF10B981)
+                                          : themeColor)
+                                      .withValues(alpha: 0.4),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
@@ -6678,7 +6897,9 @@ class _DashboardViewState extends State<DashboardView>
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.08),
+                          color: const Color(
+                            0xFF38BDF8,
+                          ).withValues(alpha: 0.08),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -6714,7 +6935,9 @@ class _DashboardViewState extends State<DashboardView>
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF38BDF8),
                           side: BorderSide(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.4),
                           ),
                         ),
                       ),
@@ -6734,9 +6957,11 @@ class _DashboardViewState extends State<DashboardView>
                             )
                           : LayoutBuilder(
                               builder: (context, constraints) {
-                                final crossAxisCount = (constraints.maxWidth / 280)
-                                    .floor()
-                                    .clamp(2, 5);
+                                final crossAxisCount =
+                                    (constraints.maxWidth / 280).floor().clamp(
+                                      2,
+                                      5,
+                                    );
                                 return GridView.builder(
                                   padding: const EdgeInsets.all(20),
                                   cacheExtent: 250.0,
@@ -6797,9 +7022,7 @@ class _DashboardViewState extends State<DashboardView>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final crossAxisCount = (constraints.maxWidth / 280)
-            .floor()
-            .clamp(2, 5);
+        final crossAxisCount = (constraints.maxWidth / 280).floor().clamp(2, 5);
 
         if (searchQuery.isNotEmpty && videoWallpapers.isEmpty) {
           return Center(
@@ -6899,7 +7122,9 @@ class _DashboardViewState extends State<DashboardView>
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -6930,9 +7155,7 @@ class _DashboardViewState extends State<DashboardView>
                 itemCount: videoWallpapers.length,
                 itemBuilder: (context, idx) {
                   final wp = videoWallpapers[idx];
-                  return RepaintBoundary(
-                    child: _buildWallpaperCard(wp),
-                  );
+                  return RepaintBoundary(child: _buildWallpaperCard(wp));
                 },
               ),
             ),
@@ -7115,7 +7338,9 @@ class _DashboardViewState extends State<DashboardView>
                   horizontal: 14,
                   vertical: 8,
                 ),
-                backgroundColor: const Color(0xFFF87171).withValues(alpha: 0.10),
+                backgroundColor: const Color(
+                  0xFFF87171,
+                ).withValues(alpha: 0.10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                   side: BorderSide(
@@ -7495,10 +7720,7 @@ class _DashboardViewState extends State<DashboardView>
                         SizedBox(height: 3),
                         Text(
                           'Hardware-accelerated 60 FPS motion backgrounds • Ultra-low GPU latency',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white60,
-                          ),
+                          style: TextStyle(fontSize: 11, color: Colors.white60),
                         ),
                       ],
                     ),
@@ -7528,7 +7750,9 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
-                      backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.16),
+                      backgroundColor: const Color(
+                        0xFF38BDF8,
+                      ).withValues(alpha: 0.16),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 9,
@@ -7536,7 +7760,9 @@ class _DashboardViewState extends State<DashboardView>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(11),
                         side: BorderSide(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                          color: const Color(
+                            0xFF38BDF8,
+                          ).withValues(alpha: 0.35),
                         ),
                       ),
                     ),
@@ -9131,9 +9357,12 @@ class _DashboardViewState extends State<DashboardView>
           onEnter: (_) {
             if (isVideo) {
               _hoverDebounceTimer?.cancel();
-              _hoverDebounceTimer = Timer(const Duration(milliseconds: 120), () {
-                if (mounted) _hoveredVideoCardNotifier.value = wp.id;
-              });
+              _hoverDebounceTimer = Timer(
+                const Duration(milliseconds: 120),
+                () {
+                  if (mounted) _hoveredVideoCardNotifier.value = wp.id;
+                },
+              );
             }
           },
           onExit: (_) {
@@ -9145,559 +9374,601 @@ class _DashboardViewState extends State<DashboardView>
             }
           },
           child: Tooltip(
-        message: wp.isPro
-            ? (isVideo
-                  ? 'WallSync Pro Live Video • ${wp.name}'
-                  : 'WallSync Pro Wallpaper • ${wp.name}')
-            : isVideo
-            ? (isActive
-                  ? 'Active live video wallpaper • Click to preview & set'
-                  : 'Live video wallpaper • Click to preview & set')
-            : 'Set wallpaper',
-        child: GestureDetector(
-          onTap: isApplying || _isVideoWallpaperBusy || _isClearingWallpaperCache
-              ? null
-              : isVideo
-              ? () => showLiveVideoPreviewDialog(
-                  context: context,
-                  wallpaper: wp,
-                  isActive: isActive,
-                  onApplyWallpaper: _applyVideoWallpaper,
-                  onReportWallpaper: _showWallpaperReportDialog,
-                )
-              : () => _applyWallpaper(wp),
-          child: HoverCard(
-            glowColor: isActive
-                ? themeColor
-                : (isVideo ? const Color(0xFF38BDF8) : const Color(0xFFEC4899)),
-            maxGlowOpacity: isActive ? 0.40 : 0.22,
-            blurRadius: isActive ? 20 : 14,
-            scaleUp: 1.035,
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF111420),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isActive
-                      ? themeColor
-                      : (isVideo
-                            ? const Color(0xFF38BDF8).withValues(alpha: 0.28)
-                            : Colors.white.withValues(alpha: 0.09)),
-                  width: isActive ? 2.0 : 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (isActive ? themeColor : Colors.black)
-                        .withValues(alpha: isActive ? 0.38 : 0.45),
-                    blurRadius: isActive ? 22 : 12,
-                    offset: const Offset(0, 4),
+            message: wp.isPro
+                ? (isVideo
+                      ? 'WallSync Pro Live Video • ${wp.name}'
+                      : 'WallSync Pro Wallpaper • ${wp.name}')
+                : isVideo
+                ? (isActive
+                      ? 'Active live video wallpaper • Click to preview & set'
+                      : 'Live video wallpaper • Click to preview & set')
+                : 'Set wallpaper',
+            child: GestureDetector(
+              onTap:
+                  isApplying ||
+                      _isVideoWallpaperBusy ||
+                      _isClearingWallpaperCache
+                  ? null
+                  : isVideo
+                  ? () => showLiveVideoPreviewDialog(
+                      context: context,
+                      wallpaper: wp,
+                      isActive: isActive,
+                      onApplyWallpaper: _applyVideoWallpaper,
+                      onReportWallpaper: _showWallpaperReportDialog,
+                    )
+                  : () => _applyWallpaper(wp),
+              child: HoverCard(
+                glowColor: isActive
+                    ? themeColor
+                    : (isVideo
+                          ? const Color(0xFF38BDF8)
+                          : const Color(0xFFEC4899)),
+                maxGlowOpacity: isActive ? 0.40 : 0.22,
+                blurRadius: isActive ? 20 : 14,
+                scaleUp: 1.035,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111420),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isActive
+                          ? themeColor
+                          : (isVideo
+                                ? const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.28)
+                                : Colors.white.withValues(alpha: 0.09)),
+                      width: isActive ? 2.0 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isActive ? themeColor : Colors.black)
+                            .withValues(alpha: isActive ? 0.38 : 0.45),
+                        blurRadius: isActive ? 22 : 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(isActive ? 18 : 19),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: wp.url.startsWith('asset://')
-                          ? Image.asset(
-                              wp.url.replaceFirst('asset://', ''),
-                              fit: BoxFit.cover,
-                              cacheWidth: 320,
-                              cacheHeight: 240,
-                              errorBuilder: (_, _, _) => Container(
-                                color: Colors.black45,
-                                child: const Icon(
-                                  Icons.broken_image,
-                                  color: Colors.white24,
-                                  size: 32,
-                                ),
-                              ),
-                            )
-                          : (isVideo)
-                          ? VideoThumbnailWidget(
-                              wallpaper: wp,
-                              fit: BoxFit.cover,
-                            )
-                          : SafeNetworkImage(
-                              url: _thumbnailUrlFor(wp.thumbnailUrl ?? wp.url),
-                              fallbackUrl: wp.thumbnailUrl ?? wp.url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                logError(
-                                  'DashboardView',
-                                  'Failed to load network thumbnail: ${wp.url}',
-                                  error,
-                                  stackTrace,
-                                );
-                                return Container(
-                                  color: Colors.black45,
-                                  child: const Icon(
-                                    Icons.broken_image,
-                                    color: Colors.white24,
-                                    size: 32,
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-
-                    // Obsidian Bottom-Weighted Shadow
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.35),
-                              Colors.black.withValues(alpha: 0.88),
-                            ],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    Positioned(
-                      top: 8,
-                      right: 48,
-                      child: ResolutionOverlayLabel(wallpaper: wp),
-                    ),
-                    Positioned(
-                      top: 3,
-                      right: 3,
-                      child: PopupMenuButton<String>(
-                        tooltip: 'Wallpaper actions',
-                        onSelected: (action) {
-                          if (action == 'report') {
-                            _showWallpaperReportDialog(wp);
-                          }
-                        },
-                        color: const Color(0xFF202434),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: 'report',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.flag_outlined,
-                                  size: 18,
-                                  color: Color(0xFFFCA5A5),
-                                ),
-                                SizedBox(width: 10),
-                                Text('Report wallpaper'),
-                              ],
-                            ),
-                          ),
-                        ],
-                        child: const Material(
-                          color: Color(0xB3000000),
-                          shape: CircleBorder(),
-                          child: Padding(
-                            padding: EdgeInsets.all(5),
-                            child: Icon(
-                              Icons.more_vert_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Active Desktop Beacon Badge
-                    if (isActive)
-                      Positioned(
-                        top: 9,
-                        left: 9,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3.5,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF059669), Color(0xFF10B981)],
-                            ),
-                            borderRadius: BorderRadius.circular(7),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.6),
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(
-                                radius: 3,
-                                backgroundColor: Colors.white,
-                              ),
-                              SizedBox(width: 4.5),
-                              Text(
-                                'ACTIVE DESKTOP',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                    // Pro Badge
-                    if (wp.isPro)
-                      Positioned(
-                        top: 9,
-                        left: (isActive || isVideo) ? 116 : 9,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7.5,
-                            vertical: 3.5,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFFD700), Color(0xFFF59E0B)],
-                            ),
-                            borderRadius: BorderRadius.circular(7),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(
-                                  0xFFF59E0B,
-                                ).withValues(alpha: 0.55),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.stars_rounded,
-                                size: 11,
-                                color: Color(0xFF0F111A),
-                              ),
-                              SizedBox(width: 3.5),
-                              Text(
-                                'PRO UNLOCKED',
-                                style: TextStyle(
-                                  color: Color(0xFF0F111A),
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                    // Live Video Motion Tag (when not already displaying active desktop)
-                    if (isVideo && !isActive)
-                      Positioned(
-                        top: 9,
-                        left: 9,
-                        child: isHoveredVideo
-                            ? Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFF0284C7), Color(0xFF38BDF8)],
-                                  ),
-                                  borderRadius: BorderRadius.circular(7),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF0284C7,
-                                      ).withValues(alpha: 0.7),
-                                      blurRadius: 10,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(isActive ? 18 : 19),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: wp.url.startsWith('asset://')
+                              ? Image.asset(
+                                  wp.url.replaceFirst('asset://', ''),
+                                  fit: BoxFit.cover,
+                                  cacheWidth: 320,
+                                  cacheHeight: 240,
+                                  errorBuilder: (_, _, _) => Container(
+                                    color: Colors.black45,
+                                    child: const Icon(
+                                      Icons.broken_image,
+                                      color: Colors.white24,
+                                      size: 32,
                                     ),
-                                  ],
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 3,
-                                      backgroundColor: Color(0xFF22C55E),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'LIVE PREVIEW',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 8.5,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.6,
+                                  ),
+                                )
+                              : (isVideo)
+                              ? VideoThumbnailWidget(
+                                  wallpaper: wp,
+                                  fit: BoxFit.cover,
+                                )
+                              : SafeNetworkImage(
+                                  url: _thumbnailUrlFor(
+                                    wp.thumbnailUrl ?? wp.url,
+                                  ),
+                                  fallbackUrl: wp.thumbnailUrl ?? wp.url,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    logError(
+                                      'DashboardView',
+                                      'Failed to load network thumbnail: ${wp.url}',
+                                      error,
+                                      stackTrace,
+                                    );
+                                    return Container(
+                                      color: Colors.black45,
+                                      child: const Icon(
+                                        Icons.broken_image,
+                                        color: Colors.white24,
+                                        size: 32,
                                       ),
-                                    ),
-                                  ],
+                                    );
+                                  },
                                 ),
-                              )
-                            : Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF0284C7),
-                                      Color(0xFF6366F1),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(7),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF0284C7,
-                                      ).withValues(alpha: 0.4),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
+                        ),
+
+                        // Obsidian Bottom-Weighted Shadow
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.35),
+                                  Colors.black.withValues(alpha: 0.88),
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        Positioned(
+                          top: 8,
+                          right: 48,
+                          child: ResolutionOverlayLabel(wallpaper: wp),
+                        ),
+                        Positioned(
+                          top: 3,
+                          right: 3,
+                          child: PopupMenuButton<String>(
+                            tooltip: 'Wallpaper actions',
+                            onSelected: (action) {
+                              if (action == 'report') {
+                                _showWallpaperReportDialog(wp);
+                              }
+                            },
+                            color: const Color(0xFF202434),
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'report',
+                                child: Row(
                                   children: [
                                     Icon(
-                                      Icons.videocam_rounded,
-                                      size: 11,
-                                      color: Colors.white,
+                                      Icons.flag_outlined,
+                                      size: 18,
+                                      color: Color(0xFFFCA5A5),
                                     ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      '60FPS LIVE',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 8.5,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
+                                    SizedBox(width: 10),
+                                    Text('Report wallpaper'),
                                   ],
                                 ),
                               ),
-                      ),
-
-                    if (isBusy)
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircularProgressIndicator(
-                                  value: progress != null && progress > 0.01
-                                      ? progress
-                                      : null,
-                                  color: themeColor,
-                                  strokeWidth: 3,
+                            ],
+                            child: const Material(
+                              color: Color(0xB3000000),
+                              shape: CircleBorder(),
+                              child: Padding(
+                                padding: EdgeInsets.all(5),
+                                child: Icon(
+                                  Icons.more_vert_rounded,
+                                  color: Colors.white,
+                                  size: 18,
                                 ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  isApplying
-                                      ? 'Applying...'
-                                      : progress != null && progress > 0.01
-                                      ? '${(progress * 100).toInt()}%'
-                                      : 'Downloading...',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
 
-                    Positioned(
-                      bottom: 12,
-                      left: 14,
-                      right: 14,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  wp.name,
-                                  style: const TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                        // Active Desktop Beacon Badge
+                        if (isActive)
+                          Positioned(
+                            top: 9,
+                            left: 9,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3.5,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF059669),
+                                    Color(0xFF10B981),
+                                  ],
                                 ),
-                                const SizedBox(height: 1),
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 5,
-                                      height: 5,
-                                      decoration: BoxDecoration(
-                                        color: themeColor,
-                                        shape: BoxShape.circle,
-                                      ),
+                                borderRadius: BorderRadius.circular(7),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.6),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 3,
+                                    backgroundColor: Colors.white,
+                                  ),
+                                  SizedBox(width: 4.5),
+                                  Text(
+                                    'ACTIVE DESKTOP',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.6,
                                     ),
-                                    const SizedBox(width: 4),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // Pro Badge
+                        if (wp.isPro)
+                          Positioned(
+                            top: 9,
+                            left: (isActive || isVideo) ? 116 : 9,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7.5,
+                                vertical: 3.5,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFFD700),
+                                    Color(0xFFF59E0B),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(7),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFFF59E0B,
+                                    ).withValues(alpha: 0.55),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.stars_rounded,
+                                    size: 11,
+                                    color: Color(0xFF0F111A),
+                                  ),
+                                  SizedBox(width: 3.5),
+                                  Text(
+                                    'PRO UNLOCKED',
+                                    style: TextStyle(
+                                      color: Color(0xFF0F111A),
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // Live Video Motion Tag (when not already displaying active desktop)
+                        if (isVideo && !isActive)
+                          Positioned(
+                            top: 9,
+                            left: 9,
+                            child: isHoveredVideo
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3.5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF0284C7),
+                                          Color(0xFF38BDF8),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(7),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF0284C7,
+                                          ).withValues(alpha: 0.7),
+                                          blurRadius: 10,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 3,
+                                          backgroundColor: Color(0xFF22C55E),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'LIVE PREVIEW',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3.5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF0284C7),
+                                          Color(0xFF6366F1),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(7),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF0284C7,
+                                          ).withValues(alpha: 0.4),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.videocam_rounded,
+                                          size: 11,
+                                          color: Colors.white,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          '60FPS LIVE',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                          ),
+
+                        if (isBusy)
+                          Positioned.fill(
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(
+                                      value: progress != null && progress > 0.01
+                                          ? progress
+                                          : null,
+                                      color: themeColor,
+                                      strokeWidth: 3,
+                                    ),
+                                    const SizedBox(height: 10),
                                     Text(
-                                      wp.category,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: themeColor,
+                                      isApplying
+                                          ? 'Applying...'
+                                          : progress != null && progress > 0.01
+                                          ? '${(progress * 100).toInt()}%'
+                                          : 'Downloading...',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                   ],
                                 ),
-                                if (wp.description != null &&
-                                    wp.description!.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    wp.description!,
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.6,
+                              ),
+                            ),
+                          ),
+
+                        Positioned(
+                          bottom: 12,
+                          left: 14,
+                          right: 14,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      wp.name,
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 5,
+                                          height: 5,
+                                          decoration: BoxDecoration(
+                                            color: themeColor,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          wp.category,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: themeColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (wp.description != null &&
+                                        wp.description!.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        wp.description!,
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          color: Colors.white.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              if (isVideo) ...[
+                                Tooltip(
+                                  message: 'Full Video Preview & Options',
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: const Color(
+                                          0xFF38BDF8,
+                                        ).withValues(alpha: 0.35),
+                                        width: 1.0,
                                       ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          if (isVideo) ...[
-                            Tooltip(
-                              message: 'Full Video Preview & Options',
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                                    width: 1.0,
-                                  ),
-                                ),
-                                child: IconButton(
-                                  onPressed: () => showLiveVideoPreviewDialog(
-                                    context: context,
-                                    wallpaper: wp,
-                                    isActive: isActive,
-                                    onApplyWallpaper: _applyVideoWallpaper,
-                                    onReportWallpaper: _showWallpaperReportDialog,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.visibility_rounded,
-                                    size: 15,
-                                  ),
-                                  color: Colors.white,
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.18),
-                                    hoverColor: const Color(0xFF38BDF8).withValues(alpha: 0.38),
-                                    padding: const EdgeInsets.all(7),
-                                    minimumSize: const Size(32, 32),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                          Tooltip(
-                            message: isVideo
-                                ? (isActive
-                                      ? 'Active Live Wallpaper'
-                                      : 'Set Live Wallpaper')
-                                : (isDownloaded ? 'Set wallpaper' : 'Download'),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: isActive
-                                      ? themeColor.withValues(alpha: 0.8)
-                                      : wp.isPro
-                                      ? const Color(0xFFFFB703).withValues(alpha: 0.5)
-                                      : Colors.white.withValues(alpha: 0.15),
-                                  width: 1.0,
-                                ),
-                                boxShadow: isActive
-                                    ? [
-                                        BoxShadow(
-                                          color: themeColor.withValues(alpha: 0.35),
-                                          blurRadius: 8,
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: IconButton(
-                                onPressed: isBusy ||
-                                        _isVideoWallpaperBusy ||
-                                        _isClearingWallpaperCache
-                                    ? null
-                                    : isVideo
-                                    ? () => _applyVideoWallpaper(wp.url)
-                                    : isDownloaded
-                                    ? () => _applyWallpaper(wp)
-                                    : () => _downloadOnly(wp),
-                                icon: isBusy
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Icon(
-                                        isActive
-                                            ? Icons.check_rounded
-                                            : isVideo
-                                            ? Icons.play_arrow_rounded
-                                            : isDownloaded
-                                            ? Icons.wallpaper_rounded
-                                            : Icons.download_rounded,
-                                        size: 16,
+                                    child: IconButton(
+                                      onPressed: () =>
+                                          showLiveVideoPreviewDialog(
+                                            context: context,
+                                            wallpaper: wp,
+                                            isActive: isActive,
+                                            onApplyWallpaper:
+                                                _applyVideoWallpaper,
+                                            onReportWallpaper:
+                                                _showWallpaperReportDialog,
+                                          ),
+                                      icon: const Icon(
+                                        Icons.visibility_rounded,
+                                        size: 15,
                                       ),
-                                color: Colors.white,
-                                style: IconButton.styleFrom(
-                                  backgroundColor: isActive
-                                      ? themeColor
-                                      : wp.isPro
-                                      ? const Color(0xFFFFB703).withValues(alpha: 0.22)
-                                      : Colors.white.withValues(alpha: 0.08),
-                                  disabledBackgroundColor: Colors.white
-                                      .withValues(alpha: 0.08),
-                                  padding: const EdgeInsets.all(7),
-                                  minimumSize: const Size(32, 32),
+                                      color: Colors.white,
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF38BDF8,
+                                        ).withValues(alpha: 0.18),
+                                        hoverColor: const Color(
+                                          0xFF38BDF8,
+                                        ).withValues(alpha: 0.38),
+                                        padding: const EdgeInsets.all(7),
+                                        minimumSize: const Size(32, 32),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Tooltip(
+                                message: isVideo
+                                    ? (isActive
+                                          ? 'Active Live Wallpaper'
+                                          : 'Set Live Wallpaper')
+                                    : (isDownloaded
+                                          ? 'Set wallpaper'
+                                          : 'Download'),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isActive
+                                          ? themeColor.withValues(alpha: 0.8)
+                                          : wp.isPro
+                                          ? const Color(
+                                              0xFFFFB703,
+                                            ).withValues(alpha: 0.5)
+                                          : Colors.white.withValues(
+                                              alpha: 0.15,
+                                            ),
+                                      width: 1.0,
+                                    ),
+                                    boxShadow: isActive
+                                        ? [
+                                            BoxShadow(
+                                              color: themeColor.withValues(
+                                                alpha: 0.35,
+                                              ),
+                                              blurRadius: 8,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: IconButton(
+                                    onPressed:
+                                        isBusy ||
+                                            _isVideoWallpaperBusy ||
+                                            _isClearingWallpaperCache
+                                        ? null
+                                        : isVideo
+                                        ? () => _applyVideoWallpaper(wp.url)
+                                        : isDownloaded
+                                        ? () => _applyWallpaper(wp)
+                                        : () => _downloadOnly(wp),
+                                    icon: isBusy
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : Icon(
+                                            isActive
+                                                ? Icons.check_rounded
+                                                : isVideo
+                                                ? Icons.play_arrow_rounded
+                                                : isDownloaded
+                                                ? Icons.wallpaper_rounded
+                                                : Icons.download_rounded,
+                                            size: 16,
+                                          ),
+                                    color: Colors.white,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: isActive
+                                          ? themeColor
+                                          : wp.isPro
+                                          ? const Color(
+                                              0xFFFFB703,
+                                            ).withValues(alpha: 0.22)
+                                          : Colors.white.withValues(
+                                              alpha: 0.08,
+                                            ),
+                                      disabledBackgroundColor: Colors.white
+                                          .withValues(alpha: 0.08),
+                                      padding: const EdgeInsets.all(7),
+                                      minimumSize: const Size(32, 32),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        );
       },
     );
   }
@@ -9773,8 +10044,10 @@ class _DashboardViewState extends State<DashboardView>
               ),
               const SizedBox(height: 10),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(8),
@@ -10069,8 +10342,10 @@ class _DashboardViewState extends State<DashboardView>
     if (prioritize ||
         (_downloadedWallpaperIds.contains(wallpaper.id) &&
             !_wallpaperDownloadTasks.containsKey(wallpaper.id))) {
-      final cachedOrDownloaded =
-          await _firebaseService.downloadWallpaper(wallpaper, (_) {});
+      final cachedOrDownloaded = await _firebaseService.downloadWallpaper(
+        wallpaper,
+        (_) {},
+      );
       if (cachedOrDownloaded != null) {
         _downloadedWallpaperIds.add(wallpaper.id);
         return cachedOrDownloaded;
@@ -10579,15 +10854,22 @@ class _DashboardViewState extends State<DashboardView>
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
-                    layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
-                      return Stack(
-                        alignment: Alignment.topLeft,
-                        children: <Widget>[
-                          ...previousChildren.map((w) => IgnorePointer(key: w.key, ignoring: true, child: w)),
-                          ?currentChild,
-                        ],
-                      );
-                    },
+                    layoutBuilder:
+                        (Widget? currentChild, List<Widget> previousChildren) {
+                          return Stack(
+                            alignment: Alignment.topLeft,
+                            children: <Widget>[
+                              ...previousChildren.map(
+                                (w) => IgnorePointer(
+                                  key: w.key,
+                                  ignoring: true,
+                                  child: w,
+                                ),
+                              ),
+                              ?currentChild,
+                            ],
+                          );
+                        },
                     transitionBuilder: (child, animation) {
                       return FadeTransition(
                         opacity: animation,
@@ -11807,10 +12089,7 @@ class _DashboardViewState extends State<DashboardView>
                           height: 56,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [
-                                barColor,
-                                const Color(0xFF8B5CF6),
-                              ],
+                              colors: [barColor, const Color(0xFF8B5CF6)],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                             ),
@@ -11887,15 +12166,22 @@ class _DashboardViewState extends State<DashboardView>
               final sepColor = Color(_settings.colorFor(ElementKey.separator));
               final dateColor = Color(_settings.colorFor(ElementKey.date));
               final dayColor = Color(_settings.colorFor(ElementKey.day));
-              final badgeColor = Color(_settings.colorFor(ElementKey.neonBadge));
-              final dateStr = DateFormat('d MMM yyyy').format(now).toUpperCase();
+              final badgeColor = Color(
+                _settings.colorFor(ElementKey.neonBadge),
+              );
+              final dateStr = DateFormat(
+                'd MMM yyyy',
+              ).format(now).toUpperCase();
 
               return _applyPreview3D(
                 ElementKey.neonBox,
                 tappable(
                   ElementKey.neonBox,
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF070B12).withValues(alpha: 0.94),
                       borderRadius: BorderRadius.circular(18),
@@ -11924,7 +12210,9 @@ class _DashboardViewState extends State<DashboardView>
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1.2,
-                                    fontFamily: _settings.fontFor(ElementKey.separator),
+                                    fontFamily: _settings.fontFor(
+                                      ElementKey.separator,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -11941,7 +12229,9 @@ class _DashboardViewState extends State<DashboardView>
                                     fontSize: 9,
                                     fontWeight: FontWeight.w600,
                                     letterSpacing: 0.8,
-                                    fontFamily: _settings.fontFor(ElementKey.date),
+                                    fontFamily: _settings.fontFor(
+                                      ElementKey.date,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -11958,7 +12248,11 @@ class _DashboardViewState extends State<DashboardView>
                                 ElementKey.hours,
                                 Text(
                                   hourStr,
-                                  style: styleFor(ElementKey.hours, 36, FontWeight.w900),
+                                  style: styleFor(
+                                    ElementKey.hours,
+                                    36,
+                                    FontWeight.w900,
+                                  ),
                                 ),
                               ),
                             ),
@@ -11966,7 +12260,14 @@ class _DashboardViewState extends State<DashboardView>
                               ElementKey.separator,
                               tappable(
                                 ElementKey.separator,
-                                Text(':', style: styleFor(ElementKey.separator, 32, FontWeight.w700)),
+                                Text(
+                                  ':',
+                                  style: styleFor(
+                                    ElementKey.separator,
+                                    32,
+                                    FontWeight.w700,
+                                  ),
+                                ),
                               ),
                             ),
                             _applyPreview3D(
@@ -11975,7 +12276,11 @@ class _DashboardViewState extends State<DashboardView>
                                 ElementKey.minutes,
                                 Text(
                                   minStr,
-                                  style: styleFor(ElementKey.minutes, 36, FontWeight.w900),
+                                  style: styleFor(
+                                    ElementKey.minutes,
+                                    36,
+                                    FontWeight.w900,
+                                  ),
                                 ),
                               ),
                             ),
@@ -11987,7 +12292,11 @@ class _DashboardViewState extends State<DashboardView>
                                   ElementKey.seconds,
                                   Text(
                                     secStr,
-                                    style: styleFor(ElementKey.seconds, 14, FontWeight.bold),
+                                    style: styleFor(
+                                      ElementKey.seconds,
+                                      14,
+                                      FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -12009,14 +12318,24 @@ class _DashboardViewState extends State<DashboardView>
                                     fontSize: 8.5,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 1.0,
-                                    fontFamily: _settings.fontFor(ElementKey.day),
+                                    fontFamily: _settings.fontFor(
+                                      ElementKey.day,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 5),
-                              child: Text('•', style: TextStyle(color: dayColor.withValues(alpha: 0.6), fontSize: 8.5)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                              ),
+                              child: Text(
+                                '•',
+                                style: TextStyle(
+                                  color: dayColor.withValues(alpha: 0.6),
+                                  fontSize: 8.5,
+                                ),
+                              ),
                             ),
                             _applyPreview3D(
                               ElementKey.neonBadge,
@@ -12029,7 +12348,9 @@ class _DashboardViewState extends State<DashboardView>
                                     fontSize: 8.5,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 0.8,
-                                    fontFamily: _settings.fontFor(ElementKey.neonBadge),
+                                    fontFamily: _settings.fontFor(
+                                      ElementKey.neonBadge,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -12059,7 +12380,11 @@ class _DashboardViewState extends State<DashboardView>
                           ElementKey.hours,
                           Text(
                             hourStr,
-                            style: styleFor(ElementKey.hours, 40, FontWeight.w900),
+                            style: styleFor(
+                              ElementKey.hours,
+                              40,
+                              FontWeight.w900,
+                            ),
                           ),
                         ),
                       ),
@@ -12067,7 +12392,14 @@ class _DashboardViewState extends State<DashboardView>
                         ElementKey.separator,
                         tappable(
                           ElementKey.separator,
-                          Text(':', style: styleFor(ElementKey.separator, 36, FontWeight.w700)),
+                          Text(
+                            ':',
+                            style: styleFor(
+                              ElementKey.separator,
+                              36,
+                              FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
                       _applyPreview3D(
@@ -12076,7 +12408,11 @@ class _DashboardViewState extends State<DashboardView>
                           ElementKey.minutes,
                           Text(
                             minStr,
-                            style: styleFor(ElementKey.minutes, 40, FontWeight.w900),
+                            style: styleFor(
+                              ElementKey.minutes,
+                              40,
+                              FontWeight.w900,
+                            ),
                           ),
                         ),
                       ),
@@ -12086,7 +12422,14 @@ class _DashboardViewState extends State<DashboardView>
                           ElementKey.seconds,
                           tappable(
                             ElementKey.seconds,
-                            Text(secStr, style: styleFor(ElementKey.seconds, 14, FontWeight.bold)),
+                            Text(
+                              secStr,
+                              style: styleFor(
+                                ElementKey.seconds,
+                                14,
+                                FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -12114,7 +12457,13 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 5),
-                        child: Text('•', style: TextStyle(color: dayColor.withValues(alpha: 0.6), fontSize: 9.5)),
+                        child: Text(
+                          '•',
+                          style: TextStyle(
+                            color: dayColor.withValues(alpha: 0.6),
+                            fontSize: 9.5,
+                          ),
+                        ),
                       ),
                       _applyPreview3D(
                         ElementKey.date,
@@ -12140,12 +12489,16 @@ class _DashboardViewState extends State<DashboardView>
             case 'arc_clock':
               final arcStart = Color(_settings.colorFor(ElementKey.glowOuter));
               final arcEnd = Color(_settings.colorFor(ElementKey.glowInner));
-              final dialBg = Color(_settings.colorFor(ElementKey.innerBackground));
+              final dialBg = Color(
+                _settings.colorFor(ElementKey.innerBackground),
+              );
               final ticksCol = Color(_settings.colorFor(ElementKey.separator));
               final hrHandCol = Color(_settings.colorFor(ElementKey.hours));
               final minHandCol = Color(_settings.colorFor(ElementKey.minutes));
               final secHandCol = Color(_settings.colorFor(ElementKey.seconds));
-              final digitalColor = Color(_settings.colorFor(ElementKey.minutes));
+              final digitalColor = Color(
+                _settings.colorFor(ElementKey.minutes),
+              );
               final dateColor = Color(_settings.colorFor(ElementKey.day));
 
               return Column(
@@ -12179,7 +12532,9 @@ class _DashboardViewState extends State<DashboardView>
                     tappable(
                       ElementKey.minutes,
                       Text(
-                        showSec ? '$hourStr:$minStr:$secStr' : '$hourStr:$minStr',
+                        showSec
+                            ? '$hourStr:$minStr:$secStr'
+                            : '$hourStr:$minStr',
                         style: TextStyle(
                           color: digitalColor,
                           fontSize: 16,
@@ -12209,7 +12564,9 @@ class _DashboardViewState extends State<DashboardView>
 
             case 'flip_clock':
               final frameColor = Color(_settings.colorFor(ElementKey.neonBox));
-              final frameBg = Color(_settings.colorFor(ElementKey.innerBackground));
+              final frameBg = Color(
+                _settings.colorFor(ElementKey.innerBackground),
+              );
 
               return _applyPreview3D(
                 ElementKey.neonBox,
@@ -12235,9 +12592,13 @@ class _DashboardViewState extends State<DashboardView>
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _buildMiniFlipDigit(hourStr.isNotEmpty ? hourStr[0] : '1'),
+                                    _buildMiniFlipDigit(
+                                      hourStr.isNotEmpty ? hourStr[0] : '1',
+                                    ),
                                     const SizedBox(width: 4),
-                                    _buildMiniFlipDigit(hourStr.length > 1 ? hourStr[1] : '2'),
+                                    _buildMiniFlipDigit(
+                                      hourStr.length > 1 ? hourStr[1] : '2',
+                                    ),
                                   ],
                                 ),
                               ),
@@ -12250,9 +12611,13 @@ class _DashboardViewState extends State<DashboardView>
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    _buildMiniFlipDigit(minStr.isNotEmpty ? minStr[0] : '4'),
+                                    _buildMiniFlipDigit(
+                                      minStr.isNotEmpty ? minStr[0] : '4',
+                                    ),
                                     const SizedBox(width: 4),
-                                    _buildMiniFlipDigit(minStr.length > 1 ? minStr[1] : '5'),
+                                    _buildMiniFlipDigit(
+                                      minStr.length > 1 ? minStr[1] : '5',
+                                    ),
                                   ],
                                 ),
                               ),
@@ -12267,7 +12632,9 @@ class _DashboardViewState extends State<DashboardView>
                               ElementKey.day,
                               tappable(
                                 ElementKey.day,
-                                _buildMiniFlipTag(DateFormat('EEE').format(now).toUpperCase()),
+                                _buildMiniFlipTag(
+                                  DateFormat('EEE').format(now).toUpperCase(),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -12275,7 +12642,9 @@ class _DashboardViewState extends State<DashboardView>
                               ElementKey.date,
                               tappable(
                                 ElementKey.date,
-                                _buildMiniFlipTag(now.day.toString().padLeft(2, '0')),
+                                _buildMiniFlipTag(
+                                  now.day.toString().padLeft(2, '0'),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -12283,7 +12652,9 @@ class _DashboardViewState extends State<DashboardView>
                               ElementKey.year,
                               tappable(
                                 ElementKey.year,
-                                _buildMiniFlipTag(DateFormat('MMM').format(now).toUpperCase()),
+                                _buildMiniFlipTag(
+                                  DateFormat('MMM').format(now).toUpperCase(),
+                                ),
                               ),
                             ),
                           ],
@@ -12296,26 +12667,38 @@ class _DashboardViewState extends State<DashboardView>
 
             case 'station_weather':
               final pillBg = Color(_settings.colorFor(ElementKey.neonBox));
-              final dialBg = Color(_settings.colorFor(ElementKey.innerBackground));
+              final dialBg = Color(
+                _settings.colorFor(ElementKey.innerBackground),
+              );
               final rimCol = Color(_settings.colorFor(ElementKey.glowOuter));
               final tickCol = Color(_settings.colorFor(ElementKey.separator));
               final handCol = Color(_settings.colorFor(ElementKey.hours));
               final minCol = Color(_settings.colorFor(ElementKey.minutes));
               final secCol = Color(_settings.colorFor(ElementKey.seconds));
-              final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '--°C';
-              final currentIcon = WeatherService.getIconForStatus(_settings.weatherStatus);
+              final tempStr = _settings.weatherTemp.isNotEmpty
+                  ? '${_settings.weatherTemp}°C'
+                  : '--°C';
+              final currentIcon = WeatherService.getIconForStatus(
+                _settings.weatherStatus,
+              );
               List<Map<String, dynamic>> forecastList = [];
               try {
                 if (_settings.weatherForecastJson.isNotEmpty) {
                   final decoded = jsonDecode(_settings.weatherForecastJson);
                   if (decoded is List) {
-                    forecastList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                    forecastList = decoded
+                        .map((e) => Map<String, dynamic>.from(e as Map))
+                        .toList();
                   }
                 }
               } catch (_) {}
-              final col2Temp = forecastList.isNotEmpty ? '${forecastList[0]['temp']}°C' : '';
+              final col2Temp = forecastList.isNotEmpty
+                  ? '${forecastList[0]['temp']}°C'
+                  : '';
               final col2Icon = forecastList.isNotEmpty
-                  ? WeatherService.getIconForCode(forecastList[0]['code'] as int? ?? 0)
+                  ? WeatherService.getIconForCode(
+                      forecastList[0]['code'] as int? ?? 0,
+                    )
                   : currentIcon;
 
               return _applyPreview3D(
@@ -12323,11 +12706,17 @@ class _DashboardViewState extends State<DashboardView>
                 tappable(
                   ElementKey.neonBox,
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: pillBg,
                       borderRadius: BorderRadius.circular(32),
-                      border: Border.all(color: rimCol.withValues(alpha: 0.3), width: 1.2),
+                      border: Border.all(
+                        color: rimCol.withValues(alpha: 0.3),
+                        width: 1.2,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -12373,7 +12762,9 @@ class _DashboardViewState extends State<DashboardView>
                                   style: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 9,
-                                    fontFamily: _settings.fontFor(ElementKey.day),
+                                    fontFamily: _settings.fontFor(
+                                      ElementKey.day,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -12388,7 +12779,9 @@ class _DashboardViewState extends State<DashboardView>
                                     color: Colors.white,
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
-                                    fontFamily: _settings.fontFor(ElementKey.date),
+                                    fontFamily: _settings.fontFor(
+                                      ElementKey.date,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -12406,14 +12799,35 @@ class _DashboardViewState extends State<DashboardView>
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(currentIcon, size: 12, color: Colors.white),
+                                    Icon(
+                                      currentIcon,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
                                     const SizedBox(width: 3),
-                                    Text(tempStr, style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      tempStr,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                     if (col2Temp.isNotEmpty) ...[
                                       const SizedBox(width: 8),
-                                      Icon(col2Icon, size: 12, color: Colors.white70),
+                                      Icon(
+                                        col2Icon,
+                                        size: 12,
+                                        color: Colors.white70,
+                                      ),
                                       const SizedBox(width: 3),
-                                      Text(col2Temp, style: const TextStyle(color: Colors.white70, fontSize: 8.5)),
+                                      Text(
+                                        col2Temp,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 8.5,
+                                        ),
+                                      ),
                                     ],
                                   ],
                                 ),
@@ -12427,21 +12841,30 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               );
 
-      case 'taskbar_dock':
+            case 'taskbar_dock':
               return Container(
                 height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF38BDF8)),
+                        const Icon(
+                          Icons.access_time_rounded,
+                          size: 14,
+                          color: Color(0xFF38BDF8),
+                        ),
                         const SizedBox(width: 6),
                         buildHoursPart(size: 13),
                         buildSeparatorPart(size: 13),
@@ -12450,54 +12873,124 @@ class _DashboardViewState extends State<DashboardView>
                         buildDayPart(size: 10),
                       ],
                     ),
-                    Container(width: 1, height: 24, margin: const EdgeInsets.symmetric(horizontal: 10), color: Colors.white12),
+                    Container(
+                      width: 1,
+                      height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      color: Colors.white12,
+                    ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.wb_sunny_rounded, size: 14, color: Color(0xFFFBBF24)),
+                        const Icon(
+                          Icons.wb_sunny_rounded,
+                          size: 14,
+                          color: Color(0xFFFBBF24),
+                        ),
                         const SizedBox(width: 5),
                         Text(
-                          _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°',
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Segoe UI'),
+                          _settings.weatherTemp.isNotEmpty
+                              ? '${_settings.weatherTemp}°'
+                              : '22°',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Segoe UI',
+                          ),
                         ),
                       ],
                     ),
-                    Container(width: 1, height: 24, margin: const EdgeInsets.symmetric(horizontal: 10), color: Colors.white12),
+                    Container(
+                      width: 1,
+                      height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      color: Colors.white12,
+                    ),
                     Expanded(
                       child: Row(
                         children: [
                           Container(
                             width: 24,
                             height: 24,
-                            decoration: const BoxDecoration(color: Color(0xFF38BDF8), shape: BoxShape.circle),
-                            child: const Icon(Icons.play_arrow_rounded, size: 14, color: Colors.black),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF38BDF8),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              size: 14,
+                              color: Colors.black,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              _mediaInfo.title.isNotEmpty ? _mediaInfo.title : 'Taskbar Audio Visualizer',
+                              _mediaInfo.title.isNotEmpty
+                                  ? _mediaInfo.title
+                                  : 'Taskbar Audio Visualizer',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600, fontFamily: 'Segoe UI'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'Segoe UI',
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Container(width: 1, height: 24, margin: const EdgeInsets.symmetric(horizontal: 10), color: Colors.white12),
+                    Container(
+                      width: 1,
+                      height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      color: Colors.white12,
+                    ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(color: const Color(0xFF00FFCC).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                          child: Text('${_cpuUsage.toStringAsFixed(0)}%', style: const TextStyle(color: Color(0xFF00FFCC), fontSize: 10, fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF00FFCC,
+                            ).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${_cpuUsage.toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              color: Color(0xFF00FFCC),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(color: const Color(0xFFA855F7).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                          child: Text('${_ramUsage.toStringAsFixed(0)}%', style: const TextStyle(color: Color(0xFFA855F7), fontSize: 10, fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFA855F7,
+                            ).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${_ramUsage.toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              color: Color(0xFFA855F7),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -12508,11 +13001,16 @@ class _DashboardViewState extends State<DashboardView>
             case 'taskbar_media':
               return Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -12523,7 +13021,11 @@ class _DashboardViewState extends State<DashboardView>
                         color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Icon(Icons.music_note_rounded, size: 18, color: Color(0xFF38BDF8)),
+                      child: const Icon(
+                        Icons.music_note_rounded,
+                        size: 18,
+                        color: Color(0xFF38BDF8),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -12532,21 +13034,38 @@ class _DashboardViewState extends State<DashboardView>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _mediaInfo.title.isNotEmpty ? _mediaInfo.title : 'Taskbar Media Player',
+                            _mediaInfo.title.isNotEmpty
+                                ? _mediaInfo.title
+                                : 'Taskbar Media Player',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Segoe UI'),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'Segoe UI',
+                            ),
                           ),
                           Text(
-                            _mediaInfo.artist.isNotEmpty ? _mediaInfo.artist : 'WASAPI Spectrum Sync',
+                            _mediaInfo.artist.isNotEmpty
+                                ? _mediaInfo.artist
+                                : 'WASAPI Spectrum Sync',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white54, fontSize: 9, fontFamily: 'Segoe UI'),
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 9,
+                              fontFamily: 'Segoe UI',
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.pause_rounded, size: 18, color: Colors.white),
+                    const Icon(
+                      Icons.pause_rounded,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ],
                 ),
               );
@@ -12558,16 +13077,39 @@ class _DashboardViewState extends State<DashboardView>
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Text('CPU: ${_cpuUsage.toStringAsFixed(0)}%', style: const TextStyle(color: Color(0xFF00FFCC), fontSize: 11, fontWeight: FontWeight.bold)),
+                    Text(
+                      'CPU: ${_cpuUsage.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Color(0xFF00FFCC),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     Container(width: 1, height: 16, color: Colors.white12),
-                    Text('RAM: ${_ramUsage.toStringAsFixed(0)}%', style: const TextStyle(color: Color(0xFFA855F7), fontSize: 11, fontWeight: FontWeight.bold)),
+                    Text(
+                      'RAM: ${_ramUsage.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                        color: Color(0xFFA855F7),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     Container(width: 1, height: 16, color: Colors.white12),
-                    const Text('SSD: 48%', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                    const Text(
+                      'SSD: 48%',
+                      style: TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -12578,34 +13120,70 @@ class _DashboardViewState extends State<DashboardView>
               final title = isDownloading
                   ? '${steam.gameTitle} Update'
                   : (steam.activePlayingGame != null
-                      ? 'Playing ${steam.activePlayingGame}'
-                      : (steam.isSteamRunning ? 'Steam Ready · Up to date' : 'Steam Offline'));
+                        ? 'Playing ${steam.activePlayingGame}'
+                        : (steam.isSteamRunning
+                              ? 'Steam Ready · Up to date'
+                              : 'Steam Offline'));
               final sub = isDownloading
                   ? '${steam.downloadedGB.toStringAsFixed(1)} GB / ${steam.totalGB.toStringAsFixed(1)} GB · ${steam.downloadSpeedMBs.toStringAsFixed(1)} MB/s'
-                  : (steam.isSteamRunning ? 'All games up to date' : 'Launch Steam');
+                  : (steam.isSteamRunning
+                        ? 'All games up to date'
+                        : 'Launch Steam');
               return Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.sports_esports_rounded, size: 18, color: Color(0xFF66C0F4)),
+                    const Icon(
+                      Icons.sports_esports_rounded,
+                      size: 18,
+                      color: Color(0xFF66C0F4),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold)),
-                          Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF66C0F4), fontSize: 8.5)),
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF66C0F4),
+                              fontSize: 8.5,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    Icon(isDownloading ? Icons.pause_rounded : Icons.check_circle_outline_rounded, size: 16, color: Colors.white70),
+                    Icon(
+                      isDownloading
+                          ? Icons.pause_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 16,
+                      color: Colors.white70,
+                    ),
                   ],
                 ),
               );
@@ -12618,21 +13196,30 @@ class _DashboardViewState extends State<DashboardView>
                   : (discord.isRunning ? 'Discord Online' : 'Discord Offline');
               final sub = isConnected
                   ? 'Connected · ${discord.pingMs}ms latency'
-                  : (discord.isRunning ? 'Not connected to voice' : 'Launch Discord to connect');
+                  : (discord.isRunning
+                        ? 'Not connected to voice'
+                        : 'Launch Discord to connect');
               return Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.headset_mic_rounded,
                       size: 18,
-                      color: isConnected ? const Color(0xFF23A55A) : const Color(0xFF5865F2),
+                      color: isConnected
+                          ? const Color(0xFF23A55A)
+                          : const Color(0xFF5865F2),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -12640,15 +13227,36 @@ class _DashboardViewState extends State<DashboardView>
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold)),
-                          Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 8.5)),
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 8.5,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     Icon(
-                      discord.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                      discord.isMuted
+                          ? Icons.mic_off_rounded
+                          : Icons.mic_rounded,
                       size: 15,
-                      color: discord.isMuted ? Colors.redAccent : Colors.white70,
+                      color: discord.isMuted
+                          ? Colors.redAccent
+                          : Colors.white70,
                     ),
                   ],
                 ),
@@ -12657,28 +13265,55 @@ class _DashboardViewState extends State<DashboardView>
             case 'taskbar_weather':
               return Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.wb_sunny_rounded, size: 18, color: Color(0xFFFBBF24)),
+                    const Icon(
+                      Icons.wb_sunny_rounded,
+                      size: 18,
+                      color: Color(0xFFFBBF24),
+                    ),
                     const SizedBox(width: 8),
                     Text(
-                      _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°',
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                      _settings.weatherTemp.isNotEmpty
+                          ? '${_settings.weatherTemp}°'
+                          : '22°',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _settings.weatherStatus.isNotEmpty ? _settings.weatherStatus : 'Partly Cloudy',
-                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                        _settings.weatherStatus.isNotEmpty
+                            ? _settings.weatherStatus
+                            : 'Partly Cloudy',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                        ),
                       ),
                     ),
-                    const Text('💧 64%', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 9, fontWeight: FontWeight.bold)),
+                    const Text(
+                      '💧 64%',
+                      style: TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -12686,23 +13321,45 @@ class _DashboardViewState extends State<DashboardView>
             case 'taskbar_parking_lot':
               return Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xDD16181F),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.inventory_2_outlined, size: 16, color: Color(0xFFF59E0B)),
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 16,
+                      color: Color(0xFFF59E0B),
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Parking Lot Stash', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                          Text('3 files ready to drop', style: TextStyle(color: Colors.white54, fontSize: 8.5)),
+                          Text(
+                            'Parking Lot Stash',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '3 files ready to drop',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 8.5,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -13210,10 +13867,7 @@ class _DashboardViewState extends State<DashboardView>
         ].contains(key);
 
       case 'taskbar_system':
-        return [
-          ElementKey.cpu,
-          ElementKey.ram,
-        ].contains(key);
+        return [ElementKey.cpu, ElementKey.ram].contains(key);
 
       case 'taskbar_steam':
       case 'taskbar_discord':
@@ -13377,9 +14031,15 @@ class _DashboardViewState extends State<DashboardView>
                 decoration: BoxDecoration(
                   color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                  ),
                 ),
-                child: const Icon(Icons.dock_rounded, color: Color(0xFF38BDF8), size: 24),
+                child: const Icon(
+                  Icons.dock_rounded,
+                  color: Color(0xFF38BDF8),
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -13402,11 +14062,20 @@ class _DashboardViewState extends State<DashboardView>
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                            color: const Color(
+                              0xFF10B981,
+                            ).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF10B981,
+                              ).withValues(alpha: 0.5),
+                            ),
                           ),
                           child: const Text(
                             'TASKBAR STUDIO',
@@ -13452,7 +14121,10 @@ class _DashboardViewState extends State<DashboardView>
                   );
                 },
                 icon: const Icon(Icons.refresh_rounded, size: 14),
-                label: const Text('Reset Defaults', style: TextStyle(fontSize: 11)),
+                label: const Text(
+                  'Reset Defaults',
+                  style: TextStyle(fontSize: 11),
+                ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white70,
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
@@ -13468,7 +14140,10 @@ class _DashboardViewState extends State<DashboardView>
         const SizedBox(height: 6),
         Text(
           'Hardware-level storage telemetry synced via native Win32 APIs. Select a specific drive to monitor or auto-detect.',
-          style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.5)),
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.white.withValues(alpha: 0.5),
+          ),
         ),
         const SizedBox(height: 12),
         Container(
@@ -13483,11 +14158,19 @@ class _DashboardViewState extends State<DashboardView>
             children: [
               Row(
                 children: [
-                  const Icon(Icons.storage_rounded, size: 16, color: Color(0xFF38BDF8)),
+                  const Icon(
+                    Icons.storage_rounded,
+                    size: 16,
+                    color: Color(0xFF38BDF8),
+                  ),
                   const SizedBox(width: 8),
                   const Text(
                     'Active Monitored Drive',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: Colors.white,
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
@@ -13501,26 +14184,41 @@ class _DashboardViewState extends State<DashboardView>
               const SizedBox(height: 12),
               // Drive Dropdown / Selector
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: DropdownButton<String>(
-                  value: _settings.taskbarDiskDrive == 'Auto' || !_cachedDisks.any((d) => d.drive == _settings.taskbarDiskDrive)
+                  value:
+                      _settings.taskbarDiskDrive == 'Auto' ||
+                          !_cachedDisks.any(
+                            (d) => d.drive == _settings.taskbarDiskDrive,
+                          )
                       ? 'Auto'
                       : _settings.taskbarDiskDrive,
                   isExpanded: true,
                   dropdownColor: const Color(0xFF1E2235),
                   underline: const SizedBox(),
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF38BDF8)),
+                  icon: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Color(0xFF38BDF8),
+                  ),
                   items: [
                     DropdownMenuItem<String>(
                       value: 'Auto',
                       child: Text(
                         'Auto-Detect OS Primary Drive (${_cachedDisks.isNotEmpty ? _cachedDisks.first.drive : 'C:'})',
-                        style: const TextStyle(fontSize: 12, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                     ..._cachedDisks.map((d) {
@@ -13528,13 +14226,18 @@ class _DashboardViewState extends State<DashboardView>
                         value: d.drive,
                         child: Text(
                           '${d.displayName} • ${d.totalFormatted} (${d.freeFormatted} Free)',
-                          style: const TextStyle(fontSize: 12, color: Colors.white),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
                         ),
                       );
                     }),
                   ],
                   onChanged: (val) {
-                    _updateSettings(_settings.copyWith(taskbarDiskDrive: val ?? 'Auto'));
+                    _updateSettings(
+                      _settings.copyWith(taskbarDiskDrive: val ?? 'Auto'),
+                    );
                   },
                 ),
               ),
@@ -13544,13 +14247,19 @@ class _DashboardViewState extends State<DashboardView>
                 spacing: 12,
                 runSpacing: 12,
                 children: _cachedDisks.map((d) {
-                  final isCurrentSelected = (_settings.taskbarDiskDrive == 'Auto' && d == _cachedDisks.first) ||
+                  final isCurrentSelected =
+                      (_settings.taskbarDiskDrive == 'Auto' &&
+                          d == _cachedDisks.first) ||
                       (_settings.taskbarDiskDrive == d.drive);
                   final usedPct = d.usedPercentage;
-                  final barColor = usedPct > 90 ? Colors.redAccent : (usedPct > 80 ? Colors.amber : const Color(0xFF00FFCC));
+                  final barColor = usedPct > 90
+                      ? Colors.redAccent
+                      : (usedPct > 80 ? Colors.amber : const Color(0xFF00FFCC));
                   return InkWell(
                     onTap: () {
-                      _updateSettings(_settings.copyWith(taskbarDiskDrive: d.drive));
+                      _updateSettings(
+                        _settings.copyWith(taskbarDiskDrive: d.drive),
+                      );
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
@@ -13562,7 +14271,9 @@ class _DashboardViewState extends State<DashboardView>
                             : Colors.white.withValues(alpha: 0.02),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isCurrentSelected ? const Color(0xFF38BDF8) : Colors.white.withValues(alpha: 0.06),
+                          color: isCurrentSelected
+                              ? const Color(0xFF38BDF8)
+                              : Colors.white.withValues(alpha: 0.06),
                           width: isCurrentSelected ? 1.5 : 1.0,
                         ),
                       ),
@@ -13576,11 +14287,14 @@ class _DashboardViewState extends State<DashboardView>
                                 child: Row(
                                   children: [
                                     Icon(
-                                      d.type.contains('SSD') || d.type.contains('NVMe')
+                                      d.type.contains('SSD') ||
+                                              d.type.contains('NVMe')
                                           ? Icons.flash_on_rounded
                                           : Icons.storage_rounded,
                                       size: 14,
-                                      color: isCurrentSelected ? const Color(0xFF38BDF8) : Colors.white70,
+                                      color: isCurrentSelected
+                                          ? const Color(0xFF38BDF8)
+                                          : Colors.white70,
                                     ),
                                     const SizedBox(width: 6),
                                     Expanded(
@@ -13588,7 +14302,11 @@ class _DashboardViewState extends State<DashboardView>
                                         '${d.drive} ${d.label.isNotEmpty ? '[${d.label}]' : ''}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -13597,24 +14315,46 @@ class _DashboardViewState extends State<DashboardView>
                               const SizedBox(width: 8),
                               if (isCurrentSelected)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+                                    color: const Color(
+                                      0xFF38BDF8,
+                                    ).withValues(alpha: 0.25),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Text('ACTIVE', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF38BDF8))),
+                                  child: const Text(
+                                    'ACTIVE',
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF38BDF8),
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(d.type, style: TextStyle(fontSize: 9.5, color: Colors.white.withValues(alpha: 0.45))),
+                          Text(
+                            d.type,
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              color: Colors.white.withValues(alpha: 0.45),
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(3),
                             child: LinearProgressIndicator(
                               value: (usedPct / 100.0).clamp(0.0, 1.0),
-                              backgroundColor: Colors.white.withValues(alpha: 0.08),
-                              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.08,
+                              ),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                barColor,
+                              ),
                               minHeight: 5,
                             ),
                           ),
@@ -13622,8 +14362,21 @@ class _DashboardViewState extends State<DashboardView>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('${d.usedFormatted} used (${usedPct.toStringAsFixed(1)}%)', style: TextStyle(fontSize: 9.5, color: Colors.white.withValues(alpha: 0.6))),
-                              Text('${d.freeFormatted} free', style: const TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.w700)),
+                              Text(
+                                '${d.usedFormatted} used (${usedPct.toStringAsFixed(1)}%)',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                ),
+                              ),
+                              Text(
+                                '${d.freeFormatted} free',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  color: Color(0xFF10B981),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -13653,14 +14406,31 @@ class _DashboardViewState extends State<DashboardView>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Taskbar Icon Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const Text(
+                    'Taskbar Icon Size',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text('${_settings.taskbarIconSize.toStringAsFixed(1)} px', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11)),
+                    child: Text(
+                      '${_settings.taskbarIconSize.toStringAsFixed(1)} px',
+                      style: const TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -13684,14 +14454,31 @@ class _DashboardViewState extends State<DashboardView>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Taskbar Typography Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const Text(
+                    'Taskbar Typography Size',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF818CF8).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text('${_settings.taskbarFontSize.toStringAsFixed(1)} px', style: const TextStyle(color: Color(0xFF818CF8), fontWeight: FontWeight.bold, fontSize: 11)),
+                    child: Text(
+                      '${_settings.taskbarFontSize.toStringAsFixed(1)} px',
+                      style: const TextStyle(
+                        color: Color(0xFF818CF8),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -13733,15 +14520,35 @@ class _DashboardViewState extends State<DashboardView>
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildTaskbarColorTab('bg', 'Glass Background', Color(_settings.taskbarBgColor)),
+                    _buildTaskbarColorTab(
+                      'bg',
+                      'Glass Background',
+                      Color(_settings.taskbarBgColor),
+                    ),
                     const SizedBox(width: 8),
-                    _buildTaskbarColorTab('border', 'Glass Border', Color(_settings.taskbarBorderColor)),
+                    _buildTaskbarColorTab(
+                      'border',
+                      'Glass Border',
+                      Color(_settings.taskbarBorderColor),
+                    ),
                     const SizedBox(width: 8),
-                    _buildTaskbarColorTab('accent', 'Accent & Waves', Color(_settings.taskbarAccentColor)),
+                    _buildTaskbarColorTab(
+                      'accent',
+                      'Accent & Waves',
+                      Color(_settings.taskbarAccentColor),
+                    ),
                     const SizedBox(width: 8),
-                    _buildTaskbarColorTab('text', 'Text & Labels', Color(_settings.taskbarTextColor)),
+                    _buildTaskbarColorTab(
+                      'text',
+                      'Text & Labels',
+                      Color(_settings.taskbarTextColor),
+                    ),
                     const SizedBox(width: 8),
-                    _buildTaskbarColorTab('icon', 'Icon Colors', Color(_settings.taskbarIconColor)),
+                    _buildTaskbarColorTab(
+                      'icon',
+                      'Icon Colors',
+                      Color(_settings.taskbarIconColor),
+                    ),
                   ],
                 ),
               ),
@@ -13749,26 +14556,71 @@ class _DashboardViewState extends State<DashboardView>
               // ColorPicker for selected mode
               ColorPickerWidget(
                 initialColor: _getTaskbarActiveColor(),
-                paletteColors: _settings.colorPalette.map((v) => Color(v)).toList(),
+                paletteColors: _settings.colorPalette
+                    .map((v) => Color(v))
+                    .toList(),
                 enableAlpha: true,
                 onColorChanged: (c) {
                   _setTaskbarActiveColor(c);
                 },
-                onSaveTopalette: () => _saveColorToPalette(_getTaskbarActiveColor()),
+                onSaveTopalette: () =>
+                    _saveColorToPalette(_getTaskbarActiveColor()),
               ),
               const SizedBox(height: 16),
               // Presets Strip
-              const Text('Quick Aesthetic Presets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70)),
+              const Text(
+                'Quick Aesthetic Presets',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white70,
+                ),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _buildTaskbarThemePreset('Cyber Cyan', 0xE6080A12, 0x3338BDF8, 0xFF38BDF8, 0xFFFFFFFF, 0xFF38BDF8),
-                  _buildTaskbarThemePreset('Emerald Pro', 0xE606140E, 0x3310B981, 0xFF10B981, 0xFFFFFFFF, 0xFF10B981),
-                  _buildTaskbarThemePreset('Neon Magenta', 0xE6140813, 0x33EC4899, 0xFFEC4899, 0xFFFFFFFF, 0xFFEC4899),
-                  _buildTaskbarThemePreset('Stealth Slate', 0xF0000000, 0x22FFFFFF, 0xFF94A3B8, 0xFFE2E8F0, 0xFF94A3B8),
-                  _buildTaskbarThemePreset('Solar Amber', 0xE6141006, 0x33F59E0B, 0xFFF59E0B, 0xFFFFFFFF, 0xFFF59E0B),
+                  _buildTaskbarThemePreset(
+                    'Cyber Cyan',
+                    0xE6080A12,
+                    0x3338BDF8,
+                    0xFF38BDF8,
+                    0xFFFFFFFF,
+                    0xFF38BDF8,
+                  ),
+                  _buildTaskbarThemePreset(
+                    'Emerald Pro',
+                    0xE606140E,
+                    0x3310B981,
+                    0xFF10B981,
+                    0xFFFFFFFF,
+                    0xFF10B981,
+                  ),
+                  _buildTaskbarThemePreset(
+                    'Neon Magenta',
+                    0xE6140813,
+                    0x33EC4899,
+                    0xFFEC4899,
+                    0xFFFFFFFF,
+                    0xFFEC4899,
+                  ),
+                  _buildTaskbarThemePreset(
+                    'Stealth Slate',
+                    0xF0000000,
+                    0x22FFFFFF,
+                    0xFF94A3B8,
+                    0xFFE2E8F0,
+                    0xFF94A3B8,
+                  ),
+                  _buildTaskbarThemePreset(
+                    'Solar Amber',
+                    0xE6141006,
+                    0x33F59E0B,
+                    0xFFF59E0B,
+                    0xFFFFFFFF,
+                    0xFFF59E0B,
+                  ),
                 ],
               ),
             ],
@@ -13788,12 +14640,43 @@ class _DashboardViewState extends State<DashboardView>
           ),
           child: Column(
             children: [
-              _buildTaskbarSwitchTile('CPU Telemetry Module', 'Real-time CPU workload percentage', _settings.taskbarShowCpu, (v) => _updateSettings(_settings.copyWith(taskbarShowCpu: v))),
-              _buildTaskbarSwitchTile('RAM Memory Module', 'Windows system memory utilization percentage', _settings.taskbarShowRam, (v) => _updateSettings(_settings.copyWith(taskbarShowRam: v))),
-              _buildTaskbarSwitchTile('Disk / Storage Activity', 'Selected storage capacity & activity monitoring', _settings.taskbarShowDisk, (v) => _updateSettings(_settings.copyWith(taskbarShowDisk: v))),
-              _buildTaskbarSwitchTile('Clock & Calendar Date', 'Live digital time and day badge', _settings.taskbarShowTime, (v) => _updateSettings(_settings.copyWith(taskbarShowTime: v))),
-              _buildTaskbarSwitchTile('Ambient Weather Pill', 'Local temperature and weather status', _settings.taskbarShowWeather, (v) => _updateSettings(_settings.copyWith(taskbarShowWeather: v))),
-              _buildTaskbarSwitchTile('WASAPI Media Player', 'Live audio controller and spectrum visualizer', _settings.taskbarShowMedia, (v) => _updateSettings(_settings.copyWith(taskbarShowMedia: v))),
+              _buildTaskbarSwitchTile(
+                'CPU Telemetry Module',
+                'Real-time CPU workload percentage',
+                _settings.taskbarShowCpu,
+                (v) => _updateSettings(_settings.copyWith(taskbarShowCpu: v)),
+              ),
+              _buildTaskbarSwitchTile(
+                'RAM Memory Module',
+                'Windows system memory utilization percentage',
+                _settings.taskbarShowRam,
+                (v) => _updateSettings(_settings.copyWith(taskbarShowRam: v)),
+              ),
+              _buildTaskbarSwitchTile(
+                'Disk / Storage Activity',
+                'Selected storage capacity & activity monitoring',
+                _settings.taskbarShowDisk,
+                (v) => _updateSettings(_settings.copyWith(taskbarShowDisk: v)),
+              ),
+              _buildTaskbarSwitchTile(
+                'Clock & Calendar Date',
+                'Live digital time and day badge',
+                _settings.taskbarShowTime,
+                (v) => _updateSettings(_settings.copyWith(taskbarShowTime: v)),
+              ),
+              _buildTaskbarSwitchTile(
+                'Ambient Weather Pill',
+                'Local temperature and weather status',
+                _settings.taskbarShowWeather,
+                (v) =>
+                    _updateSettings(_settings.copyWith(taskbarShowWeather: v)),
+              ),
+              _buildTaskbarSwitchTile(
+                'WASAPI Media Player',
+                'Live audio controller and spectrum visualizer',
+                _settings.taskbarShowMedia,
+                (v) => _updateSettings(_settings.copyWith(taskbarShowMedia: v)),
+              ),
             ],
           ),
         ),
@@ -13814,10 +14697,14 @@ class _DashboardViewState extends State<DashboardView>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF38BDF8).withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.04),
+          color: isSelected
+              ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? const Color(0xFF38BDF8) : Colors.white.withValues(alpha: 0.1),
+            color: isSelected
+                ? const Color(0xFF38BDF8)
+                : Colors.white.withValues(alpha: 0.1),
           ),
         ),
         child: Row(
@@ -13833,7 +14720,14 @@ class _DashboardViewState extends State<DashboardView>
               ),
             ),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, color: Colors.white)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ],
         ),
       ),
@@ -13877,7 +14771,14 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
-  Widget _buildTaskbarThemePreset(String name, int bg, int border, int accent, int text, int icon) {
+  Widget _buildTaskbarThemePreset(
+    String name,
+    int bg,
+    int border,
+    int accent,
+    int text,
+    int icon,
+  ) {
     return InkWell(
       onTap: () {
         _updateSettings(
@@ -13901,23 +14802,55 @@ class _DashboardViewState extends State<DashboardView>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: Color(accent), shape: BoxShape.circle)),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: Color(accent),
+                shape: BoxShape.circle,
+              ),
+            ),
             const SizedBox(width: 6),
-            Text(name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(text))),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Color(text),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTaskbarSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
+  Widget _buildTaskbarSwitchTile(
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     return Material(
       type: MaterialType.transparency,
       child: SwitchListTile(
         value: value,
         onChanged: onChanged,
-        title: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-        subtitle: Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.5))),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.white.withValues(alpha: 0.5),
+          ),
+        ),
         activeThumbColor: const Color(0xFF38BDF8),
         contentPadding: EdgeInsets.zero,
         dense: true,
@@ -16215,7 +17148,9 @@ class _DashboardViewState extends State<DashboardView>
         try {
           String? path;
           if (Platform.isWindows) {
-            path = await SystemOptimizerService.instance.pickImageFile(title: 'Select Custom Wallpaper Image');
+            path = await SystemOptimizerService.instance.pickImageFile(
+              title: 'Select Custom Wallpaper Image',
+            );
           }
           if (path == null || path.isEmpty) {
             final result = await Process.run('powershell', [
@@ -16855,7 +17790,10 @@ class _DashboardViewState extends State<DashboardView>
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
@@ -16866,7 +17804,11 @@ class _DashboardViewState extends State<DashboardView>
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.extension_rounded, size: 12, color: Color(0xFF38BDF8)),
+                        Icon(
+                          Icons.extension_rounded,
+                          size: 12,
+                          color: Color(0xFF38BDF8),
+                        ),
                         SizedBox(width: 5),
                         Text(
                           'NEW ADD-ON EXTENSION',
@@ -16882,7 +17824,10 @@ class _DashboardViewState extends State<DashboardView>
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(20),
@@ -16903,11 +17848,16 @@ class _DashboardViewState extends State<DashboardView>
               ),
               InkWell(
                 onTap: () {
-                  launchUrl(Uri.parse('https://github.com/pfcdev/TaskbarWidgets.git'));
+                  launchUrl(
+                    Uri.parse('https://github.com/pfcdev/TaskbarWidgets.git'),
+                  );
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(8),
@@ -16929,7 +17879,11 @@ class _DashboardViewState extends State<DashboardView>
                         ),
                       ),
                       SizedBox(width: 4),
-                      Icon(Icons.open_in_new_rounded, size: 11, color: Colors.white54),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 11,
+                        color: Colors.white54,
+                      ),
                     ],
                   ),
                 ),
@@ -17014,11 +17968,17 @@ class _DashboardViewState extends State<DashboardView>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF38BDF8),
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11.5,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -17033,17 +17993,24 @@ class _DashboardViewState extends State<DashboardView>
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: () {
-                  final defaults = WidgetSettings.templateDefaults['taskbar_dock']!;
+                  final defaults =
+                      WidgetSettings.templateDefaults['taskbar_dock']!;
                   _updateSettings(
                     _settings.copyWith(
                       widgetTemplate: 'taskbar_dock',
@@ -17063,11 +18030,17 @@ class _DashboardViewState extends State<DashboardView>
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white70,
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
+                  ),
                 ),
               ),
             ],
@@ -17090,7 +18063,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'Modular All-In-One Dock',
         'tag': 'ALL-IN-ONE',
         'dims': '640 × 48',
-        'desc': 'Weather, media controls, audio visualizer, hardware telemetry, and app shortcuts consolidated into a sleek acrylic bar.',
+        'desc':
+            'Weather, media controls, audio visualizer, hardware telemetry, and app shortcuts consolidated into a sleek acrylic bar.',
         'icon': Icons.dashboard_rounded,
         'accent': const Color(0xFF38BDF8),
       },
@@ -17099,7 +18073,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'WASAPI Media Player',
         'tag': 'WASAPI FFT',
         'dims': '340 × 44',
-        'desc': 'Live system audio FFT visualizer, album art, track details, and instant playback controls right on your taskbar.',
+        'desc':
+            'Live system audio FFT visualizer, album art, track details, and instant playback controls right on your taskbar.',
         'icon': Icons.equalizer_rounded,
         'accent': const Color(0xFFEC4899),
       },
@@ -17108,7 +18083,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'Hardware Resource Monitor',
         'tag': 'TELEMETRY',
         'dims': '260 × 44',
-        'desc': 'Real-time CPU %, RAM %, and SSD / Disk activity sparklines with high-precision Windows hardware counters.',
+        'desc':
+            'Real-time CPU %, RAM %, and SSD / Disk activity sparklines with high-precision Windows hardware counters.',
         'icon': Icons.memory_rounded,
         'accent': const Color(0xFF00FFCC),
       },
@@ -17117,7 +18093,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'Steam Downloads Tracker',
         'tag': 'STEAM VDF',
         'dims': '300 × 44',
-        'desc': 'Automatic detection of Steam library, active game downloads, download speed (MB/s), and real-time progress bar.',
+        'desc':
+            'Automatic detection of Steam library, active game downloads, download speed (MB/s), and real-time progress bar.',
         'icon': Icons.sports_esports_rounded,
         'accent': const Color(0xFF66C0F4),
       },
@@ -17126,7 +18103,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'Discord Voice Status',
         'tag': 'DISCORD IPC',
         'dims': '280 × 44',
-        'desc': 'Live Named Pipe IPC sync with Discord client: active voice channel, ping ms, speaking glow, and instant mute toggle.',
+        'desc':
+            'Live Named Pipe IPC sync with Discord client: active voice channel, ping ms, speaking glow, and instant mute toggle.',
         'icon': Icons.headset_mic_rounded,
         'accent': const Color(0xFF5865F2),
       },
@@ -17135,7 +18113,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'Weather & Forecast Pill',
         'tag': 'METEOROLOGY',
         'dims': '220 × 44',
-        'desc': 'Ultra-compact translucent pill showing local temperature, weather condition icon, and humidity in real time.',
+        'desc':
+            'Ultra-compact translucent pill showing local temperature, weather condition icon, and humidity in real time.',
         'icon': Icons.wb_sunny_rounded,
         'accent': const Color(0xFFFBBF24),
       },
@@ -17144,7 +18123,8 @@ class _DashboardViewState extends State<DashboardView>
         'title': 'Parking Lot File Stash',
         'tag': 'DRAG & DROP',
         'dims': '200 × 44',
-        'desc': 'Convenient temporary drag & drop scratchpad dock for stashing quick links, files, and text snippets above taskbar.',
+        'desc':
+            'Convenient temporary drag & drop scratchpad dock for stashing quick links, files, and text snippets above taskbar.',
         'icon': Icons.inventory_2_outlined,
         'accent': const Color(0xFFF59E0B),
       },
@@ -17163,7 +18143,11 @@ class _DashboardViewState extends State<DashboardView>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
               gradient: const LinearGradient(
-                colors: [Color(0xFF0B132B), Color(0xFF1C2541), Color(0xFF0D1B2A)],
+                colors: [
+                  Color(0xFF0B132B),
+                  Color(0xFF1C2541),
+                  Color(0xFF0D1B2A),
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -17184,24 +18168,41 @@ class _DashboardViewState extends State<DashboardView>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Top Meta Strip
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  alignment: WrapAlignment.spaceBetween,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: const Color(0xFF38BDF8).withValues(alpha: 0.45),
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.45),
                             ),
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.dock_rounded, size: 13, color: Color(0xFF38BDF8)),
+                              Icon(
+                                Icons.dock_rounded,
+                                size: 13,
+                                color: Color(0xFF38BDF8),
+                              ),
                               SizedBox(width: 6),
                               Text(
                                 'TASKBAR WIDGETS STUDIO',
@@ -17215,9 +18216,11 @@ class _DashboardViewState extends State<DashboardView>
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(20),
@@ -17234,20 +18237,30 @@ class _DashboardViewState extends State<DashboardView>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            color: const Color(
+                              0xFF10B981,
+                            ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                              color: const Color(
+                                0xFF10B981,
+                              ).withValues(alpha: 0.35),
                             ),
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.sync_rounded, size: 11, color: Color(0xFF10B981)),
+                              Icon(
+                                Icons.sync_rounded,
+                                size: 11,
+                                color: Color(0xFF10B981),
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 'LIVE SYNC ACTIVE',
@@ -17266,11 +18279,18 @@ class _DashboardViewState extends State<DashboardView>
                     // GitHub Link Button
                     InkWell(
                       onTap: () {
-                        launchUrl(Uri.parse('https://github.com/pfcdev/TaskbarWidgets.git'));
+                        launchUrl(
+                          Uri.parse(
+                            'https://github.com/pfcdev/TaskbarWidgets.git',
+                          ),
+                        );
                       },
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(8),
@@ -17281,7 +18301,11 @@ class _DashboardViewState extends State<DashboardView>
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.code_rounded, size: 14, color: Colors.white),
+                            Icon(
+                              Icons.code_rounded,
+                              size: 14,
+                              color: Colors.white,
+                            ),
                             SizedBox(width: 6),
                             Text(
                               'pfcdev/TaskbarWidgets',
@@ -17292,7 +18316,11 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                             ),
                             SizedBox(width: 5),
-                            Icon(Icons.open_in_new_rounded, size: 11, color: Colors.white54),
+                            Icon(
+                              Icons.open_in_new_rounded,
+                              size: 11,
+                              color: Colors.white54,
+                            ),
                           ],
                         ),
                       ),
@@ -17339,9 +18367,13 @@ class _DashboardViewState extends State<DashboardView>
                               }
                             },
                       icon: Icon(
-                        _isOverlayRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                        _isOverlayRunning
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
                         size: 18,
-                        color: _isOverlayRunning ? Colors.redAccent : Colors.white,
+                        color: _isOverlayRunning
+                            ? Colors.redAccent
+                            : Colors.white,
                       ),
                       label: Text(
                         _isLaunching
@@ -17349,14 +18381,22 @@ class _DashboardViewState extends State<DashboardView>
                             : _isOverlayRunning
                             ? 'Stop Taskbar Overlay'
                             : 'Launch Taskbar Overlay',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _isOverlayRunning
                             ? Colors.redAccent.withValues(alpha: 0.2)
                             : const Color(0xFF38BDF8),
-                        foregroundColor: _isOverlayRunning ? Colors.redAccent : Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        foregroundColor: _isOverlayRunning
+                            ? Colors.redAccent
+                            : Colors.black,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                           side: BorderSide(
@@ -17368,11 +18408,17 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                     ),
                     _buildQuickSettingButton(
-                      icon: _settings.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                      tooltip: _settings.isLocked ? 'Unlock Widget Position' : 'Lock Widget Position',
+                      icon: _settings.isLocked
+                          ? Icons.lock_rounded
+                          : Icons.lock_open_rounded,
+                      tooltip: _settings.isLocked
+                          ? 'Unlock Widget Position'
+                          : 'Lock Widget Position',
                       isActive: _settings.isLocked,
                       onTap: () {
-                        _updateSettings(_settings.copyWith(isLocked: !_settings.isLocked));
+                        _updateSettings(
+                          _settings.copyWith(isLocked: !_settings.isLocked),
+                        );
                       },
                     ),
                     _buildQuickSettingButton(
@@ -17380,15 +18426,24 @@ class _DashboardViewState extends State<DashboardView>
                       tooltip: 'Always on Top',
                       isActive: _settings.alwaysOnTop,
                       onTap: () {
-                        _updateSettings(_settings.copyWith(alwaysOnTop: !_settings.alwaysOnTop));
+                        _updateSettings(
+                          _settings.copyWith(
+                            alwaysOnTop: !_settings.alwaysOnTop,
+                          ),
+                        );
                       },
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -17396,14 +18451,19 @@ class _DashboardViewState extends State<DashboardView>
                           Icon(
                             Icons.check_circle_rounded,
                             size: 14,
-                            color: _settings.widgetTemplate.startsWith('taskbar_')
+                            color:
+                                _settings.widgetTemplate.startsWith('taskbar_')
                                 ? const Color(0xFF00FFCC)
                                 : Colors.white38,
                           ),
                           const SizedBox(width: 8),
                           Text(
                             'Active: ${_settings.widgetTemplate}',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
                           ),
                         ],
                       ),
@@ -17452,121 +18512,164 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                // Windows Start logo & default taskbar apps
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final showTray = constraints.maxWidth > 620;
+                final showStart = constraints.maxWidth > 450;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      width: 26,
-                      height: 26,
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: GridView.count(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 2,
-                        mainAxisSpacing: 2,
-                        physics: const NeverScrollableScrollPhysics(),
-                        children: List.generate(
-                          4,
-                          (_) => Container(
+                    // Windows Start logo & default taskbar apps
+                    if (showStart)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 26,
+                            height: 26,
+                            padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF00A4EF),
-                              borderRadius: BorderRadius.circular(1.5),
+                              color: Colors.white.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: GridView.count(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 2,
+                              mainAxisSpacing: 2,
+                              physics: const NeverScrollableScrollPhysics(),
+                              children: List.generate(
+                                4,
+                                (_) => Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00A4EF),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(
+                              Icons.search_rounded,
+                              size: 15,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(
+                              Icons.view_agenda_outlined,
+                              size: 15,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(
+                              Icons.folder_open_rounded,
+                              size: 15,
+                              color: Color(0xFFFBBF24),
+                            ),
+                          ),
+                        ],
+                      ),
+                    // Embedded Live Widget preview
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: Center(
+                            child: _buildEmbeddedTaskbarPreview(
+                              _settings.widgetTemplate.startsWith('taskbar_')
+                                  ? _settings.widgetTemplate
+                                  : 'taskbar_dock',
                             ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(6),
+                    // Windows Tray area
+                    if (showTray)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 16,
+                            color: Colors.white54,
+                          ),
+                          const SizedBox(width: 10),
+                          const Icon(
+                            Icons.wifi_rounded,
+                            size: 15,
+                            color: Colors.white70,
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.volume_up_rounded,
+                            size: 15,
+                            color: Colors.white70,
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.battery_charging_full_rounded,
+                            size: 15,
+                            color: Colors.white70,
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                DateFormat('h:mm a').format(DateTime.now()),
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                DateFormat('M/d/yyyy').format(DateTime.now()),
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.search_rounded, size: 15, color: Colors.white70),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.view_agenda_outlined, size: 15, color: Colors.white70),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.folder_open_rounded, size: 15, color: Color(0xFFFBBF24)),
-                    ),
                   ],
-                ),
-                const Spacer(),
-                // Embedded Live Widget preview
-                Flexible(
-                  flex: 3,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Container(
-                      height: 42,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Center(
-                        child: _buildEmbeddedTaskbarPreview(
-                          _settings.widgetTemplate.startsWith('taskbar_')
-                              ? _settings.widgetTemplate
-                              : 'taskbar_dock',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                // Windows Tray area
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: Colors.white54),
-                    const SizedBox(width: 10),
-                    const Icon(Icons.wifi_rounded, size: 15, color: Colors.white70),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.volume_up_rounded, size: 15, color: Colors.white70),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.battery_charging_full_rounded, size: 15, color: Colors.white70),
-                    const SizedBox(width: 12),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          DateFormat('h:mm a').format(DateTime.now()),
-                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.white),
-                        ),
-                        Text(
-                          DateFormat('M/d/yyyy').format(DateTime.now()),
-                          style: const TextStyle(fontSize: 9, color: Colors.white54),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                );
+              },
             ),
           ),
           const SizedBox(height: 12),
@@ -17578,11 +18681,36 @@ class _DashboardViewState extends State<DashboardView>
             children: [
               _buildTaskbarPresetChip('Modular Dock', 'taskbar_dock', 640, 48),
               _buildTaskbarPresetChip('Media Player', 'taskbar_media', 340, 44),
-              _buildTaskbarPresetChip('Hardware Monitor', 'taskbar_system', 260, 44),
-              _buildTaskbarPresetChip('Steam Tracker', 'taskbar_steam', 300, 44),
-              _buildTaskbarPresetChip('Discord Voice', 'taskbar_discord', 280, 44),
-              _buildTaskbarPresetChip('Weather Pill', 'taskbar_weather', 220, 44),
-              _buildTaskbarPresetChip('Parking Lot', 'taskbar_parking_lot', 200, 44),
+              _buildTaskbarPresetChip(
+                'Hardware Monitor',
+                'taskbar_system',
+                260,
+                44,
+              ),
+              _buildTaskbarPresetChip(
+                'Steam Tracker',
+                'taskbar_steam',
+                300,
+                44,
+              ),
+              _buildTaskbarPresetChip(
+                'Discord Voice',
+                'taskbar_discord',
+                280,
+                44,
+              ),
+              _buildTaskbarPresetChip(
+                'Weather Pill',
+                'taskbar_weather',
+                220,
+                44,
+              ),
+              _buildTaskbarPresetChip(
+                'Parking Lot',
+                'taskbar_parking_lot',
+                200,
+                44,
+              ),
             ],
           ),
           const SizedBox(height: 32),
@@ -17623,7 +18751,9 @@ class _DashboardViewState extends State<DashboardView>
                     icon: Icons.headset_mic_rounded,
                     accentColor: const Color(0xFF5865F2),
                     title: 'Discord Voice (IPC Pipe)',
-                    statusText: discordSnap.isRunning ? 'Discord.exe Running' : 'Discord Offline',
+                    statusText: discordSnap.isRunning
+                        ? 'Discord.exe Running'
+                        : 'Discord Offline',
                     statusActive: discordSnap.isRunning,
                     body: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -17636,7 +18766,9 @@ class _DashboardViewState extends State<DashboardView>
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: discordSnap.isConnectedToVoice
-                                    ? (discordSnap.isSpeaking ? const Color(0xFF22C55E) : const Color(0xFF5865F2))
+                                    ? (discordSnap.isSpeaking
+                                          ? const Color(0xFF22C55E)
+                                          : const Color(0xFF5865F2))
                                     : Colors.white38,
                               ),
                             ),
@@ -17657,7 +18789,11 @@ class _DashboardViewState extends State<DashboardView>
                             if (discordSnap.isConnectedToVoice)
                               Text(
                                 '${discordSnap.pingMs} ms',
-                                style: const TextStyle(fontSize: 11, color: Color(0xFF22C55E), fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF22C55E),
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                           ],
                         ),
@@ -17665,32 +18801,50 @@ class _DashboardViewState extends State<DashboardView>
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: discordSnap.isMuted
                                     ? Colors.redAccent.withValues(alpha: 0.15)
-                                    : const Color(0xFF22C55E).withValues(alpha: 0.15),
+                                    : const Color(
+                                        0xFF22C55E,
+                                      ).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                discordSnap.isMuted ? 'MIC MUTED' : 'MIC ACTIVE',
+                                discordSnap.isMuted
+                                    ? 'MIC MUTED'
+                                    : 'MIC ACTIVE',
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
-                                  color: discordSnap.isMuted ? Colors.redAccent : const Color(0xFF22C55E),
+                                  color: discordSnap.isMuted
+                                      ? Colors.redAccent
+                                      : const Color(0xFF22C55E),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.06),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                discordSnap.isDeafened ? 'DEAFENED' : 'HEARING OK',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white70),
+                                discordSnap.isDeafened
+                                    ? 'DEAFENED'
+                                    : 'HEARING OK',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white70,
+                                ),
                               ),
                             ),
                           ],
@@ -17706,26 +18860,37 @@ class _DashboardViewState extends State<DashboardView>
                                 if (mounted) setState(() {});
                               },
                               icon: Icon(
-                                discordSnap.isMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                                discordSnap.isMuted
+                                    ? Icons.mic_rounded
+                                    : Icons.mic_off_rounded,
                                 size: 13,
                               ),
-                              label: Text(discordSnap.isMuted ? 'Unmute Mic' : 'Mute Mic'),
+                              label: Text(
+                                discordSnap.isMuted ? 'Unmute Mic' : 'Mute Mic',
+                              ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
                             OutlinedButton.icon(
                               onPressed: () async {
-                                await DiscordIpcService.instance.probeConnection();
+                                await DiscordIpcService.instance
+                                    .probeConnection();
                                 if (mounted) setState(() {});
                               },
                               icon: const Icon(Icons.refresh_rounded, size: 13),
                               label: const Text('Probe IPC Pipe'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white70,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17738,11 +18903,17 @@ class _DashboardViewState extends State<DashboardView>
                                 );
                                 if (mounted) setState(() {});
                               },
-                              icon: const Icon(Icons.cell_tower_rounded, size: 13),
+                              icon: const Icon(
+                                Icons.cell_tower_rounded,
+                                size: 13,
+                              ),
                               label: const Text('Simulate Call'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: const Color(0xFF5865F2),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17758,7 +18929,9 @@ class _DashboardViewState extends State<DashboardView>
                     icon: Icons.sports_esports_rounded,
                     accentColor: const Color(0xFF66C0F4),
                     title: 'Steam Downloads (Registry/VDF)',
-                    statusText: steamSnap.isSteamRunning ? 'Steam Client Running' : 'Steam Offline',
+                    statusText: steamSnap.isSteamRunning
+                        ? 'Steam Client Running'
+                        : 'Steam Offline',
                     statusActive: steamSnap.isSteamRunning,
                     body: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -17766,18 +18939,25 @@ class _DashboardViewState extends State<DashboardView>
                         Row(
                           children: [
                             Icon(
-                              steamSnap.isDownloading ? Icons.downloading_rounded : Icons.check_circle_outline_rounded,
+                              steamSnap.isDownloading
+                                  ? Icons.downloading_rounded
+                                  : Icons.check_circle_outline_rounded,
                               size: 15,
-                              color: steamSnap.isDownloading ? const Color(0xFF66C0F4) : const Color(0xFF00FFCC),
+                              color: steamSnap.isDownloading
+                                  ? const Color(0xFF66C0F4)
+                                  : const Color(0xFF00FFCC),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 steamSnap.isDownloading
                                     ? steamSnap.gameTitle
-                                    : (steamSnap.activePlayingGame != null && steamSnap.activePlayingGame!.isNotEmpty
-                                        ? 'Playing: ${steamSnap.activePlayingGame}'
-                                        : 'All Games Up to Date'),
+                                    : (steamSnap.activePlayingGame != null &&
+                                              steamSnap
+                                                  .activePlayingGame!
+                                                  .isNotEmpty
+                                          ? 'Playing: ${steamSnap.activePlayingGame}'
+                                          : 'All Games Up to Date'),
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
@@ -17789,7 +18969,11 @@ class _DashboardViewState extends State<DashboardView>
                             if (steamSnap.isDownloading)
                               Text(
                                 '${steamSnap.downloadSpeedMBs.toStringAsFixed(1)} MB/s',
-                                style: const TextStyle(fontSize: 11, color: Color(0xFF66C0F4), fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF66C0F4),
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                           ],
                         ),
@@ -17799,7 +18983,9 @@ class _DashboardViewState extends State<DashboardView>
                             borderRadius: BorderRadius.circular(4),
                             child: LinearProgressIndicator(
                               value: steamSnap.progressPercent,
-                              backgroundColor: Colors.white.withValues(alpha: 0.1),
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.1,
+                              ),
                               color: const Color(0xFF66C0F4),
                               minHeight: 5,
                             ),
@@ -17810,20 +18996,34 @@ class _DashboardViewState extends State<DashboardView>
                             children: [
                               Text(
                                 'AppID: ${steamSnap.appId}',
-                                style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white54,
+                                ),
                               ),
                               Text(
                                 '${(steamSnap.progressPercent * 100).toInt()}%',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white70,
+                                ),
                               ),
                             ],
                           ),
                         ] else
                           Text(
-                            (SteamMonitorService.instance.steamPath?.isNotEmpty ?? false)
+                            (SteamMonitorService
+                                        .instance
+                                        .steamPath
+                                        ?.isNotEmpty ??
+                                    false)
                                 ? 'Path: ${SteamMonitorService.instance.steamPath}'
                                 : 'Scanning default Steam libraries...',
-                            style: const TextStyle(fontSize: 10, color: Colors.white54),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.white54,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         const SizedBox(height: 12),
@@ -17840,7 +19040,10 @@ class _DashboardViewState extends State<DashboardView>
                               label: const Text('Scan Steam'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17853,11 +19056,17 @@ class _DashboardViewState extends State<DashboardView>
                                 );
                                 if (mounted) setState(() {});
                               },
-                              icon: const Icon(Icons.play_circle_outline_rounded, size: 13),
+                              icon: const Icon(
+                                Icons.play_circle_outline_rounded,
+                                size: 13,
+                              ),
                               label: const Text('Simulate Download'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: const Color(0xFF66C0F4),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17870,7 +19079,10 @@ class _DashboardViewState extends State<DashboardView>
                               label: const Text('Reset Idle'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white54,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17894,9 +19106,21 @@ class _DashboardViewState extends State<DashboardView>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _buildTelemetryMiniGauge('CPU', _cpuUsage, const Color(0xFF38BDF8)),
-                            _buildTelemetryMiniGauge('RAM', _ramUsage, const Color(0xFFEC4899)),
-                            _buildTelemetryMiniGauge('DISK', metrics.disk?.usedPercentage ?? 35.0, const Color(0xFF00FFCC)),
+                            _buildTelemetryMiniGauge(
+                              'CPU',
+                              _cpuUsage,
+                              const Color(0xFF38BDF8),
+                            ),
+                            _buildTelemetryMiniGauge(
+                              'RAM',
+                              _ramUsage,
+                              const Color(0xFFEC4899),
+                            ),
+                            _buildTelemetryMiniGauge(
+                              'DISK',
+                              metrics.disk?.usedPercentage ?? 35.0,
+                              const Color(0xFF00FFCC),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -17906,14 +19130,21 @@ class _DashboardViewState extends State<DashboardView>
                           children: [
                             OutlinedButton.icon(
                               onPressed: () async {
-                                await SystemOptimizerService.instance.optimizeMemory();
+                                await SystemOptimizerService.instance
+                                    .optimizeMemory();
                                 if (mounted) setState(() {});
                               },
-                              icon: const Icon(Icons.cleaning_services_rounded, size: 13),
+                              icon: const Icon(
+                                Icons.cleaning_services_rounded,
+                                size: 13,
+                              ),
                               label: const Text('Optimize RAM'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: const Color(0xFF00FFCC),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17925,7 +19156,10 @@ class _DashboardViewState extends State<DashboardView>
                               label: const Text('Refresh Counters'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white70,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 textStyle: const TextStyle(fontSize: 11),
                               ),
                             ),
@@ -17941,7 +19175,9 @@ class _DashboardViewState extends State<DashboardView>
                     icon: Icons.equalizer_rounded,
                     accentColor: const Color(0xFFEC4899),
                     title: 'WASAPI Media & FFT Visualizer',
-                    statusText: mediaSnap.status.toLowerCase() == 'playing' ? 'Media Playing' : 'Idle',
+                    statusText: mediaSnap.status.toLowerCase() == 'playing'
+                        ? 'Media Playing'
+                        : 'Idle',
                     statusActive: mediaSnap.status.toLowerCase() == 'playing',
                     body: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -17952,10 +19188,16 @@ class _DashboardViewState extends State<DashboardView>
                               width: 32,
                               height: 32,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEC4899).withValues(alpha: 0.2),
+                                color: const Color(
+                                  0xFFEC4899,
+                                ).withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Icon(Icons.music_note_rounded, size: 18, color: Color(0xFFEC4899)),
+                              child: const Icon(
+                                Icons.music_note_rounded,
+                                size: 18,
+                                color: Color(0xFFEC4899),
+                              ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -17963,14 +19205,25 @@ class _DashboardViewState extends State<DashboardView>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    mediaSnap.title.isNotEmpty ? mediaSnap.title : 'Ready for System Audio',
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                                    mediaSnap.title.isNotEmpty
+                                        ? mediaSnap.title
+                                        : 'Ready for System Audio',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
-                                    mediaSnap.artist.isNotEmpty ? mediaSnap.artist : 'Spotify / Browser / Apple Music',
-                                    style: const TextStyle(fontSize: 10, color: Colors.white54),
+                                    mediaSnap.artist.isNotEmpty
+                                        ? mediaSnap.artist
+                                        : 'Spotify / Browser / Apple Music',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white54,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -17985,11 +19238,16 @@ class _DashboardViewState extends State<DashboardView>
                           children: [
                             IconButton(
                               onPressed: () => MediaSessionService().previous(),
-                              icon: const Icon(Icons.skip_previous_rounded, size: 16, color: Colors.white70),
+                              icon: const Icon(
+                                Icons.skip_previous_rounded,
+                                size: 16,
+                                color: Colors.white70,
+                              ),
                               tooltip: 'Previous Track',
                             ),
                             IconButton(
-                              onPressed: () => MediaSessionService().togglePlayPause(),
+                              onPressed: () =>
+                                  MediaSessionService().togglePlayPause(),
                               icon: Icon(
                                 mediaSnap.status.toLowerCase() == 'playing'
                                     ? Icons.pause_circle_rounded
@@ -18001,7 +19259,11 @@ class _DashboardViewState extends State<DashboardView>
                             ),
                             IconButton(
                               onPressed: () => MediaSessionService().next(),
-                              icon: const Icon(Icons.skip_next_rounded, size: 16, color: Colors.white70),
+                              icon: const Icon(
+                                Icons.skip_next_rounded,
+                                size: 16,
+                                color: Colors.white70,
+                              ),
                               tooltip: 'Next Track',
                             ),
                           ],
@@ -18032,8 +19294,8 @@ class _DashboardViewState extends State<DashboardView>
               final itemWidth = constraints.maxWidth > 1050
                   ? (constraints.maxWidth - 32) / 3
                   : (constraints.maxWidth > 650
-                      ? (constraints.maxWidth - 16) / 2
-                      : constraints.maxWidth);
+                        ? (constraints.maxWidth - 16) / 2
+                        : constraints.maxWidth);
 
               return Wrap(
                 spacing: 16,
@@ -18078,11 +19340,16 @@ class _DashboardViewState extends State<DashboardView>
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: accent.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: accent.withValues(alpha: 0.3)),
+                                border: Border.all(
+                                  color: accent.withValues(alpha: 0.3),
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -18102,14 +19369,21 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.05),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 dims,
-                                style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.white54),
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white54,
+                                ),
                               ),
                             ),
                           ],
@@ -18123,7 +19397,9 @@ class _DashboardViewState extends State<DashboardView>
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.05),
+                            ),
                           ),
                           child: Center(
                             child: _buildEmbeddedTaskbarPreview(keyStr),
@@ -18155,11 +19431,13 @@ class _DashboardViewState extends State<DashboardView>
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              final defaults = WidgetSettings.templateDefaults[keyStr] ?? {
-                                'width': 340.0,
-                                'height': 44.0,
-                                'sizeFactor': 0.85,
-                              };
+                              final defaults =
+                                  WidgetSettings.templateDefaults[keyStr] ??
+                                  {
+                                    'width': 340.0,
+                                    'height': 44.0,
+                                    'sizeFactor': 0.85,
+                                  };
                               _updateSettings(
                                 _settings.copyWith(
                                   widgetTemplate: keyStr,
@@ -18182,21 +19460,36 @@ class _DashboardViewState extends State<DashboardView>
                               );
                             },
                             icon: Icon(
-                              isSelected ? Icons.check_rounded : Icons.dock_rounded,
+                              isSelected
+                                  ? Icons.check_rounded
+                                  : Icons.dock_rounded,
                               size: 14,
                             ),
-                            label: Text(isSelected ? 'Currently Active' : 'Apply to Taskbar'),
+                            label: Text(
+                              isSelected
+                                  ? 'Currently Active'
+                                  : 'Apply to Taskbar',
+                            ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: isSelected ? accent : Colors.white.withValues(alpha: 0.08),
-                              foregroundColor: isSelected ? Colors.black : Colors.white,
+                              backgroundColor: isSelected
+                                  ? accent
+                                  : Colors.white.withValues(alpha: 0.08),
+                              foregroundColor: isSelected
+                                  ? Colors.black
+                                  : Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 9),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 side: BorderSide(
-                                  color: isSelected ? Colors.transparent : Colors.white.withValues(alpha: 0.1),
+                                  color: isSelected
+                                      ? Colors.transparent
+                                      : Colors.white.withValues(alpha: 0.1),
                                 ),
                               ),
-                              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                              textStyle: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
@@ -18288,52 +19581,64 @@ class _DashboardViewState extends State<DashboardView>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.desktop_windows_rounded,
-                          size: 20,
-                          color: Color(0xFF38BDF8),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Windows Taskbar Replacement & Dock Control',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: -0.3,
-                            ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Explicitly activate WallSync dock as desktop taskbar or run alongside Windows',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: Colors.white.withValues(alpha: 0.6),
-                            ),
+                          child: const Icon(
+                            Icons.desktop_windows_rounded,
+                            size: 20,
+                            color: Color(0xFF38BDF8),
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Windows Taskbar Replacement & Dock Control',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Explicitly activate WallSync dock as desktop taskbar or run alongside Windows',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 12),
                   // Status Pill with 9 verified states
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: stateColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: stateColor.withValues(alpha: 0.5)),
+                      border: Border.all(
+                        color: stateColor.withValues(alpha: 0.5),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -18358,8 +19663,11 @@ class _DashboardViewState extends State<DashboardView>
               const SizedBox(height: 20),
 
               // Explicit 3-Way Mode Selector Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.spaceBetween,
                 children: [
                   const Text(
                     'DESKTOP TASKBAR OPERATING MODE',
@@ -18388,8 +19696,8 @@ class _DashboardViewState extends State<DashboardView>
                   final effectiveMode = !isCustomActive
                       ? DesktopTaskbarMode.windowsTaskbar
                       : (hideNative
-                          ? DesktopTaskbarMode.dockWithNativeHidden
-                          : DesktopTaskbarMode.dockOnly);
+                            ? DesktopTaskbarMode.customTaskbar
+                            : DesktopTaskbarMode.dockOnly);
 
                   Widget buildModeCard({
                     required DesktopTaskbarMode mode,
@@ -18399,132 +19707,167 @@ class _DashboardViewState extends State<DashboardView>
                     required Color accentColor,
                     required VoidCallback onTap,
                   }) {
-                    final isSelected = (effectiveMode == mode) ||
-                        (mode == DesktopTaskbarMode.dockWithNativeHidden &&
-                            effectiveMode == DesktopTaskbarMode.customTaskbar);
-                    return Expanded(
-                      flex: isWide ? 1 : 0,
-                      child: InkWell(
-                        onTap: onTap,
-                        borderRadius: BorderRadius.circular(12),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
+                    final isSelected =
+                        (effectiveMode == mode) ||
+                        (mode == DesktopTaskbarMode.customTaskbar &&
+                            effectiveMode == DesktopTaskbarMode.dockWithNativeHidden);
+                    final cardWidget = InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(12),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? accentColor.withValues(alpha: 0.15)
+                              : const Color(0xFF0F172A).withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
                             color: isSelected
-                                ? accentColor.withValues(alpha: 0.15)
-                                : const Color(0xFF0F172A).withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected
-                                  ? accentColor
-                                  : Colors.white.withValues(alpha: 0.08),
-                              width: isSelected ? 1.5 : 1,
-                            ),
+                                ? accentColor
+                                : Colors.white.withValues(alpha: 0.08),
+                            width: isSelected ? 1.5 : 1,
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    icon,
-                                    size: 18,
-                                    color: isSelected
-                                        ? accentColor
-                                        : Colors.white.withValues(alpha: 0.7),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      title,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.85),
-                                      ),
-                                    ),
-                                  ),
-                                  if (isSelected)
-                                    Icon(
-                                      Icons.check_circle_rounded,
-                                      size: 16,
-                                      color: accentColor,
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                description,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  height: 1.35,
-                                  color: Colors.white.withValues(alpha: 0.6),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  icon,
+                                  size: 18,
+                                  color: isSelected
+                                      ? accentColor
+                                      : Colors.white.withValues(alpha: 0.7),
                                 ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 16,
+                                    color: accentColor,
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              description,
+                              style: TextStyle(
+                                fontSize: 11,
+                                height: 1.35,
+                                color: Colors.white.withValues(alpha: 0.6),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     );
+                    return isWide ? Expanded(child: cardWidget) : cardWidget;
                   }
 
                   final cards = [
                     buildModeCard(
                       mode: DesktopTaskbarMode.windowsTaskbar,
                       title: 'Standard Windows',
-                      description: 'Native taskbar visible. WallSync dock disabled.',
+                      description:
+                          'Native taskbar visible. WallSync dock disabled.',
                       icon: Icons.desktop_windows_rounded,
                       accentColor: const Color(0xFF38BDF8),
-                      onTap: () async {
-                        await taskbarService.restoreWindowsTaskbar();
-                        _activeRunningWidgetIds.remove('taskbar_dock');
-                        if (_activeRunningWidgetIds.isEmpty) _isOverlayRunning = false;
-                        _updateTrayMenu();
-                        setState(() => _settings = _settingsService.settings);
-                      },
+                      onTap: taskbarService.operationInProgress
+                          ? () {}
+                          : () {
+                              if (taskbarService.operationInProgress) return;
+                              unawaited(() async {
+                                await taskbarService.restoreWindowsTaskbar();
+                                _activeRunningWidgetIds.remove('taskbar_dock');
+                                if (_activeRunningWidgetIds.isEmpty) {
+                                  _isOverlayRunning = false;
+                                }
+                                _updateTrayMenu();
+                                setState(
+                                  () => _settings = _settingsService.settings,
+                                );
+                              }());
+                            },
                     ),
                     const SizedBox(width: 12),
                     buildModeCard(
                       mode: DesktopTaskbarMode.dockOnly,
                       title: 'Dock Alongside',
-                      description: 'Custom dock active alongside standard Windows taskbar.',
+                      description:
+                          'Custom dock active alongside standard Windows taskbar.',
                       icon: Icons.dock_rounded,
                       accentColor: const Color(0xFF34D399),
-                      onTap: () async {
-                        final success = await taskbarService.enableCustomTaskbar(
-                          hideNativeTaskbar: false,
-                        );
-                        if (success) {
-                          if (!_activeRunningWidgetIds.contains('taskbar_dock')) {
-                            _activeRunningWidgetIds.add('taskbar_dock');
-                          }
-                          _isOverlayRunning = true;
-                          _updateTrayMenu();
-                        }
-                        setState(() => _settings = _settingsService.settings);
-                      },
+                      onTap: taskbarService.operationInProgress
+                          ? () {}
+                          : () {
+                              if (taskbarService.operationInProgress) return;
+                              unawaited(() async {
+                                final success = await taskbarService
+                                    .enableCustomTaskbar(
+                                      hideNativeTaskbar: false,
+                                    );
+                                if (success) {
+                                  if (!_activeRunningWidgetIds.contains(
+                                    'taskbar_dock',
+                                  )) {
+                                    _activeRunningWidgetIds.add('taskbar_dock');
+                                  }
+                                  _isOverlayRunning = true;
+                                  _updateTrayMenu();
+                                }
+                                setState(
+                                  () => _settings = _settingsService.settings,
+                                );
+                              }());
+                            },
                     ),
                     const SizedBox(width: 12),
                     buildModeCard(
-                      mode: DesktopTaskbarMode.dockWithNativeHidden,
+                      mode: DesktopTaskbarMode.customTaskbar,
                       title: 'Full Replacement',
-                      description: 'Native taskbar hidden. Dock acts as primary taskbar.',
+                      description:
+                          'Native taskbar hidden. Dock acts as primary taskbar.',
                       icon: Icons.space_dashboard_rounded,
                       accentColor: const Color(0xFFA855F7),
-                      onTap: () async {
-                        final success = await taskbarService.enableCustomTaskbar(
-                          hideNativeTaskbar: true,
-                        );
-                        if (success) {
-                          if (!_activeRunningWidgetIds.contains('taskbar_dock')) {
-                            _activeRunningWidgetIds.add('taskbar_dock');
-                          }
-                          _isOverlayRunning = true;
-                          _updateTrayMenu();
-                        }
-                        setState(() => _settings = _settingsService.settings);
-                      },
+                      onTap: taskbarService.operationInProgress
+                          ? () {}
+                          : () {
+                              if (taskbarService.operationInProgress) return;
+                              unawaited(() async {
+                                final success = await taskbarService
+                                    .enableCustomTaskbar(
+                                      hideNativeTaskbar: true,
+                                    );
+                                if (success) {
+                                  if (!_activeRunningWidgetIds.contains(
+                                    'taskbar_dock',
+                                  )) {
+                                    _activeRunningWidgetIds.add('taskbar_dock');
+                                  }
+                                  _isOverlayRunning = true;
+                                  _updateTrayMenu();
+                                }
+                                setState(
+                                  () => _settings = _settingsService.settings,
+                                );
+                              }());
+                            },
                     ),
                   ];
 
@@ -18550,30 +19893,36 @@ class _DashboardViewState extends State<DashboardView>
                   contentPadding: EdgeInsets.zero,
                   activeColor: const Color(0xFF38BDF8),
                   value: isCustomActive,
-                  onChanged: (enabled) async {
-                    if (enabled) {
-                      final success = await taskbarService.enableCustomTaskbar(
-                        hideNativeTaskbar: hideNative,
-                      );
-                      if (success) {
-                        if (!_activeRunningWidgetIds.contains('taskbar_dock')) {
-                          _activeRunningWidgetIds.add('taskbar_dock');
-                        }
-                        _isOverlayRunning = true;
-                        _updateTrayMenu();
-                      }
-                    } else {
-                      await taskbarService.restoreWindowsTaskbar();
-                      _activeRunningWidgetIds.remove('taskbar_dock');
-                      if (_activeRunningWidgetIds.isEmpty) {
-                        _isOverlayRunning = false;
-                      }
-                      _updateTrayMenu();
-                    }
-                    setState(() {
-                      _settings = _settingsService.settings;
-                    });
-                  },
+                  onChanged: taskbarService.operationInProgress
+                      ? null
+                      : (enabled) async {
+                          if (taskbarService.operationInProgress) return;
+                          if (enabled) {
+                            final success = await taskbarService
+                                .enableCustomTaskbar(
+                                  hideNativeTaskbar: hideNative,
+                                );
+                            if (success) {
+                              if (!_activeRunningWidgetIds.contains(
+                                'taskbar_dock',
+                              )) {
+                                _activeRunningWidgetIds.add('taskbar_dock');
+                              }
+                              _isOverlayRunning = true;
+                              _updateTrayMenu();
+                            }
+                          } else {
+                            await taskbarService.restoreWindowsTaskbar();
+                            _activeRunningWidgetIds.remove('taskbar_dock');
+                            if (_activeRunningWidgetIds.isEmpty) {
+                              _isOverlayRunning = false;
+                            }
+                            _updateTrayMenu();
+                          }
+                          setState(() {
+                            _settings = _settingsService.settings;
+                          });
+                        },
                   title: const Text(
                     'Enable WallSync Custom Taskbar',
                     style: TextStyle(
@@ -18601,21 +19950,27 @@ class _DashboardViewState extends State<DashboardView>
                   contentPadding: EdgeInsets.zero,
                   activeColor: const Color(0xFFA855F7),
                   value: hideNative,
-                  onChanged: (hide) async {
-                    final updatedTaskbar = _settings.taskbarSettings.copyWith(
-                      nativeTaskbarHideEnabled: hide,
-                    );
-                    final updatedSettings = _settings.copyWith(
-                      taskbarSettings: updatedTaskbar,
-                    );
-                    await _settingsService.save(updatedSettings);
-                    await taskbarService.syncDockSettings(updatedSettings);
-                    setState(() => _settings = updatedSettings);
+                  onChanged: taskbarService.operationInProgress
+                      ? null
+                      : (hide) async {
+                          if (taskbarService.operationInProgress) return;
+                          final updatedTaskbar = _settings.taskbarSettings
+                              .copyWith(nativeTaskbarHideEnabled: hide);
+                          final updatedSettings = _settings.copyWith(
+                            taskbarSettings: updatedTaskbar,
+                          );
+                          await _settingsService.save(updatedSettings);
+                          await taskbarService.syncDockSettings(
+                            updatedSettings,
+                          );
+                          setState(() => _settings = updatedSettings);
 
-                    if (isCustomActive) {
-                      await taskbarService.setWindowsTaskbarVisibility(!hide);
-                    }
-                  },
+                          if (isCustomActive) {
+                            await taskbarService.setWindowsTaskbarVisibility(
+                              !hide,
+                            );
+                          }
+                        },
                   title: const Text(
                     'Hide Native Windows Taskbar',
                     style: TextStyle(
@@ -18637,66 +19992,110 @@ class _DashboardViewState extends State<DashboardView>
               const SizedBox(height: 18),
 
               // Emergency Restore Action Row
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B).withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.shield_rounded, size: 20, color: Color(0xFF38BDF8)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Emergency Taskbar Recovery',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth > 650;
+                  final contentLeft = Row(
+                    children: [
+                      const Icon(
+                        Icons.shield_rounded,
+                        size: 20,
+                        color: Color(0xFF38BDF8),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Emergency Taskbar Recovery',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Immediately restores standard Windows taskbars across all monitors (Shortcut: Ctrl+Alt+Shift+R)',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.white.withValues(alpha: 0.6),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Immediately restores standard Windows taskbars across all monitors (Shortcut: Ctrl+Alt+Shift+R)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white.withValues(alpha: 0.6),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+
+                  final button = ElevatedButton.icon(
+                    onPressed: taskbarService.operationInProgress
+                        ? null
+                        : () async {
+                            if (taskbarService.operationInProgress) return;
+                            await taskbarService.restoreWindowsTaskbar();
+                            setState(
+                              () => _settings = _settingsService.settings,
+                            );
+                            if (builderCtx.mounted) {
+                              ScaffoldMessenger.of(builderCtx).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Windows Taskbar restored successfully.',
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                    icon: const Icon(
+                      Icons.settings_backup_restore_rounded,
+                      size: 16,
+                    ),
+                    label: const Text('Restore Windows Taskbar Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF38BDF8),
+                      foregroundColor: Colors.black,
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11.5,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        await taskbarService.restoreWindowsTaskbar();
-                        setState(() => _settings = _settingsService.settings);
-                        if (builderCtx.mounted) {
-                          ScaffoldMessenger.of(builderCtx).showSnackBar(
-                            const SnackBar(
-                              content: Text('Windows Taskbar restored successfully.'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.settings_backup_restore_rounded, size: 16),
-                      label: const Text('Restore Windows Taskbar Now'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF38BDF8),
-                        foregroundColor: Colors.black,
-                        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  );
+
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B).withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
-                  ],
-                ),
+                    child: isWide
+                        ? Row(
+                            children: [
+                              Expanded(child: contentLeft),
+                              const SizedBox(width: 12),
+                              button,
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              contentLeft,
+                              const SizedBox(height: 12),
+                              button,
+                            ],
+                          ),
+                  );
+                },
               ),
 
               const SizedBox(height: 22),
@@ -18712,60 +20111,82 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  // Option A: Reset Appearance
-                  Expanded(
-                    child: _buildResetOptionCard(
-                      title: 'Option A: Appearance',
-                      desc: 'Reverts colors, glass blur, gradient & icons to default. Retains layout & pinned apps.',
-                      buttonLabel: 'Reset Appearance',
-                      icon: Icons.palette_outlined,
-                      accentColor: const Color(0xFF38BDF8),
-                      onPressed: () async {
-                        await taskbarService.resetAppearance();
-                        setState(() => _settings = _settingsService.settings);
-                        if (builderCtx.mounted) {
-                          ScaffoldMessenger.of(builderCtx).showSnackBar(
-                            const SnackBar(content: Text('Taskbar appearance reset to default.')),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Option B: Reset Layout
-                  Expanded(
-                    child: _buildResetOptionCard(
-                      title: 'Option B: Layout',
-                      desc: 'Reverts dimensions, dock position & module visibility. Retains templates & themes.',
-                      buttonLabel: 'Reset Layout',
-                      icon: Icons.view_quilt_outlined,
-                      accentColor: const Color(0xFFF59E0B),
-                      onPressed: () async {
-                        await taskbarService.resetLayout();
-                        setState(() => _settings = _settingsService.settings);
-                        if (builderCtx.mounted) {
-                          ScaffoldMessenger.of(builderCtx).showSnackBar(
-                            const SnackBar(content: Text('Taskbar layout reset to default.')),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Option C: Full Reset
-                  Expanded(
-                    child: _buildResetOptionCard(
-                      title: 'Option C: Full Reset',
-                      desc: 'Restores Windows taskbar, stops custom dock, clears state. Preserves user templates.',
-                      buttonLabel: 'Full Taskbar Reset',
-                      icon: Icons.restart_alt_rounded,
-                      accentColor: const Color(0xFFEF4444),
-                      onPressed: () => _confirmFullTaskbarReset(context),
-                    ),
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth > 850;
+                  final optionA = _buildResetOptionCard(
+                    title: 'Option A: Appearance',
+                    desc:
+                        'Reverts colors, glass blur, gradient & icons to default. Retains layout & pinned apps.',
+                    buttonLabel: 'Reset Appearance',
+                    icon: Icons.palette_outlined,
+                    accentColor: const Color(0xFF38BDF8),
+                    onPressed: () async {
+                      await taskbarService.resetAppearance();
+                      setState(() => _settings = _settingsService.settings);
+                      if (builderCtx.mounted) {
+                        ScaffoldMessenger.of(builderCtx).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Taskbar appearance reset to default.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                  final optionB = _buildResetOptionCard(
+                    title: 'Option B: Layout',
+                    desc:
+                        'Reverts dimensions, dock position & module visibility. Retains templates & themes.',
+                    buttonLabel: 'Reset Layout',
+                    icon: Icons.view_quilt_outlined,
+                    accentColor: const Color(0xFFF59E0B),
+                    onPressed: () async {
+                      await taskbarService.resetLayout();
+                      setState(() => _settings = _settingsService.settings);
+                      if (builderCtx.mounted) {
+                        ScaffoldMessenger.of(builderCtx).showSnackBar(
+                          const SnackBar(
+                            content: Text('Taskbar layout reset to default.'),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                  final optionC = _buildResetOptionCard(
+                    title: 'Option C: Full Reset',
+                    desc:
+                        'Restores Windows taskbar, stops custom dock, clears state. Preserves user templates.',
+                    buttonLabel: 'Full Taskbar Reset',
+                    icon: Icons.restart_alt_rounded,
+                    accentColor: const Color(0xFFEF4444),
+                    onPressed: () => _confirmFullTaskbarReset(context),
+                  );
+
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: optionA),
+                        const SizedBox(width: 12),
+                        Expanded(child: optionB),
+                        const SizedBox(width: 12),
+                        Expanded(child: optionC),
+                      ],
+                    );
+                  } else {
+                    return Column(
+                      children: [
+                        optionA,
+                        const SizedBox(height: 12),
+                        optionB,
+                        const SizedBox(height: 12),
+                        optionC,
+                      ],
+                    );
+                  }
+                },
               ),
             ],
           ),
@@ -18830,11 +20251,16 @@ class _DashboardViewState extends State<DashboardView>
                 foregroundColor: accentColor,
                 side: BorderSide(color: accentColor.withValues(alpha: 0.4)),
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: Text(
                 buttonLabel,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -18852,7 +20278,10 @@ class _DashboardViewState extends State<DashboardView>
           children: [
             Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444)),
             SizedBox(width: 10),
-            Text('Full Taskbar Reset', style: TextStyle(color: Colors.white, fontSize: 16)),
+            Text(
+              'Full Taskbar Reset',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
           ],
         ),
         content: const Text(
@@ -18866,7 +20295,10 @@ class _DashboardViewState extends State<DashboardView>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white60),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -18886,22 +20318,27 @@ class _DashboardViewState extends State<DashboardView>
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Full Taskbar Reset completed and Windows taskbar restored.'),
+            content: Text(
+              'Full Taskbar Reset completed and Windows taskbar restored.',
+            ),
           ),
         );
       }
     }
   }
 
-  Widget _buildTaskbarPresetChip(String label, String templateKey, double w, double h) {
+  Widget _buildTaskbarPresetChip(
+    String label,
+    String templateKey,
+    double w,
+    double h,
+  ) {
     final isSel = _settings.widgetTemplate == templateKey;
     return InkWell(
       onTap: () {
-        final defaults = WidgetSettings.templateDefaults[templateKey] ?? {
-          'width': w,
-          'height': h,
-          'sizeFactor': 0.85,
-        };
+        final defaults =
+            WidgetSettings.templateDefaults[templateKey] ??
+            {'width': w, 'height': h, 'sizeFactor': 0.85};
         _updateSettings(
           _settings.copyWith(
             widgetTemplate: templateKey,
@@ -18922,7 +20359,9 @@ class _DashboardViewState extends State<DashboardView>
               : Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSel ? const Color(0xFF38BDF8) : Colors.white.withValues(alpha: 0.08),
+            color: isSel
+                ? const Color(0xFF38BDF8)
+                : Colors.white.withValues(alpha: 0.08),
           ),
         ),
         child: Row(
@@ -18965,9 +20404,7 @@ class _DashboardViewState extends State<DashboardView>
       decoration: BoxDecoration(
         color: const Color(0xFF0F172A).withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: accentColor.withValues(alpha: 0.25),
-        ),
+        border: Border.all(color: accentColor.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -18996,7 +20433,9 @@ class _DashboardViewState extends State<DashboardView>
                     height: 6,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: statusActive ? const Color(0xFF10B981) : Colors.white38,
+                      color: statusActive
+                          ? const Color(0xFF10B981)
+                          : Colors.white38,
                     ),
                   ),
                   const SizedBox(width: 5),
@@ -19005,7 +20444,9 @@ class _DashboardViewState extends State<DashboardView>
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: statusActive ? const Color(0xFF10B981) : Colors.white54,
+                      color: statusActive
+                          ? const Color(0xFF10B981)
+                          : Colors.white54,
                     ),
                   ),
                 ],
@@ -19024,12 +20465,20 @@ class _DashboardViewState extends State<DashboardView>
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white54),
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Colors.white54,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
           '${value.toInt()}%',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
         ),
         const SizedBox(height: 4),
         SizedBox(
@@ -19058,13 +20507,28 @@ class _DashboardViewState extends State<DashboardView>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wb_sunny_rounded, size: 12, color: Color(0xFFFBBF24)),
+            const Icon(
+              Icons.wb_sunny_rounded,
+              size: 12,
+              color: Color(0xFFFBBF24),
+            ),
             const SizedBox(width: 4),
-            const Text('24°C', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+            const Text(
+              '24°C',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             const SizedBox(width: 8),
             Container(width: 1, height: 12, color: Colors.white24),
             const SizedBox(width: 8),
-            const Icon(Icons.music_note_rounded, size: 12, color: Color(0xFFEC4899)),
+            const Icon(
+              Icons.music_note_rounded,
+              size: 12,
+              color: Color(0xFFEC4899),
+            ),
             const SizedBox(width: 4),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 110),
@@ -19080,7 +20544,11 @@ class _DashboardViewState extends State<DashboardView>
             const SizedBox(width: 8),
             Text(
               'CPU ${_cpuUsage.toInt()}%',
-              style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF00FFCC)),
+              style: const TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF00FFCC),
+              ),
             ),
           ],
         );
@@ -19093,10 +20561,16 @@ class _DashboardViewState extends State<DashboardView>
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 130),
               child: Text(
-                mediaSnap.title.isNotEmpty ? mediaSnap.title : 'No Playing Media',
+                mediaSnap.title.isNotEmpty
+                    ? mediaSnap.title
+                    : 'No Playing Media',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -19120,20 +20594,46 @@ class _DashboardViewState extends State<DashboardView>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.memory_rounded, size: 12, color: Color(0xFF38BDF8)),
+            const Icon(
+              Icons.memory_rounded,
+              size: 12,
+              color: Color(0xFF38BDF8),
+            ),
             const SizedBox(width: 4),
-            Text('${_cpuUsage.toInt()}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+            Text(
+              '${_cpuUsage.toInt()}%',
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             const SizedBox(width: 8),
-            const Icon(Icons.storage_rounded, size: 12, color: Color(0xFF00FFCC)),
+            const Icon(
+              Icons.storage_rounded,
+              size: 12,
+              color: Color(0xFF00FFCC),
+            ),
             const SizedBox(width: 4),
-            Text('${_ramUsage.toInt()}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+            Text(
+              '${_ramUsage.toInt()}%',
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ],
         );
       case 'taskbar_steam':
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.sports_esports_rounded, size: 13, color: Color(0xFF66C0F4)),
+            const Icon(
+              Icons.sports_esports_rounded,
+              size: 13,
+              color: Color(0xFF66C0F4),
+            ),
             const SizedBox(width: 6),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 110),
@@ -19141,14 +20641,22 @@ class _DashboardViewState extends State<DashboardView>
                 steamSnap.isDownloading ? steamSnap.gameTitle : 'Steam Ready',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
             const SizedBox(width: 6),
             if (steamSnap.isDownloading)
               Text(
                 '${steamSnap.downloadSpeedMBs.toStringAsFixed(1)} MB/s',
-                style: const TextStyle(fontSize: 9.5, color: Color(0xFF66C0F4), fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  color: Color(0xFF66C0F4),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
           ],
         );
@@ -19156,22 +20664,34 @@ class _DashboardViewState extends State<DashboardView>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.headset_mic_rounded, size: 13, color: Color(0xFF5865F2)),
+            const Icon(
+              Icons.headset_mic_rounded,
+              size: 13,
+              color: Color(0xFF5865F2),
+            ),
             const SizedBox(width: 6),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 110),
               child: Text(
-                discordSnap.isConnectedToVoice ? discordSnap.channelName : 'Discord Voice',
+                discordSnap.isConnectedToVoice
+                    ? discordSnap.channelName
+                    : 'Discord Voice',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
             const SizedBox(width: 6),
             Icon(
               discordSnap.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
               size: 11,
-              color: discordSnap.isMuted ? Colors.redAccent : const Color(0xFF22C55E),
+              color: discordSnap.isMuted
+                  ? Colors.redAccent
+                  : const Color(0xFF22C55E),
             ),
           ],
         );
@@ -19181,20 +20701,41 @@ class _DashboardViewState extends State<DashboardView>
           children: [
             Icon(Icons.wb_sunny_rounded, size: 13, color: Color(0xFFFBBF24)),
             SizedBox(width: 5),
-            Text('24°C Sunny', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white)),
+            Text(
+              '24°C Sunny',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ],
         );
       case 'taskbar_parking_lot':
         return const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inventory_2_outlined, size: 12, color: Color(0xFFF59E0B)),
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 12,
+              color: Color(0xFFF59E0B),
+            ),
             SizedBox(width: 5),
-            Text('Stash: 3 items', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white)),
+            Text(
+              'Stash: 3 items',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ],
         );
       default:
-        return const Text('Taskbar Widget', style: TextStyle(fontSize: 10, color: Colors.white));
+        return const Text(
+          'Taskbar Widget',
+          style: TextStyle(fontSize: 10, color: Colors.white),
+        );
     }
   }
 
@@ -19705,7 +21246,11 @@ class _DashboardViewState extends State<DashboardView>
                   'atomic_clean': ['MINIMAL', 'ANURATI', 'TYPOGRAPHY'],
                   'arc_clock': ['RADIAL ARC', 'ANALOG & DIGITAL', 'GAUGE'],
                   'flip_clock': ['RETRO', 'SPLIT-FLAP', 'MECHANICAL'],
-                  'station_weather': ['SWISS RAILWAY', 'ANALOG CLOCK', 'WEATHER FORECAST'],
+                  'station_weather': [
+                    'SWISS RAILWAY',
+                    'ANALOG CLOCK',
+                    'WEATHER FORECAST',
+                  ],
                 };
                 final currentTags = tags[key] ?? ['WIDGET'];
 
@@ -20614,15 +22159,24 @@ class _DashboardViewState extends State<DashboardView>
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.access_time_rounded, size: 10, color: Color(0xFF38BDF8)),
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 10,
+                              color: Color(0xFF38BDF8),
+                            ),
                             const SizedBox(width: 4),
                             const Text(
                               '12:45',
@@ -20633,41 +22187,82 @@ class _DashboardViewState extends State<DashboardView>
                                 fontFamily: 'Segoe UI',
                               ),
                             ),
-                            Container(width: 1, height: 14, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white12),
-                            const Icon(Icons.wb_sunny_rounded, size: 10, color: Color(0xFFFBBF24)),
+                            Container(
+                              width: 1,
+                              height: 14,
+                              margin: const EdgeInsets.symmetric(horizontal: 6),
+                              color: Colors.white12,
+                            ),
+                            const Icon(
+                              Icons.wb_sunny_rounded,
+                              size: 10,
+                              color: Color(0xFFFBBF24),
+                            ),
                             const SizedBox(width: 3),
                             const Text(
                               '24°',
-                              style: TextStyle(color: Colors.white, fontSize: 9, fontFamily: 'Segoe UI'),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontFamily: 'Segoe UI',
+                              ),
                             ),
-                            Container(width: 1, height: 14, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white12),
+                            Container(
+                              width: 1,
+                              height: 14,
+                              margin: const EdgeInsets.symmetric(horizontal: 6),
+                              color: Colors.white12,
+                            ),
                             Expanded(
                               child: Row(
                                 children: [
                                   Container(
                                     width: 14,
                                     height: 14,
-                                    decoration: const BoxDecoration(color: Color(0xFF38BDF8), shape: BoxShape.circle),
-                                    child: const Icon(Icons.play_arrow_rounded, size: 9, color: Colors.black),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF38BDF8),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 9,
+                                      color: Colors.black,
+                                    ),
                                   ),
                                   const SizedBox(width: 4),
                                   const Expanded(
                                     child: Text(
                                       'Nightcall',
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: Colors.white, fontSize: 8.5, fontFamily: 'Segoe UI'),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8.5,
+                                        fontFamily: 'Segoe UI',
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF00FFCC).withValues(alpha: 0.12),
+                                color: const Color(
+                                  0xFF00FFCC,
+                                ).withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text('14%', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 8, fontWeight: FontWeight.bold)),
+                              child: const Text(
+                                '14%',
+                                style: TextStyle(
+                                  color: Color(0xFF00FFCC),
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -20677,11 +22272,16 @@ class _DashboardViewState extends State<DashboardView>
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: Row(
                           children: [
@@ -20689,10 +22289,16 @@ class _DashboardViewState extends State<DashboardView>
                               width: 22,
                               height: 22,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEC4899).withValues(alpha: 0.2),
+                                color: const Color(
+                                  0xFFEC4899,
+                                ).withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Icon(Icons.music_note_rounded, size: 13, color: Color(0xFFEC4899)),
+                              child: const Icon(
+                                Icons.music_note_rounded,
+                                size: 13,
+                                color: Color(0xFFEC4899),
+                              ),
                             ),
                             const SizedBox(width: 6),
                             const Expanded(
@@ -20704,13 +22310,22 @@ class _DashboardViewState extends State<DashboardView>
                                     'Midnight City',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold, fontFamily: 'Segoe UI'),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Segoe UI',
+                                    ),
                                   ),
                                   Text(
                                     'M83 · WASAPI FFT',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: Colors.white54, fontSize: 7.5, fontFamily: 'Segoe UI'),
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 7.5,
+                                      fontFamily: 'Segoe UI',
+                                    ),
                                   ),
                                 ],
                               ),
@@ -20718,15 +22333,28 @@ class _DashboardViewState extends State<DashboardView>
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [5.0, 11.0, 16.0, 8.0, 14.0].map((h) => Container(
-                                width: 2,
-                                height: h,
-                                margin: const EdgeInsets.symmetric(horizontal: 1),
-                                decoration: BoxDecoration(color: const Color(0xFFEC4899), borderRadius: BorderRadius.circular(1)),
-                              )).toList(),
+                              children: [5.0, 11.0, 16.0, 8.0, 14.0]
+                                  .map(
+                                    (h) => Container(
+                                      width: 2,
+                                      height: h,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 1,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEC4899),
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
                             ),
                             const SizedBox(width: 6),
-                            const Icon(Icons.pause_rounded, size: 14, color: Colors.white),
+                            const Icon(
+                              Icons.pause_rounded,
+                              size: 14,
+                              color: Colors.white,
+                            ),
                           ],
                         ),
                       );
@@ -20735,11 +22363,16 @@ class _DashboardViewState extends State<DashboardView>
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -20750,21 +22383,48 @@ class _DashboardViewState extends State<DashboardView>
                                 const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.memory_rounded, size: 9, color: Color(0xFF00FFCC)),
+                                    Icon(
+                                      Icons.memory_rounded,
+                                      size: 9,
+                                      color: Color(0xFF00FFCC),
+                                    ),
                                     SizedBox(width: 2),
-                                    Text('CPU', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 7.5, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      'CPU',
+                                      style: TextStyle(
+                                        color: Color(0xFF00FFCC),
+                                        fontSize: 7.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 2),
-                                const Text('28%', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                const Text(
+                                  '28%',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
                                 Container(
                                   width: 32,
                                   height: 2.5,
-                                  decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(1)),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white12,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Container(width: 10, decoration: BoxDecoration(color: const Color(0xFF00FFCC), borderRadius: BorderRadius.circular(1))),
+                                    child: Container(
+                                      width: 10,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00FFCC),
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -20775,21 +22435,48 @@ class _DashboardViewState extends State<DashboardView>
                                 const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.developer_board_rounded, size: 9, color: Color(0xFFA855F7)),
+                                    Icon(
+                                      Icons.developer_board_rounded,
+                                      size: 9,
+                                      color: Color(0xFFA855F7),
+                                    ),
                                     SizedBox(width: 2),
-                                    Text('RAM', style: TextStyle(color: Color(0xFFA855F7), fontSize: 7.5, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      'RAM',
+                                      style: TextStyle(
+                                        color: Color(0xFFA855F7),
+                                        fontSize: 7.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 2),
-                                const Text('46%', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                const Text(
+                                  '46%',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
                                 Container(
                                   width: 32,
                                   height: 2.5,
-                                  decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(1)),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white12,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Container(width: 15, decoration: BoxDecoration(color: const Color(0xFFA855F7), borderRadius: BorderRadius.circular(1))),
+                                    child: Container(
+                                      width: 15,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFA855F7),
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -20800,21 +22487,48 @@ class _DashboardViewState extends State<DashboardView>
                                 const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.storage_rounded, size: 9, color: Color(0xFF38BDF8)),
+                                    Icon(
+                                      Icons.storage_rounded,
+                                      size: 9,
+                                      color: Color(0xFF38BDF8),
+                                    ),
                                     SizedBox(width: 2),
-                                    Text('SSD', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 7.5, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      'SSD',
+                                      style: TextStyle(
+                                        color: Color(0xFF38BDF8),
+                                        fontSize: 7.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 2),
-                                const Text('62%', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                const Text(
+                                  '62%',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
                                 Container(
                                   width: 32,
                                   height: 2.5,
-                                  decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(1)),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white12,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Container(width: 20, decoration: BoxDecoration(color: const Color(0xFF38BDF8), borderRadius: BorderRadius.circular(1))),
+                                    child: Container(
+                                      width: 20,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF38BDF8),
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -20826,25 +22540,45 @@ class _DashboardViewState extends State<DashboardView>
                     case 'taskbar_steam':
                       final steam = SteamMonitorService.instance.current;
                       final isDownloading = steam.isDownloading;
-                      final title = isDownloading ? steam.gameTitle : (steam.isSteamRunning ? 'Steam Ready' : 'Steam Offline');
-                      final speed = isDownloading ? '${steam.downloadSpeedMBs.toStringAsFixed(0)} MB/s' : (steam.isSteamRunning ? 'Ready' : 'Off');
-                      final prog = isDownloading ? steam.progressPercent : (steam.isSteamRunning ? 1.0 : 0.0);
+                      final title = isDownloading
+                          ? steam.gameTitle
+                          : (steam.isSteamRunning
+                                ? 'Steam Ready'
+                                : 'Steam Offline');
+                      final speed = isDownloading
+                          ? '${steam.downloadSpeedMBs.toStringAsFixed(0)} MB/s'
+                          : (steam.isSteamRunning ? 'Ready' : 'Off');
+                      final prog = isDownloading
+                          ? steam.progressPercent
+                          : (steam.isSteamRunning ? 1.0 : 0.0);
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: Row(
                           children: [
                             Container(
                               width: 22,
                               height: 22,
-                              decoration: const BoxDecoration(color: Color(0xFF1B2838), shape: BoxShape.circle),
-                              child: const Icon(Icons.sports_esports_rounded, size: 12, color: Color(0xFF66C0F4)),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF1B2838),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.sports_esports_rounded,
+                                size: 12,
+                                color: Color(0xFF66C0F4),
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -20853,25 +22587,49 @@ class _DashboardViewState extends State<DashboardView>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Expanded(
                                         child: Text(
                                           title,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'Segoe UI'),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Segoe UI',
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 4),
-                                      Text(speed, style: const TextStyle(color: Color(0xFF66C0F4), fontSize: 8, fontWeight: FontWeight.bold)),
+                                      Text(
+                                        speed,
+                                        style: const TextStyle(
+                                          color: Color(0xFF66C0F4),
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 3),
                                   Container(
                                     height: 3,
-                                    decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(1.5)),
-                                    child: Align(alignment: Alignment.centerLeft, child: FractionallySizedBox(widthFactor: prog.clamp(0.04, 1.0), child: Container(color: const Color(0xFF66C0F4)))),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white12,
+                                      borderRadius: BorderRadius.circular(1.5),
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FractionallySizedBox(
+                                        widthFactor: prog.clamp(0.04, 1.0),
+                                        child: Container(
+                                          color: const Color(0xFF66C0F4),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -20883,26 +22641,43 @@ class _DashboardViewState extends State<DashboardView>
                     case 'taskbar_discord':
                       final discord = DiscordIpcService.instance.current;
                       final isConnected = discord.isConnectedToVoice;
-                      final channel = isConnected ? discord.channelName : (discord.isRunning ? 'Discord Online' : 'Discord Offline');
-                      final sub = isConnected ? 'Connected · ${discord.pingMs}ms' : (discord.isRunning ? 'Not in voice' : 'Offline');
+                      final channel = isConnected
+                          ? discord.channelName
+                          : (discord.isRunning
+                                ? 'Discord Online'
+                                : 'Discord Offline');
+                      final sub = isConnected
+                          ? 'Connected · ${discord.pingMs}ms'
+                          : (discord.isRunning ? 'Not in voice' : 'Offline');
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: Row(
                           children: [
                             CircleAvatar(
                               radius: 11,
-                              backgroundColor: isConnected ? const Color(0xFF23A55A) : Colors.white24,
+                              backgroundColor: isConnected
+                                  ? const Color(0xFF23A55A)
+                                  : Colors.white24,
                               child: const CircleAvatar(
                                 radius: 9,
                                 backgroundColor: Color(0xFF5865F2),
-                                child: Icon(Icons.headset_mic_rounded, size: 10, color: Colors.white),
+                                child: Icon(
+                                  Icons.headset_mic_rounded,
+                                  size: 10,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -20915,21 +22690,33 @@ class _DashboardViewState extends State<DashboardView>
                                     channel,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'Segoe UI'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Segoe UI',
+                                    ),
                                   ),
                                   Text(
                                     sub,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.white54, fontSize: 7.5),
+                                    style: const TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 7.5,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                             Icon(
-                              discord.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                              discord.isMuted
+                                  ? Icons.mic_off_rounded
+                                  : Icons.mic_rounded,
                               size: 12,
-                              color: discord.isMuted ? Colors.redAccent : Colors.white70,
+                              color: discord.isMuted
+                                  ? Colors.redAccent
+                                  : Colors.white70,
                             ),
                           ],
                         ),
@@ -20939,32 +22726,77 @@ class _DashboardViewState extends State<DashboardView>
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.wb_sunny_rounded, size: 16, color: Color(0xFFFBBF24)),
+                            const Icon(
+                              Icons.wb_sunny_rounded,
+                              size: 16,
+                              color: Color(0xFFFBBF24),
+                            ),
                             const SizedBox(width: 6),
-                            const Text('24°', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Segoe UI')),
+                            const Text(
+                              '24°',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'Segoe UI',
+                              ),
+                            ),
                             const SizedBox(width: 6),
                             const Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Sunny Day', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
-                                  Text('Local City', style: TextStyle(color: Colors.white54, fontSize: 7.5)),
+                                  Text(
+                                    'Sunny Day',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Local City',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 7.5,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(color: const Color(0xFF38BDF8).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
-                              child: const Text('💧 64%', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 7.5, fontWeight: FontWeight.bold)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF38BDF8,
+                                ).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '💧 64%',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 7.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -20974,41 +22806,76 @@ class _DashboardViewState extends State<DashboardView>
                       return Container(
                         width: 190,
                         height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xDD16181F),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.inventory_2_outlined, size: 15, color: Color(0xFFF59E0B)),
+                            Icon(
+                              Icons.inventory_2_outlined,
+                              size: 15,
+                              color: Color(0xFFF59E0B),
+                            ),
                             SizedBox(width: 8),
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Parking Lot Stash', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'Segoe UI')),
-                                  Text('3 files ready to drop', style: TextStyle(color: Colors.white54, fontSize: 7.5)),
+                                  Text(
+                                    'Parking Lot Stash',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Segoe UI',
+                                    ),
+                                  ),
+                                  Text(
+                                    '3 files ready to drop',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 7.5,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                            Icon(Icons.add_circle_outline_rounded, size: 13, color: Colors.white70),
+                            Icon(
+                              Icons.add_circle_outline_rounded,
+                              size: 13,
+                              color: Colors.white70,
+                            ),
                           ],
                         ),
                       );
 
                     case 'cyber_hud':
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF070B12),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFF00FFCC), width: 1.2),
+                          border: Border.all(
+                            color: const Color(0xFF00FFCC),
+                            width: 1.2,
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF00FFCC).withValues(alpha: 0.25),
+                              color: const Color(
+                                0xFF00FFCC,
+                              ).withValues(alpha: 0.25),
                               blurRadius: 10,
                             ),
                           ],
@@ -21019,15 +22886,47 @@ class _DashboardViewState extends State<DashboardView>
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text('// CYBER', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+                                Text(
+                                  '// CYBER',
+                                  style: TextStyle(
+                                    color: Color(0xFF00FFCC),
+                                    fontSize: 7,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
                                 SizedBox(width: 4),
-                                Text('27 OCT 2026', style: TextStyle(color: Colors.white70, fontSize: 6.5, fontWeight: FontWeight.w600)),
+                                Text(
+                                  '27 OCT 2026',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 6.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ],
                             ),
                             SizedBox(height: 4),
-                            Text('12:00', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.0)),
+                            Text(
+                              '12:00',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.5,
+                                height: 1.0,
+                              ),
+                            ),
                             SizedBox(height: 5),
-                            Text('TUESDAY • SYS_ACTIVE 100%', style: TextStyle(color: Color(0xFF00FFCC), fontSize: 6.5, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                            Text(
+                              'TUESDAY • SYS_ACTIVE 100%',
+                              style: TextStyle(
+                                color: Color(0xFF00FFCC),
+                                fontSize: 6.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
                           ],
                         ),
                       );
@@ -21036,9 +22935,27 @@ class _DashboardViewState extends State<DashboardView>
                       return const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('12:00', style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: -1.0, height: 1.0)),
+                          Text(
+                            '12:00',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 30,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1.0,
+                              height: 1.0,
+                            ),
+                          ),
                           SizedBox(height: 5),
-                          Text('TUESDAY • 27 OCT', style: TextStyle(color: Color(0xFF818CF8), fontSize: 7.5, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontFamily: 'Anurati')),
+                          Text(
+                            'TUESDAY • 27 OCT',
+                            style: TextStyle(
+                              color: Color(0xFF818CF8),
+                              fontSize: 7.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2.2,
+                              fontFamily: 'Anurati',
+                            ),
+                          ),
                         ],
                       );
 
@@ -21061,18 +22978,37 @@ class _DashboardViewState extends State<DashboardView>
                             ),
                           ),
                           const SizedBox(height: 4),
-                          const Text('09:25:30', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 11, fontWeight: FontWeight.w400)),
-                          const Text('Saturday 15 September', style: TextStyle(color: Colors.white70, fontSize: 6)),
+                          const Text(
+                            '09:25:30',
+                            style: TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const Text(
+                            'Saturday 15 September',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 6,
+                            ),
+                          ),
                         ],
                       );
 
                     case 'flip_clock':
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF13161C),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFD4D0C8), width: 1.5),
+                          border: Border.all(
+                            color: const Color(0xFFD4D0C8),
+                            width: 1.5,
+                          ),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -21106,7 +23042,10 @@ class _DashboardViewState extends State<DashboardView>
 
                     case 'station_weather':
                       return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFB91C1C),
                           borderRadius: BorderRadius.circular(24),
@@ -21117,7 +23056,10 @@ class _DashboardViewState extends State<DashboardView>
                             Container(
                               width: 48,
                               height: 48,
-                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                              ),
                               child: ClipOval(
                                 child: CustomPaint(
                                   painter: StationClockDialPainter(
@@ -21134,14 +23076,38 @@ class _DashboardViewState extends State<DashboardView>
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Thursday', style: TextStyle(color: Colors.white70, fontSize: 6.5)),
-                                Text('November 5th', style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                                Text(
+                                  'Thursday',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 6.5,
+                                  ),
+                                ),
+                                Text(
+                                  'November 5th',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 SizedBox(height: 3),
                                 Row(
                                   children: [
-                                    Icon(Icons.thunderstorm_rounded, size: 8, color: Colors.white),
+                                    Icon(
+                                      Icons.thunderstorm_rounded,
+                                      size: 8,
+                                      color: Colors.white,
+                                    ),
                                     SizedBox(width: 2),
-                                    Text('12°C', style: TextStyle(color: Colors.white, fontSize: 6.5, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      '12°C',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 6.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
@@ -21565,8 +23531,7 @@ class _DashboardViewState extends State<DashboardView>
       child: Column(
         children: [
           // ── Hero Spotlight Showcase (Hidden when searching to maximize results) ──
-          if (_widgetSearchQuery.trim().isEmpty)
-            _buildWidgetHeroShowcase(),
+          if (_widgetSearchQuery.trim().isEmpty) _buildWidgetHeroShowcase(),
 
           // ── Top Sub-Navigation Header: Cyber-Deck Floating Dock with Instant Search ──
           _buildWidgetSubTabSelector(),
@@ -21576,8 +23541,8 @@ class _DashboardViewState extends State<DashboardView>
             child: _widgetSubTab == 'taskbar'
                 ? _buildTaskbarWidgetsSubView()
                 : (_widgetSubTab == 'custom'
-                    ? _buildCustomWidgetsSubView()
-                    : _buildDesktopWidgetsSubView()),
+                      ? _buildCustomWidgetsSubView()
+                      : _buildDesktopWidgetsSubView()),
           ),
         ],
       ),
@@ -21654,11 +23619,20 @@ class _DashboardViewState extends State<DashboardView>
                                 ),
                                 const SizedBox(width: 8),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                    color: const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                                    border: Border.all(
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.5),
+                                    ),
                                   ),
                                   child: Text(
                                     '${_activeRunningWidgetIds.length} RUNNING',
@@ -21676,7 +23650,10 @@ class _DashboardViewState extends State<DashboardView>
                               'Windows Core Synced • Zero-CPU Background Execution • Independent Controls',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 10.5, color: Colors.white54),
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: Colors.white54,
+                              ),
                             ),
                           ],
                         ),
@@ -21688,14 +23665,24 @@ class _DashboardViewState extends State<DashboardView>
                 ElevatedButton.icon(
                   onPressed: _stopAllRunningWidgets,
                   icon: const Icon(Icons.power_settings_new_rounded, size: 14),
-                  label: const Text('Turn Off All', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+                  label: const Text(
+                    'Turn Off All',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent.withValues(alpha: 0.2),
                     foregroundColor: Colors.redAccent,
-                    side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.4)),
+                    side: BorderSide(
+                      color: Colors.redAccent.withValues(alpha: 0.4),
+                    ),
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ],
@@ -21710,7 +23697,10 @@ class _DashboardViewState extends State<DashboardView>
                   final isTb = id.startsWith('taskbar_');
                   return Container(
                     margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF07090F),
                       borderRadius: BorderRadius.circular(14),
@@ -21733,13 +23723,21 @@ class _DashboardViewState extends State<DashboardView>
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: (isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8)).withValues(alpha: 0.15),
+                            color:
+                                (isTb
+                                        ? const Color(0xFF818CF8)
+                                        : const Color(0xFF38BDF8))
+                                    .withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(
-                            isTb ? Icons.dock_rounded : Icons.desktop_windows_rounded,
+                            isTb
+                                ? Icons.dock_rounded
+                                : Icons.desktop_windows_rounded,
                             size: 16,
-                            color: isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8),
+                            color: isTb
+                                ? const Color(0xFF818CF8)
+                                : const Color(0xFF38BDF8),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -21752,13 +23750,24 @@ class _DashboardViewState extends State<DashboardView>
                               children: [
                                 Text(
                                   title,
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Colors.white),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                    color: Colors.white,
+                                  ),
                                 ),
                                 const SizedBox(width: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: (isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8)).withValues(alpha: 0.2),
+                                    color:
+                                        (isTb
+                                                ? const Color(0xFF818CF8)
+                                                : const Color(0xFF38BDF8))
+                                            .withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
@@ -21766,7 +23775,9 @@ class _DashboardViewState extends State<DashboardView>
                                     style: TextStyle(
                                       fontSize: 8,
                                       fontWeight: FontWeight.w900,
-                                      color: isTb ? const Color(0xFF818CF8) : const Color(0xFF38BDF8),
+                                      color: isTb
+                                          ? const Color(0xFF818CF8)
+                                          : const Color(0xFF38BDF8),
                                     ),
                                   ),
                                 ),
@@ -21776,9 +23787,20 @@ class _DashboardViewState extends State<DashboardView>
                             const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.circle, size: 6, color: Color(0xFF10B981)),
+                                Icon(
+                                  Icons.circle,
+                                  size: 6,
+                                  color: Color(0xFF10B981),
+                                ),
                                 SizedBox(width: 4),
-                                Text('Running Live', style: TextStyle(fontSize: 9.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                                Text(
+                                  'Running Live',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    color: Color(0xFF10B981),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
                             ),
                           ],
@@ -21787,12 +23809,32 @@ class _DashboardViewState extends State<DashboardView>
                         // Actions: Customize & Turn OFF
                         OutlinedButton.icon(
                           onPressed: () => _customizeWidget(id),
-                          icon: const Icon(Icons.tune_rounded, size: 12, color: Color(0xFF38BDF8)),
-                          label: const Text('Customize', style: TextStyle(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.bold)),
+                          icon: const Icon(
+                            Icons.tune_rounded,
+                            size: 12,
+                            color: Color(0xFF38BDF8),
+                          ),
+                          label: const Text(
+                            'Customize',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
-                            backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.08),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            side: BorderSide(
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.4),
+                            ),
+                            backgroundColor: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.08),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             minimumSize: const Size(0, 0),
                           ),
                         ),
@@ -21800,12 +23842,23 @@ class _DashboardViewState extends State<DashboardView>
                         ElevatedButton.icon(
                           onPressed: () => _closeWidgetOverlay(id),
                           icon: const Icon(Icons.stop_circle_rounded, size: 13),
-                          label: const Text('Turn OFF', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                          label: const Text(
+                            'Turn OFF',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+                            backgroundColor: Colors.redAccent.withValues(
+                              alpha: 0.8,
+                            ),
                             foregroundColor: Colors.white,
                             elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             minimumSize: const Size(0, 0),
                           ),
                         ),
@@ -21900,7 +23953,9 @@ class _DashboardViewState extends State<DashboardView>
                                 color: const Color(0xFF38BDF8),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.6),
+                                    color: const Color(
+                                      0xFF38BDF8,
+                                    ).withValues(alpha: 0.6),
                                     blurRadius: 6,
                                   ),
                                 ],
@@ -21936,7 +23991,10 @@ class _DashboardViewState extends State<DashboardView>
                           runSpacing: 4,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(6),
@@ -21952,9 +24010,14 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                color: const Color(
+                                  0xFF10B981,
+                                ).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Text(
@@ -21974,32 +24037,62 @@ class _DashboardViewState extends State<DashboardView>
                           children: [
                             ElevatedButton.icon(
                               onPressed: () => _launchWidgetOverlay(activeKey),
-                              icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                              icon: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 16,
+                              ),
                               label: const Text(
                                 'Launch Widget',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF10B981),
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 9,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 10),
                             OutlinedButton.icon(
                               onPressed: () => _customizeWidget(activeKey),
-                              icon: const Icon(Icons.tune_rounded, size: 15, color: Color(0xFF38BDF8)),
+                              icon: const Icon(
+                                Icons.tune_rounded,
+                                size: 15,
+                                color: Color(0xFF38BDF8),
+                              ),
                               label: const Text(
                                 'Customize Widget',
-                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                ),
                               ),
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
-                                backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.07),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                                side: BorderSide(
+                                  color: const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.4),
+                                ),
+                                backgroundColor: const Color(
+                                  0xFF38BDF8,
+                                ).withValues(alpha: 0.07),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 9,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
                               ),
                             ),
                           ],
@@ -22106,10 +24199,7 @@ class _DashboardViewState extends State<DashboardView>
                           _widgetSearchQuery = val;
                         });
                       },
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
                       cursorColor: const Color(0xFF38BDF8),
                       decoration: InputDecoration(
                         hintText: 'Search widgets...',
@@ -22290,7 +24380,8 @@ class _DashboardViewState extends State<DashboardView>
       {
         'key': 'cyber_hud',
         'title': 'Cyber Terminal HUD',
-        'desc': 'Dark cyberpunk terminal card with neon teal border & telemetry',
+        'desc':
+            'Dark cyberpunk terminal card with neon teal border & telemetry',
         'tag': 'HUD CARD',
         'tagColor': const Color(0xFF00FFCC),
       },
@@ -22304,7 +24395,8 @@ class _DashboardViewState extends State<DashboardView>
       {
         'key': 'arc_clock',
         'title': 'Radial Arc Clock',
-        'desc': 'Vibrant dual-color gauge arc with analog hands & digital display',
+        'desc':
+            'Vibrant dual-color gauge arc with analog hands & digital display',
         'tag': 'GAUGE ARC',
         'tagColor': const Color(0xFF00E5FF),
       },
@@ -22347,7 +24439,9 @@ class _DashboardViewState extends State<DashboardView>
               final desc = item['desc'] as String;
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
-              final isRunning = _activeRunningWidgetIds.contains(key) || (_isOverlayRunning && _settings.widgetTemplate == key);
+              final isRunning =
+                  _activeRunningWidgetIds.contains(key) ||
+                  (_isOverlayRunning && _settings.widgetTemplate == key);
 
               return SizedBox(
                 width: 320,
@@ -22432,12 +24526,14 @@ class _DashboardViewState extends State<DashboardView>
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.25),
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.25),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
-                                        color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.7),
+                                        color: const Color(
+                                          0xFF10B981,
+                                        ).withValues(alpha: 0.7),
                                       ),
                                     ),
                                     child: const Row(
@@ -22501,7 +24597,9 @@ class _DashboardViewState extends State<DashboardView>
                                   }
                                 },
                                 icon: Icon(
-                                  isRunning ? Icons.stop_circle_rounded : Icons.play_arrow_rounded,
+                                  isRunning
+                                      ? Icons.stop_circle_rounded
+                                      : Icons.play_arrow_rounded,
                                   size: 14,
                                 ),
                                 label: Text(
@@ -22533,8 +24631,9 @@ class _DashboardViewState extends State<DashboardView>
                               color: Colors.white70,
                               onPressed: () => _customizeWidget(key),
                               style: IconButton.styleFrom(
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.05),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.05,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   side: BorderSide(
@@ -22564,7 +24663,8 @@ class _DashboardViewState extends State<DashboardView>
       {
         'key': 'taskbar_dock',
         'title': 'Modular Taskbar Dock',
-        'desc': 'Unified floating dock with quick toggles, media, audio & volume',
+        'desc':
+            'Unified floating dock with quick toggles, media, audio & volume',
         'tag': 'MODULAR DOCK',
         'tagColor': const Color(0xFF38BDF8),
       },
@@ -22592,7 +24692,8 @@ class _DashboardViewState extends State<DashboardView>
       {
         'key': 'taskbar_discord',
         'title': 'Taskbar Discord Hub',
-        'desc': 'Voice channel indicator, instant mute toggle & friend activity',
+        'desc':
+            'Voice channel indicator, instant mute toggle & friend activity',
         'tag': 'SOCIAL',
         'tagColor': const Color(0xFF5865F2),
       },
@@ -22635,7 +24736,9 @@ class _DashboardViewState extends State<DashboardView>
               final desc = item['desc'] as String;
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
-              final isRunning = _activeRunningWidgetIds.contains(key) || (_isOverlayRunning && _settings.widgetTemplate == key);
+              final isRunning =
+                  _activeRunningWidgetIds.contains(key) ||
+                  (_isOverlayRunning && _settings.widgetTemplate == key);
 
               return SizedBox(
                 width: 320,
@@ -22722,12 +24825,14 @@ class _DashboardViewState extends State<DashboardView>
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981)
-                                          .withValues(alpha: 0.25),
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.25),
                                       borderRadius: BorderRadius.circular(6),
                                       border: Border.all(
-                                        color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.7),
+                                        color: const Color(
+                                          0xFF10B981,
+                                        ).withValues(alpha: 0.7),
                                       ),
                                     ),
                                     child: const Row(
@@ -22791,7 +24896,9 @@ class _DashboardViewState extends State<DashboardView>
                                   }
                                 },
                                 icon: Icon(
-                                  isRunning ? Icons.stop_circle_rounded : Icons.play_arrow_rounded,
+                                  isRunning
+                                      ? Icons.stop_circle_rounded
+                                      : Icons.play_arrow_rounded,
                                   size: 14,
                                 ),
                                 label: Text(
@@ -22823,8 +24930,9 @@ class _DashboardViewState extends State<DashboardView>
                               color: Colors.white70,
                               onPressed: () => _customizeWidget(key),
                               style: IconButton.styleFrom(
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.05),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.05,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                   side: BorderSide(
@@ -22982,7 +25090,8 @@ class _DashboardViewState extends State<DashboardView>
               spacing: 20,
               runSpacing: 20,
               children: customList.map((cw) {
-                final isSelected = _settings.widgetTemplate == 'custom' &&
+                final isSelected =
+                    _settings.widgetTemplate == 'custom' &&
                     _activeSavedWidgetId == cw.id;
 
                 void applyCustomWidget() {
@@ -23281,10 +25390,7 @@ class _DashboardViewState extends State<DashboardView>
                 ),
                 borderRadius: BorderRadius.circular(1.5),
                 boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x66EC4899),
-                    blurRadius: 6,
-                  ),
+                  BoxShadow(color: Color(0x66EC4899), blurRadius: 6),
                 ],
               ),
             ),
@@ -23341,10 +25447,7 @@ class _DashboardViewState extends State<DashboardView>
             ],
           ),
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 8,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               gradient: LinearGradient(
@@ -23434,10 +25537,7 @@ class _DashboardViewState extends State<DashboardView>
                         fontFamily: 'Montserrat',
                         letterSpacing: -0.5,
                         shadows: [
-                          Shadow(
-                            color: Color(0xBFD946EF),
-                            blurRadius: 10,
-                          ),
+                          Shadow(color: Color(0xBFD946EF), blurRadius: 10),
                         ],
                       ),
                     ),
@@ -23450,10 +25550,7 @@ class _DashboardViewState extends State<DashboardView>
                           fontSize: 18,
                           fontWeight: FontWeight.w300,
                           shadows: [
-                            Shadow(
-                              color: Color(0xB300F0FF),
-                              blurRadius: 8,
-                            ),
+                            Shadow(color: Color(0xB300F0FF), blurRadius: 8),
                           ],
                         ),
                       ),
@@ -23467,10 +25564,7 @@ class _DashboardViewState extends State<DashboardView>
                         fontFamily: 'Montserrat',
                         letterSpacing: -0.5,
                         shadows: [
-                          Shadow(
-                            color: Color(0xBFD946EF),
-                            blurRadius: 10,
-                          ),
+                          Shadow(color: Color(0xBFD946EF), blurRadius: 10),
                         ],
                       ),
                     ),
@@ -23535,10 +25629,7 @@ class _DashboardViewState extends State<DashboardView>
                   borderRadius: const BorderRadius.all(
                     Radius.elliptical(63, 37),
                   ),
-                  border: Border.all(
-                    color: const Color(0xFF1A23F2),
-                    width: 3,
-                  ),
+                  border: Border.all(color: const Color(0xFF1A23F2), width: 3),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF1A23F2).withValues(alpha: 0.4),
@@ -23698,9 +25789,17 @@ class _DashboardViewState extends State<DashboardView>
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: const Row(
                     children: [
-                      Icon(Icons.skip_previous_rounded, size: 7, color: Colors.black),
+                      Icon(
+                        Icons.skip_previous_rounded,
+                        size: 7,
+                        color: Colors.black,
+                      ),
                       Icon(Icons.pause_rounded, size: 8, color: Colors.black),
-                      Icon(Icons.skip_next_rounded, size: 7, color: Colors.black),
+                      Icon(
+                        Icons.skip_next_rounded,
+                        size: 7,
+                        color: Colors.black,
+                      ),
                       SizedBox(width: 3),
                       Expanded(
                         child: Text(
@@ -23786,11 +25885,7 @@ class _DashboardViewState extends State<DashboardView>
               ),
               const SizedBox(width: 10),
               // Vertical divider
-              Container(
-                width: 1,
-                height: 46,
-                color: Colors.white12,
-              ),
+              Container(width: 1, height: 46, color: Colors.white12),
               const SizedBox(width: 10),
               // Right: CPU & RAM indicators
               Column(
@@ -23896,7 +25991,11 @@ class _DashboardViewState extends State<DashboardView>
                   SizedBox(width: 4),
                   Text(
                     '27 OCT 2026',
-                    style: TextStyle(color: Colors.white70, fontSize: 7, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 7,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -23981,10 +26080,7 @@ class _DashboardViewState extends State<DashboardView>
             ),
             const Text(
               'Saturday 15 September',
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 5.5,
-              ),
+              style: TextStyle(color: Colors.white54, fontSize: 5.5),
             ),
           ],
         );
@@ -24087,13 +26183,31 @@ class _DashboardViewState extends State<DashboardView>
                   const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.thunderstorm_rounded, size: 10, color: Colors.white),
+                      Icon(
+                        Icons.thunderstorm_rounded,
+                        size: 10,
+                        color: Colors.white,
+                      ),
                       SizedBox(width: 2),
-                      Text('12°C', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+                      Text(
+                        '12°C',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 7,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       SizedBox(width: 6),
-                      Icon(Icons.cloud_queue_rounded, size: 10, color: Colors.white),
+                      Icon(
+                        Icons.cloud_queue_rounded,
+                        size: 10,
+                        color: Colors.white,
+                      ),
                       SizedBox(width: 2),
-                      Text('11°C', style: TextStyle(color: Colors.white, fontSize: 7)),
+                      Text(
+                        '11°C',
+                        style: TextStyle(color: Colors.white, fontSize: 7),
+                      ),
                     ],
                   ),
                 ],
@@ -24268,7 +26382,6 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
-
   Widget _buildMiniFlipDigit(String text) {
     return Container(
       width: 22,
@@ -24417,12 +26530,7 @@ class _DashboardViewState extends State<DashboardView>
             {'label': 'Card (360×200)', 'w': 360.0, 'h': 200.0, 's': 1.0},
             {'label': 'Banner (480×140)', 'w': 480.0, 'h': 140.0, 's': 1.0},
             {'label': 'HUD (520×260)', 'w': 520.0, 'h': 260.0, 's': 1.05},
-            {
-              'label': 'Studio (600×340)',
-              'w': 600.0,
-              'h': 340.0,
-              's': 1.15,
-            },
+            {'label': 'Studio (600×340)', 'w': 600.0, 'h': 340.0, 's': 1.15},
           ];
 
     return ListView(
@@ -24637,57 +26745,54 @@ class _DashboardViewState extends State<DashboardView>
         Wrap(
           spacing: 6,
           runSpacing: 6,
-          children:
-              presets.map((preset) {
-                final isMatch =
-                    (_settings.width == preset['w'] &&
-                    _settings.height == preset['h']);
-                return HoverCard(
-                  scaleUp: 1.03,
-                  borderRadius: BorderRadius.circular(8),
-                  glowColor: isMatch
-                      ? const Color(0xFF38BDF8)
-                      : Colors.transparent,
-                  maxGlowOpacity: 0.25,
-                  blurRadius: 8,
-                  onTap: () {
-                    _updateSettings(
-                      _settings.copyWith(
-                        width: preset['w'] as double,
-                        height: preset['h'] as double,
-                        sizeFactor: preset['s'] as double,
-                      ),
-                    );
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isMatch
-                          ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
-                          : Colors.white.withValues(alpha: 0.03),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isMatch
-                            ? const Color(0xFF38BDF8).withValues(alpha: 0.6)
-                            : Colors.white.withValues(alpha: 0.08),
-                        width: 1.0,
-                      ),
-                    ),
-                    child: Text(
-                      preset['label'] as String,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: isMatch ? FontWeight.w800 : FontWeight.w600,
-                        color: isMatch ? Colors.white : Colors.white70,
-                      ),
-                    ),
+          children: presets.map((preset) {
+            final isMatch =
+                (_settings.width == preset['w'] &&
+                _settings.height == preset['h']);
+            return HoverCard(
+              scaleUp: 1.03,
+              borderRadius: BorderRadius.circular(8),
+              glowColor: isMatch ? const Color(0xFF38BDF8) : Colors.transparent,
+              maxGlowOpacity: 0.25,
+              blurRadius: 8,
+              onTap: () {
+                _updateSettings(
+                  _settings.copyWith(
+                    width: preset['w'] as double,
+                    height: preset['h'] as double,
+                    sizeFactor: preset['s'] as double,
                   ),
                 );
-              }).toList(),
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: isMatch
+                      ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isMatch
+                        ? const Color(0xFF38BDF8).withValues(alpha: 0.6)
+                        : Colors.white.withValues(alpha: 0.08),
+                    width: 1.0,
+                  ),
+                ),
+                child: Text(
+                  preset['label'] as String,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: isMatch ? FontWeight.w800 : FontWeight.w600,
+                    color: isMatch ? Colors.white : Colors.white70,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
         const SizedBox(height: 12),
 
@@ -26029,10 +28134,7 @@ class _DashboardViewState extends State<DashboardView>
                 width: 1.0,
               ),
               boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.12),
-                  blurRadius: 8,
-                ),
+                BoxShadow(color: accent.withValues(alpha: 0.12), blurRadius: 8),
               ],
             ),
             child: Icon(icon, size: 18, color: accent),
@@ -26301,14 +28403,15 @@ class _DashboardViewState extends State<DashboardView>
                               Row(
                                 children: [
                                   ShaderMask(
-                                    shaderCallback: (bounds) => const LinearGradient(
-                                      colors: [
-                                        Colors.white,
-                                        Color(0xFFE0E7FF),
-                                        Color(0xFF38BDF8),
-                                      ],
-                                      stops: [0.0, 0.65, 1.0],
-                                    ).createShader(bounds),
+                                    shaderCallback: (bounds) =>
+                                        const LinearGradient(
+                                          colors: [
+                                            Colors.white,
+                                            Color(0xFFE0E7FF),
+                                            Color(0xFF38BDF8),
+                                          ],
+                                          stops: [0.0, 0.65, 1.0],
+                                        ).createShader(bounds),
                                     child: Text(
                                       'About WallSync',
                                       style: TextStyle(
@@ -26327,12 +28430,17 @@ class _DashboardViewState extends State<DashboardView>
                                     ),
                                     decoration: BoxDecoration(
                                       gradient: const LinearGradient(
-                                        colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                                        colors: [
+                                          Color(0xFF38BDF8),
+                                          Color(0xFF818CF8),
+                                        ],
                                       ),
                                       borderRadius: BorderRadius.circular(8),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: const Color(0xFF38BDF8).withValues(alpha: 0.40),
+                                          color: const Color(
+                                            0xFF38BDF8,
+                                          ).withValues(alpha: 0.40),
                                           blurRadius: 10,
                                           offset: const Offset(0, 2),
                                         ),
@@ -26382,28 +28490,40 @@ class _DashboardViewState extends State<DashboardView>
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
+                        Divider(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          height: 1,
+                        ),
                         policyPoint(
                           icon: Icons.person_off_outlined,
                           title: 'Zero personal data collection',
                           text:
                               'WallSync does not collect, store, track, or process any personally identifiable information (PII), sensitive data, telemetry, or user analytics under any circumstances.',
                         ),
-                        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+                        Divider(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          height: 1,
+                        ),
                         policyPoint(
                           icon: Icons.devices_outlined,
                           title: 'Local operation',
                           text:
                               'The application operates locally on your device. We do not use persistent identifiers, user tracking cookies, or dynamic background activity logs.',
                         ),
-                        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+                        Divider(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          height: 1,
+                        ),
                         policyPoint(
                           icon: Icons.cloud_outlined,
                           title: 'Network and cloud access',
                           text:
                               'Network connectivity is required solely to fetch wallpaper assets, desktop widgets, and associated metadata from designated Cloudinary and Firebase servers. No personal identifiers or usage history are attached to these network requests.',
                         ),
-                        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+                        Divider(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          height: 1,
+                        ),
                         policyPoint(
                           icon: Icons.support_agent_rounded,
                           title: 'Support and bug reporting',
@@ -26567,7 +28687,10 @@ class _DashboardViewState extends State<DashboardView>
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF10B981).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
@@ -26665,649 +28788,779 @@ class _DashboardViewState extends State<DashboardView>
             padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
             child: Center(
               child: Container(
-          width: 760,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xF80F121E), Color(0xF8090B13)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.09),
-              width: 1.1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: const Color(0xFF38BDF8).withValues(alpha: 0.06),
-                blurRadius: 35,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(11),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              const Color(0xFF38BDF8).withValues(alpha: 0.22),
-                              const Color(0xFF818CF8).withValues(alpha: 0.10),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.40),
-                            width: 1.2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
-                              blurRadius: 12,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.monitor_heart_rounded,
-                          size: 24,
-                          color: Color(0xFF38BDF8),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Text(
-                                'Performance & Diagnostics Monitor',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.35),
-                                    width: 0.9,
-                                  ),
-                                ),
-                                child: const Text(
-                                  'LIVE TELEMETRY',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF10B981),
-                                    letterSpacing: 0.6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Real-time profiling: RAM, CPU, Storage, GPU, 60 FPS Jank & Hang Watchdog',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.55),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: const Text('Refresh Stats'),
-                    onPressed: () => setState(() {
-                      _diagnosticsStorageSnapshot = diag.getStorageSnapshot();
-                    }),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      foregroundColor: const Color(0xFF38BDF8),
-                      elevation: 0,
-                      side: BorderSide(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
-                        width: 1.0,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // 4 Metrics Grid
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final cardWidth = (constraints.maxWidth - 16) / 2;
-                  return Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: [
-                      // Card 1: RAM & Memory
-                      _buildDiagMetricCard(
-                        width: cardWidth,
-                        title: 'RAM Usage',
-                        subtitle: 'Process & System Memory',
-                        icon: Icons.memory_rounded,
-                        accentColor: const Color(0xFF38BDF8),
-                        mainValue: '${mem.processRssMb.toStringAsFixed(1)} MB',
-                        mainLabel: 'Process RSS Footprint',
-                        items: [
-                          (
-                            'Main PID / Private',
-                            mem.processPrivateMb == null
-                                ? '$pid / unavailable'
-                                : '$pid / ${mem.processPrivateMb!.toStringAsFixed(1)} MB',
-                          ),
-                          (
-                            'Peak Memory',
-                            '${mem.processMaxRssMb.toStringAsFixed(1)} MB',
-                          ),
-                          if (mem.mpvProcessId != null) ...[
-                            (
-                              'MPV PID / RSS',
-                              '${mem.mpvProcessId} / ${mem.mpvRssMb.toStringAsFixed(1)} MB',
-                            ),
-                            if (mem.mpvPrivateMb != null)
-                              (
-                                'MPV Private Commit',
-                                '${mem.mpvPrivateMb!.toStringAsFixed(1)} MB',
-                              ),
-                          ],
-                          if (mem.overlayProcessId != null) ...[
-                            (
-                              'Overlay PID / RSS',
-                              '${mem.overlayProcessId} / ${(mem.overlayRssBytes! / (1024 * 1024)).toStringAsFixed(1)} MB',
-                            ),
-                            if (mem.overlayPrivateBytes != null)
-                              (
-                                'Overlay Private Commit',
-                                '${(mem.overlayPrivateBytes! / (1024 * 1024)).toStringAsFixed(1)} MB',
-                              ),
-                          ],
-                          (
-                            'Image Cache',
-                            '${mem.imageCacheMb.toStringAsFixed(1)} MB (${mem.imageCacheCount ?? 0} items)',
-                          ),
-                          (
-                            'System Total RAM',
-                            '${mem.systemTotalPhysMb.toStringAsFixed(0)} MB',
-                          ),
-                          (
-                            'System Available',
-                            '${mem.systemAvailPhysMb.toStringAsFixed(0)} MB (${mem.systemMemoryLoadPercent}% load)',
-                          ),
-                        ],
-                      ),
-
-                      // Card 2: CPU Utilization
-                      _buildDiagMetricCard(
-                        width: cardWidth,
-                        title: 'CPU Usage',
-                        subtitle: 'Multi-threaded Dart & Win32',
-                        icon: Icons.speed_rounded,
-                        accentColor: const Color(0xFF818CF8),
-                        mainValue:
-                            '${cpu.processCpuPercent.toStringAsFixed(1)}%',
-                        mainLabel: 'WallSync Process CPU',
-                        items: [
-                          (
-                            'System CPU Load',
-                            '${cpu.systemCpuPercent.toStringAsFixed(1)}%',
-                          ),
-                          (
-                            'Logical CPU Cores',
-                            '${Platform.numberOfProcessors} Cores',
-                          ),
-                          ('Sample Interval', '${cpu.sampleIntervalMs} ms'),
-                          ('Process PID', '$pid'),
-                        ],
-                      ),
-
-                      // Card 3: 60 FPS Frame Smoothness
-                      _buildDiagMetricCard(
-                        width: cardWidth,
-                        title: 'Smoothness & Jank',
-                        subtitle: '60 FPS Target (16.6ms frame limit)',
-                        icon: Icons.auto_awesome_motion_rounded,
-                        accentColor: const Color(0xFF34D399),
-                        mainValue:
-                            '${smooth.smoothnessPercentage.toStringAsFixed(1)}%',
-                        mainLabel: 'UI Smoothness Score',
-                        items: [
-                          ('Total Frames', '${smooth.totalFrames} frames'),
-                          (
-                            'Measured / Pipeline Gaps',
-                            '${smooth.eligibleFrames} / ${smooth.pipelineGapFrames}',
-                          ),
-                          (
-                            'Excluded Long Gaps',
-                            '${smooth.suspendedFrames} frames',
-                          ),
-                          ('Jank (>16.6ms)', '${smooth.jankFrames} frames'),
-                          (
-                            'Severe Jank (>33ms)',
-                            '${smooth.severeJankFrames} frames',
-                          ),
-                          (
-                            'Avg Frame Duration',
-                            '${smooth.averageFrameTimeMs.toStringAsFixed(2)} ms',
-                          ),
-                          (
-                            'Build / Raster Avg',
-                            '${smooth.averageBuildTimeMs.toStringAsFixed(2)} / ${smooth.averageRasterTimeMs.toStringAsFixed(2)} ms',
-                          ),
-                          if (smooth.presentationStallFrames > 0)
-                            (
-                              'DWM / V-Sync Stalls',
-                              '${smooth.presentationStallFrames} frames (${smooth.worstPresentationDelayMs.toStringAsFixed(1)} ms)',
-                            ),
-                        ],
-                      ),
-
-                      // Card 4: Storage Footprint
-                      FutureBuilder<StorageSnapshot>(
-                        future: _diagnosticsStorageSnapshot ??= diag
-                            .getStorageSnapshot(),
-                        builder: (context, snapshot) {
-                          final storage = snapshot.data;
-                          return _buildDiagMetricCard(
-                            width: cardWidth,
-                            title: 'Storage & Caches',
-                            subtitle: 'Disk Space Breakdown',
-                            icon: Icons.storage_rounded,
-                            accentColor: const Color(0xFFA78BFA),
-                            mainValue: storage != null
-                                ? '${storage.totalMb.toStringAsFixed(1)} MB'
-                                : 'Calculating...',
-                            mainLabel: 'Total WallSync Disk Space',
-                            items: [
-                              (
-                                'Video Wallpapers',
-                                storage != null
-                                    ? '${storage.videoCacheMb.toStringAsFixed(1)} MB'
-                                    : '...',
-                              ),
-                              (
-                                'Video Thumbnails',
-                                storage != null
-                                    ? '${storage.thumbnailCacheMb.toStringAsFixed(1)} MB'
-                                    : '...',
-                              ),
-                              (
-                                'Debug Log File',
-                                storage != null
-                                    ? '${storage.logFileMb.toStringAsFixed(2)} MB'
-                                    : '...',
-                              ),
-                              (
-                                'AppData Folder',
-                                storage != null
-                                    ? '${storage.appDataMb.toStringAsFixed(1)} MB'
-                                    : '...',
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // Watchdog & Runtime Stability Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                width: 760,
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xF5101624), Color(0xF50A1018)],
+                    colors: [Color(0xF80F121E), Color(0xF8090B13)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                    color: Colors.white.withValues(alpha: 0.09),
                     width: 1.1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.06),
-                      blurRadius: 16,
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    ),
+                    BoxShadow(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.06),
+                      blurRadius: 35,
+                      spreadRadius: 1,
                     ),
                   ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Header
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.security_rounded,
-                            size: 18,
-                            color: Color(0xFF10B981),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Runtime Watchdog & Hang / Over-waiting Detector',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.check_circle_rounded,
-                                size: 12,
-                                color: Color(0xFF10B981),
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Watchdog Running',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF10B981),
-                                  fontWeight: FontWeight.bold,
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(11),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    const Color(
+                                      0xFF38BDF8,
+                                    ).withValues(alpha: 0.22),
+                                    const Color(
+                                      0xFF818CF8,
+                                    ).withValues(alpha: 0.10),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.40),
+                                  width: 1.2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF38BDF8,
+                                    ).withValues(alpha: 0.25),
+                                    blurRadius: 12,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '• Heartbeat cadence: 500 ms | Hang/ANR warning threshold: 1000 ms\n'
-                      '• Active parallel async operations: ${diag.activeOperationCount} tasks currently in flight\n'
-                      '• UI Freezes detected: 0 event loop deadlocks recorded since startup\n'
-                      '• Asynchronous Non-blocking Log Queue: Enabled (prevents main thread I/O stutters)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.75),
-                        height: 1.55,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // ── Diagnostics Telemetry History & Event Log ───────────────────────────
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xF50D111D), Color(0xF5080A12)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    width: 1.1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header & Filter Row
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.history_rounded,
-                            size: 18,
-                            color: Color(0xFF38BDF8),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Diagnostics Telemetry & Event History',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const Spacer(),
-                        // Time Range filter
-                        DropdownButton<Duration?>(
-                          value: _diagHistoryTimeRangeFilter,
-                          dropdownColor: const Color(0xFF141724),
-                          underline: const SizedBox(),
-                          style: const TextStyle(fontSize: 11, color: Colors.white70),
-                          items: const [
-                            DropdownMenuItem(value: null, child: Text('All Time')),
-                            DropdownMenuItem(value: Duration(minutes: 5), child: Text('Last 5m')),
-                            DropdownMenuItem(value: Duration(minutes: 15), child: Text('Last 15m')),
-                            DropdownMenuItem(value: Duration(hours: 1), child: Text('Last 1h')),
-                          ],
-                          onChanged: (val) => setState(() => _diagHistoryTimeRangeFilter = val),
-                        ),
-                        const SizedBox(width: 8),
-                        // Severity filter
-                        DropdownButton<String>(
-                          value: _diagHistorySeverityFilter,
-                          dropdownColor: const Color(0xFF141724),
-                          underline: const SizedBox(),
-                          style: const TextStyle(fontSize: 11, color: Colors.white70),
-                          items: const [
-                            DropdownMenuItem(value: 'ALL', child: Text('All Severities')),
-                            DropdownMenuItem(value: 'INFO', child: Text('Info Only')),
-                            DropdownMenuItem(value: 'WARN', child: Text('Warnings')),
-                            DropdownMenuItem(value: 'ERROR', child: Text('Errors')),
-                          ],
-                          onChanged: (val) => setState(() => _diagHistorySeverityFilter = val ?? 'ALL'),
-                        ),
-                        const SizedBox(width: 8),
-                        // Category filter
-                        DropdownButton<String>(
-                          value: _diagHistoryCategoryFilter,
-                          dropdownColor: const Color(0xFF141724),
-                          underline: const SizedBox(),
-                          style: const TextStyle(fontSize: 11, color: Colors.white70),
-                          items: const [
-                            DropdownMenuItem(value: 'ALL', child: Text('All Categories')),
-                            DropdownMenuItem(value: 'Telemetry', child: Text('Telemetry')),
-                            DropdownMenuItem(value: 'Frame', child: Text('Frame / Jank')),
-                            DropdownMenuItem(value: 'Watchdog', child: Text('Watchdog')),
-                          ],
-                          onChanged: (val) => setState(() => _diagHistoryCategoryFilter = val ?? 'ALL'),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.white54),
-                          tooltip: 'Clear History',
-                          onPressed: () {
-                            diag.clearHistoryEntries();
-                            setState(() {});
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Log list
-                    Builder(
-                      builder: (context) {
-                        final entries = diag.getHistoryEntries(
-                          timeRange: _diagHistoryTimeRangeFilter,
-                          severity: _diagHistorySeverityFilter,
-                          category: _diagHistoryCategoryFilter,
-                        );
-
-                        if (entries.isEmpty) {
-                          return Container(
-                            height: 80,
-                            alignment: Alignment.center,
-                            child: Text(
-                              'No telemetry events recorded under selected filter. Frame timing and watchdog are operating normally.',
-                              style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.45)),
+                              child: const Icon(
+                                Icons.monitor_heart_rounded,
+                                size: 24,
+                                color: Color(0xFF38BDF8),
+                              ),
                             ),
-                          );
-                        }
-
-                        return Container(
-                          constraints: const BoxConstraints(maxHeight: 180),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: entries.length,
-                            separatorBuilder: (_, _) => Divider(
-                              color: Colors.white.withValues(alpha: 0.05),
-                              height: 8,
-                            ),
-                            itemBuilder: (context, index) {
-                              final entry = entries[entries.length - 1 - index];
-                              final isWarn = entry.severity == 'WARN';
-                              final isError = entry.severity == 'ERROR';
-                              final badgeColor = isError
-                                  ? const Color(0xFFF43F5E)
-                                  : isWarn
-                                      ? const Color(0xFFF59E0B)
-                                      : const Color(0xFF10B981);
-
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(width: 14),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      '${entry.timestamp.hour.toString().padLeft(2, '0')}:${entry.timestamp.minute.toString().padLeft(2, '0')}:${entry.timestamp.second.toString().padLeft(2, '0')}',
+                                    const Text(
+                                      'Performance & Diagnostics Monitor',
                                       style: TextStyle(
-                                        fontSize: 10.5,
-                                        fontFamily: 'Segoe UI',
-                                        color: Colors.white.withValues(alpha: 0.40),
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        letterSpacing: -0.3,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 10),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: badgeColor.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: badgeColor.withValues(alpha: 0.35), width: 0.8),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 2,
                                       ),
-                                      child: Text(
-                                        entry.severity,
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w700,
-                                          color: badgeColor,
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFF10B981,
+                                        ).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(
+                                            0xFF10B981,
+                                          ).withValues(alpha: 0.35),
+                                          width: 0.9,
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.06),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        entry.category,
-                                        style: const TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        entry.message,
+                                      child: const Text(
+                                        'LIVE TELEMETRY',
                                         style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: isWarn || isError ? Colors.white : Colors.white.withValues(alpha: 0.75),
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF10B981),
+                                          letterSpacing: 0.6,
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Real-time profiling: RAM, CPU, Storage, GPU, 60 FPS Jank & Hang Watchdog',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text('Refresh Stats'),
+                          onPressed: () => setState(() {
+                            _diagnosticsStorageSnapshot = diag
+                                .getStorageSnapshot();
+                          }),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.08,
+                            ),
+                            foregroundColor: const Color(0xFF38BDF8),
+                            elevation: 0,
+                            side: BorderSide(
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.25),
+                              width: 1.0,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // 4 Metrics Grid
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final cardWidth = (constraints.maxWidth - 16) / 2;
+                        return Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            // Card 1: RAM & Memory
+                            _buildDiagMetricCard(
+                              width: cardWidth,
+                              title: 'RAM Usage',
+                              subtitle: 'Process & System Memory',
+                              icon: Icons.memory_rounded,
+                              accentColor: const Color(0xFF38BDF8),
+                              mainValue:
+                                  '${mem.processRssMb.toStringAsFixed(1)} MB',
+                              mainLabel: 'Process RSS Footprint',
+                              items: [
+                                (
+                                  'Main PID / Private',
+                                  mem.processPrivateMb == null
+                                      ? '$pid / unavailable'
+                                      : '$pid / ${mem.processPrivateMb!.toStringAsFixed(1)} MB',
+                                ),
+                                (
+                                  'Peak Memory',
+                                  '${mem.processMaxRssMb.toStringAsFixed(1)} MB',
+                                ),
+                                if (mem.mpvProcessId != null) ...[
+                                  (
+                                    'MPV PID / RSS',
+                                    '${mem.mpvProcessId} / ${mem.mpvRssMb.toStringAsFixed(1)} MB',
+                                  ),
+                                  if (mem.mpvPrivateMb != null)
+                                    (
+                                      'MPV Private Commit',
+                                      '${mem.mpvPrivateMb!.toStringAsFixed(1)} MB',
+                                    ),
+                                ],
+                                if (mem.overlayProcessId != null) ...[
+                                  (
+                                    'Overlay PID / RSS',
+                                    '${mem.overlayProcessId} / ${(mem.overlayRssBytes! / (1024 * 1024)).toStringAsFixed(1)} MB',
+                                  ),
+                                  if (mem.overlayPrivateBytes != null)
+                                    (
+                                      'Overlay Private Commit',
+                                      '${(mem.overlayPrivateBytes! / (1024 * 1024)).toStringAsFixed(1)} MB',
+                                    ),
+                                ],
+                                (
+                                  'Image Cache',
+                                  '${mem.imageCacheMb.toStringAsFixed(1)} MB (${mem.imageCacheCount ?? 0} items)',
+                                ),
+                                (
+                                  'System Total RAM',
+                                  '${mem.systemTotalPhysMb.toStringAsFixed(0)} MB',
+                                ),
+                                (
+                                  'System Available',
+                                  '${mem.systemAvailPhysMb.toStringAsFixed(0)} MB (${mem.systemMemoryLoadPercent}% load)',
+                                ),
+                              ],
+                            ),
+
+                            // Card 2: CPU Utilization
+                            _buildDiagMetricCard(
+                              width: cardWidth,
+                              title: 'CPU Usage',
+                              subtitle: 'Multi-threaded Dart & Win32',
+                              icon: Icons.speed_rounded,
+                              accentColor: const Color(0xFF818CF8),
+                              mainValue:
+                                  '${cpu.processCpuPercent.toStringAsFixed(1)}%',
+                              mainLabel: 'WallSync Process CPU',
+                              items: [
+                                (
+                                  'System CPU Load',
+                                  '${cpu.systemCpuPercent.toStringAsFixed(1)}%',
+                                ),
+                                (
+                                  'Logical CPU Cores',
+                                  '${Platform.numberOfProcessors} Cores',
+                                ),
+                                (
+                                  'Sample Interval',
+                                  '${cpu.sampleIntervalMs} ms',
+                                ),
+                                ('Process PID', '$pid'),
+                              ],
+                            ),
+
+                            // Card 3: 60 FPS Frame Smoothness
+                            _buildDiagMetricCard(
+                              width: cardWidth,
+                              title: 'Smoothness & Jank',
+                              subtitle: '60 FPS Target (16.6ms frame limit)',
+                              icon: Icons.auto_awesome_motion_rounded,
+                              accentColor: const Color(0xFF34D399),
+                              mainValue:
+                                  '${smooth.smoothnessPercentage.toStringAsFixed(1)}%',
+                              mainLabel: 'UI Smoothness Score',
+                              items: [
+                                (
+                                  'Total Frames',
+                                  '${smooth.totalFrames} frames',
+                                ),
+                                (
+                                  'Measured / Pipeline Gaps',
+                                  '${smooth.eligibleFrames} / ${smooth.pipelineGapFrames}',
+                                ),
+                                (
+                                  'Excluded Long Gaps',
+                                  '${smooth.suspendedFrames} frames',
+                                ),
+                                (
+                                  'Jank (>16.6ms)',
+                                  '${smooth.jankFrames} frames',
+                                ),
+                                (
+                                  'Severe Jank (>33ms)',
+                                  '${smooth.severeJankFrames} frames',
+                                ),
+                                (
+                                  'Avg Frame Duration',
+                                  '${smooth.averageFrameTimeMs.toStringAsFixed(2)} ms',
+                                ),
+                                (
+                                  'Build / Raster Avg',
+                                  '${smooth.averageBuildTimeMs.toStringAsFixed(2)} / ${smooth.averageRasterTimeMs.toStringAsFixed(2)} ms',
+                                ),
+                                if (smooth.presentationStallFrames > 0)
+                                  (
+                                    'DWM / V-Sync Stalls',
+                                    '${smooth.presentationStallFrames} frames (${smooth.worstPresentationDelayMs.toStringAsFixed(1)} ms)',
+                                  ),
+                              ],
+                            ),
+
+                            // Card 4: Storage Footprint
+                            FutureBuilder<StorageSnapshot>(
+                              future: _diagnosticsStorageSnapshot ??= diag
+                                  .getStorageSnapshot(),
+                              builder: (context, snapshot) {
+                                final storage = snapshot.data;
+                                return _buildDiagMetricCard(
+                                  width: cardWidth,
+                                  title: 'Storage & Caches',
+                                  subtitle: 'Disk Space Breakdown',
+                                  icon: Icons.storage_rounded,
+                                  accentColor: const Color(0xFFA78BFA),
+                                  mainValue: storage != null
+                                      ? '${storage.totalMb.toStringAsFixed(1)} MB'
+                                      : 'Calculating...',
+                                  mainLabel: 'Total WallSync Disk Space',
+                                  items: [
+                                    (
+                                      'Video Wallpapers',
+                                      storage != null
+                                          ? '${storage.videoCacheMb.toStringAsFixed(1)} MB'
+                                          : '...',
+                                    ),
+                                    (
+                                      'Video Thumbnails',
+                                      storage != null
+                                          ? '${storage.thumbnailCacheMb.toStringAsFixed(1)} MB'
+                                          : '...',
+                                    ),
+                                    (
+                                      'Debug Log File',
+                                      storage != null
+                                          ? '${storage.logFileMb.toStringAsFixed(2)} MB'
+                                          : '...',
+                                    ),
+                                    (
+                                      'AppData Folder',
+                                      storage != null
+                                          ? '${storage.appDataMb.toStringAsFixed(1)} MB'
+                                          : '...',
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Watchdog & Runtime Stability Card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xF5101624), Color(0xF50A1018)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: const Color(
+                            0xFF10B981,
+                          ).withValues(alpha: 0.25),
+                          width: 1.1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF10B981,
+                            ).withValues(alpha: 0.06),
+                            blurRadius: 16,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.security_rounded,
+                                  size: 18,
+                                  color: Color(0xFF10B981),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Runtime Watchdog & Hang / Over-waiting Detector',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 12,
+                                      color: Color(0xFF10B981),
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Watchdog Running',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF10B981),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '• Heartbeat cadence: 500 ms | Hang/ANR warning threshold: 1000 ms\n'
+                            '• Active parallel async operations: ${diag.activeOperationCount} tasks currently in flight\n'
+                            '• UI Freezes detected: 0 event loop deadlocks recorded since startup\n'
+                            '• Asynchronous Non-blocking Log Queue: Enabled (prevents main thread I/O stutters)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.75),
+                              height: 1.55,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // ── Diagnostics Telemetry History & Event Log ───────────────────────────
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xF50D111D), Color(0xF5080A12)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          width: 1.1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header & Filter Row
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.history_rounded,
+                                  size: 18,
+                                  color: Color(0xFF38BDF8),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Diagnostics Telemetry & Event History',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const Spacer(),
+                              // Time Range filter
+                              DropdownButton<Duration?>(
+                                value: _diagHistoryTimeRangeFilter,
+                                dropdownColor: const Color(0xFF141724),
+                                underline: const SizedBox(),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white70,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: null,
+                                    child: Text('All Time'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: Duration(minutes: 5),
+                                    child: Text('Last 5m'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: Duration(minutes: 15),
+                                    child: Text('Last 15m'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: Duration(hours: 1),
+                                    child: Text('Last 1h'),
+                                  ),
+                                ],
+                                onChanged: (val) => setState(
+                                  () => _diagHistoryTimeRangeFilter = val,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Severity filter
+                              DropdownButton<String>(
+                                value: _diagHistorySeverityFilter,
+                                dropdownColor: const Color(0xFF141724),
+                                underline: const SizedBox(),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white70,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'ALL',
+                                    child: Text('All Severities'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'INFO',
+                                    child: Text('Info Only'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'WARN',
+                                    child: Text('Warnings'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'ERROR',
+                                    child: Text('Errors'),
+                                  ),
+                                ],
+                                onChanged: (val) => setState(
+                                  () =>
+                                      _diagHistorySeverityFilter = val ?? 'ALL',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Category filter
+                              DropdownButton<String>(
+                                value: _diagHistoryCategoryFilter,
+                                dropdownColor: const Color(0xFF141724),
+                                underline: const SizedBox(),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white70,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'ALL',
+                                    child: Text('All Categories'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'Telemetry',
+                                    child: Text('Telemetry'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'Frame',
+                                    child: Text('Frame / Jank'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'Watchdog',
+                                    child: Text('Watchdog'),
+                                  ),
+                                ],
+                                onChanged: (val) => setState(
+                                  () =>
+                                      _diagHistoryCategoryFilter = val ?? 'ALL',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 16,
+                                  color: Colors.white54,
+                                ),
+                                tooltip: 'Clear History',
+                                onPressed: () {
+                                  diag.clearHistoryEntries();
+                                  setState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Log list
+                          Builder(
+                            builder: (context) {
+                              final entries = diag.getHistoryEntries(
+                                timeRange: _diagHistoryTimeRangeFilter,
+                                severity: _diagHistorySeverityFilter,
+                                category: _diagHistoryCategoryFilter,
+                              );
+
+                              if (entries.isEmpty) {
+                                return Container(
+                                  height: 80,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'No telemetry events recorded under selected filter. Frame timing and watchdog are operating normally.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white.withValues(
+                                        alpha: 0.45,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return Container(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 180,
+                                ),
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: entries.length,
+                                  separatorBuilder: (_, _) => Divider(
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                    height: 8,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final entry =
+                                        entries[entries.length - 1 - index];
+                                    final isWarn = entry.severity == 'WARN';
+                                    final isError = entry.severity == 'ERROR';
+                                    final badgeColor = isError
+                                        ? const Color(0xFFF43F5E)
+                                        : isWarn
+                                        ? const Color(0xFFF59E0B)
+                                        : const Color(0xFF10B981);
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 2,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${entry.timestamp.hour.toString().padLeft(2, '0')}:${entry.timestamp.minute.toString().padLeft(2, '0')}:${entry.timestamp.second.toString().padLeft(2, '0')}',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontFamily: 'Segoe UI',
+                                              color: Colors.white.withValues(
+                                                alpha: 0.40,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 5,
+                                              vertical: 1,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: badgeColor.withValues(
+                                                alpha: 0.15,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: badgeColor.withValues(
+                                                  alpha: 0.35,
+                                                ),
+                                                width: 0.8,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              entry.severity,
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w700,
+                                                color: badgeColor,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 5,
+                                              vertical: 1,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.06,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              entry.category,
+                                              style: const TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              entry.message,
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                color: isWarn || isError
+                                                    ? Colors.white
+                                                    : Colors.white.withValues(
+                                                        alpha: 0.75,
+                                                      ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
                               );
                             },
                           ),
-                        );
-                      },
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              ],
             ),
           ),
         ),
-      ),
-    ),
-    _buildDiagnosticsBottomBar(diag),
-  ],
-);
-}
+        _buildDiagnosticsBottomBar(diag),
+      ],
+    );
+  }
 
   Widget _buildDiagnosticsBottomBar(DiagnosticsService diag) {
     return Container(
@@ -27348,10 +29601,18 @@ class _DashboardViewState extends State<DashboardView>
                         try {
                           final file = await diag.exportTxtReport();
                           if (mounted) {
-                            _showAnimatedSnackBar('TXT Report saved: ${file.path}', isSuccess: true);
+                            _showAnimatedSnackBar(
+                              'TXT Report saved: ${file.path}',
+                              isSuccess: true,
+                            );
                           }
                         } catch (e) {
-                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                          if (mounted) {
+                            _showAnimatedSnackBar(
+                              'Export failed: $e',
+                              isSuccess: false,
+                            );
+                          }
                         }
                       },
                     ),
@@ -27367,10 +29628,18 @@ class _DashboardViewState extends State<DashboardView>
                         try {
                           final file = await diag.exportDetailedReport();
                           if (mounted) {
-                            _showAnimatedSnackBar('Detailed trace saved: ${file.path}', isSuccess: true);
+                            _showAnimatedSnackBar(
+                              'Detailed trace saved: ${file.path}',
+                              isSuccess: true,
+                            );
                           }
                         } catch (e) {
-                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                          if (mounted) {
+                            _showAnimatedSnackBar(
+                              'Export failed: $e',
+                              isSuccess: false,
+                            );
+                          }
                         }
                       },
                     ),
@@ -27386,10 +29655,18 @@ class _DashboardViewState extends State<DashboardView>
                         try {
                           final file = await diag.exportCsvFile();
                           if (mounted) {
-                            _showAnimatedSnackBar('CSV exported: ${file.path}', isSuccess: true);
+                            _showAnimatedSnackBar(
+                              'CSV exported: ${file.path}',
+                              isSuccess: true,
+                            );
                           }
                         } catch (e) {
-                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                          if (mounted) {
+                            _showAnimatedSnackBar(
+                              'Export failed: $e',
+                              isSuccess: false,
+                            );
+                          }
                         }
                       },
                     ),
@@ -27405,10 +29682,18 @@ class _DashboardViewState extends State<DashboardView>
                         try {
                           final file = await diag.exportJsonFile();
                           if (mounted) {
-                            _showAnimatedSnackBar('JSON exported: ${file.path}', isSuccess: true);
+                            _showAnimatedSnackBar(
+                              'JSON exported: ${file.path}',
+                              isSuccess: true,
+                            );
                           }
                         } catch (e) {
-                          if (mounted) _showAnimatedSnackBar('Export failed: $e', isSuccess: false);
+                          if (mounted) {
+                            _showAnimatedSnackBar(
+                              'Export failed: $e',
+                              isSuccess: false,
+                            );
+                          }
                         }
                       },
                     ),
@@ -27429,7 +29714,10 @@ class _DashboardViewState extends State<DashboardView>
                         final summary = diag.generateSummaryText();
                         await Clipboard.setData(ClipboardData(text: summary));
                         if (mounted) {
-                          _showAnimatedSnackBar('Diagnostic summary copied to clipboard!', isSuccess: true);
+                          _showAnimatedSnackBar(
+                            'Diagnostic summary copied to clipboard!',
+                            isSuccess: true,
+                          );
                         }
                       },
                     ),
@@ -27446,10 +29734,18 @@ class _DashboardViewState extends State<DashboardView>
                         try {
                           final zip = await diag.generateSupportPackageZip();
                           if (mounted) {
-                            _showAnimatedSnackBar('Support package created: ${zip.path}', isSuccess: true);
+                            _showAnimatedSnackBar(
+                              'Support package created: ${zip.path}',
+                              isSuccess: true,
+                            );
                           }
                         } catch (e) {
-                          if (mounted) _showAnimatedSnackBar('Failed to create package: $e', isSuccess: false);
+                          if (mounted) {
+                            _showAnimatedSnackBar(
+                              'Failed to create package: $e',
+                              isSuccess: false,
+                            );
+                          }
                         }
                       },
                     ),
@@ -27466,7 +29762,12 @@ class _DashboardViewState extends State<DashboardView>
                         try {
                           await diag.openExportFolder();
                         } catch (e) {
-                          if (mounted) _showAnimatedSnackBar('Could not open folder: $e', isSuccess: false);
+                          if (mounted) {
+                            _showAnimatedSnackBar(
+                              'Could not open folder: $e',
+                              isSuccess: false,
+                            );
+                          }
                         }
                       },
                     ),
@@ -27486,17 +29787,31 @@ class _DashboardViewState extends State<DashboardView>
                             backgroundColor: const Color(0xFF141724),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
                             ),
-                            title: const Text('Clear All Diagnostics?', style: TextStyle(color: Colors.white, fontSize: 16)),
+                            title: const Text(
+                              'Clear All Diagnostics?',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
                             content: const Text(
                               'This will reset all in-memory frame timing metrics, clear telemetry history, and archive the debug log file to a clean state.',
-                              style: TextStyle(color: Colors.white70, fontSize: 13),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
                             ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.of(ctx).pop(false),
-                                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.white60),
+                                ),
                               ),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -27514,7 +29829,10 @@ class _DashboardViewState extends State<DashboardView>
                           await diag.clearDiagnostics();
                           setState(() {});
                           if (mounted) {
-                            _showAnimatedSnackBar('All diagnostics and metrics reset to clean baseline.', isSuccess: true);
+                            _showAnimatedSnackBar(
+                              'All diagnostics and metrics reset to clean baseline.',
+                              isSuccess: true,
+                            );
                           }
                         }
                       },
@@ -27544,10 +29862,7 @@ class _DashboardViewState extends State<DashboardView>
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xF5131726),
-            Color(0xF50D0F18),
-          ],
+          colors: [Color(0xF5131726), Color(0xF50D0F18)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -27698,8 +30013,8 @@ class _DashboardViewState extends State<DashboardView>
           color: isPrimary
               ? const Color(0xFF38BDF8).withValues(alpha: 0.40)
               : (accentColor != null
-                  ? accentColor.withValues(alpha: 0.35)
-                  : Colors.white.withValues(alpha: 0.10)),
+                    ? accentColor.withValues(alpha: 0.35)
+                    : Colors.white.withValues(alpha: 0.10)),
           width: 1.0,
         ),
       ),
@@ -27722,8 +30037,7 @@ class _DashboardViewState extends State<DashboardView>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11.5,
-                      fontWeight:
-                          isPrimary ? FontWeight.w700 : FontWeight.w600,
+                      fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w600,
                       color: effectiveColor,
                     ),
                   ),
@@ -27834,7 +30148,9 @@ class _DashboardViewState extends State<DashboardView>
                   });
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  backgroundColor: const Color(
+                    0xFF10B981,
+                  ).withValues(alpha: 0.15),
                   foregroundColor: const Color(0xFF10B981),
                   side: BorderSide(
                     color: const Color(0xFF10B981).withValues(alpha: 0.40),
@@ -27850,10 +30166,7 @@ class _DashboardViewState extends State<DashboardView>
                 ),
                 child: const Text(
                   'Report Another Issue',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -27917,7 +30230,9 @@ class _DashboardViewState extends State<DashboardView>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFEC4899).withValues(alpha: 0.25),
+                          color: const Color(
+                            0xFFEC4899,
+                          ).withValues(alpha: 0.25),
                           blurRadius: 12,
                         ),
                       ],
@@ -27956,7 +30271,9 @@ class _DashboardViewState extends State<DashboardView>
                               borderRadius: BorderRadius.circular(6),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFFA855F7).withValues(alpha: 0.35),
+                                  color: const Color(
+                                    0xFFA855F7,
+                                  ).withValues(alpha: 0.35),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -28131,10 +30448,7 @@ class _DashboardViewState extends State<DashboardView>
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Colors.redAccent,
-            width: 1.5,
-          ),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
         ),
       ),
       validator: validator,
@@ -28227,12 +30541,16 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                     onChanged: (val) {
                       _weatherDebounceTimer?.cancel();
-                      _weatherDebounceTimer = Timer(const Duration(milliseconds: 600), () {
-                        final trimmed = val.trim();
-                        if (trimmed.length >= 3 && trimmed != _settings.weatherLocation) {
-                          _handleManualWeatherSearch(trimmed);
-                        }
-                      });
+                      _weatherDebounceTimer = Timer(
+                        const Duration(milliseconds: 600),
+                        () {
+                          final trimmed = val.trim();
+                          if (trimmed.length >= 3 &&
+                              trimmed != _settings.weatherLocation) {
+                            _handleManualWeatherSearch(trimmed);
+                          }
+                        },
+                      );
                     },
                     onSubmitted: (val) {
                       _weatherDebounceTimer?.cancel();
@@ -29287,11 +31605,31 @@ class _DashboardAmbientPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final radius = math.min(size.width, size.height) * 0.60;
     final blobs = <(Offset, Color, double)>[
-      (Offset(size.width * 0.15, size.height * 0.18), const Color(0xFF00F2FE), 0.22),
-      (Offset(size.width * 0.85, size.height * 0.25), const Color(0xFF818CF8), 0.18),
-      (Offset(size.width * 0.75, size.height * 0.75), const Color(0xFFEC4899), 0.16),
-      (Offset(size.width * 0.22, size.height * 0.82), const Color(0xFF6366F1), 0.20),
-      (Offset(size.width * 0.50, size.height * 0.45), const Color(0xFF10B981), 0.08),
+      (
+        Offset(size.width * 0.15, size.height * 0.18),
+        const Color(0xFF00F2FE),
+        0.22,
+      ),
+      (
+        Offset(size.width * 0.85, size.height * 0.25),
+        const Color(0xFF818CF8),
+        0.18,
+      ),
+      (
+        Offset(size.width * 0.75, size.height * 0.75),
+        const Color(0xFFEC4899),
+        0.16,
+      ),
+      (
+        Offset(size.width * 0.22, size.height * 0.82),
+        const Color(0xFF6366F1),
+        0.20,
+      ),
+      (
+        Offset(size.width * 0.50, size.height * 0.45),
+        const Color(0xFF10B981),
+        0.08,
+      ),
     ];
     for (final blob in blobs) {
       final color = blob.$2;

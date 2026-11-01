@@ -26,6 +26,9 @@ class WindowsTaskbarService extends ChangeNotifier {
   int _currentOperationId = 0;
   int _configurationRevision = 1;
   bool _operationInProgress = false;
+  DateTime? _lastFailureAt;
+  String _lastUserAction = 'startup';
+  final Duration _failureCooldown = const Duration(seconds: 3);
 
   TaskbarReplacementState _state = TaskbarReplacementState.windowsTaskbarActive;
   TaskbarSettings _settings = const TaskbarSettings();
@@ -37,6 +40,54 @@ class WindowsTaskbarService extends ChangeNotifier {
   int get currentOperationId => _currentOperationId;
   int get configurationRevision => _configurationRevision;
   bool get operationInProgress => _operationInProgress;
+
+  TaskbarActivationSnapshot get runtimeState => TaskbarActivationSnapshot(
+        lifecycleState: _resolveLifecycleState(),
+        operationId: _currentOperationId,
+        configurationRevision: _configurationRevision,
+        operationInProgress: _operationInProgress,
+        lastUserAction: _lastUserAction,
+        lastFailureAt: _lastFailureAt,
+        taskbarMode: _settings.resolvedDesktopTaskbarMode,
+        customTaskbarEnabled: _settings.customTaskbarEnabled,
+        nativeTaskbarHidden: _settings.nativeTaskbarHideEnabled,
+        nativeTaskbarVisible: _settings.nativeTaskbarHideEnabled == false,
+      );
+
+  TaskbarLifecycleState _resolveLifecycleState() {
+    switch (_state) {
+      case TaskbarReplacementState.disabled:
+        return TaskbarLifecycleState.inactive;
+      case TaskbarReplacementState.windowsTaskbarActive:
+        return TaskbarLifecycleState.inactive;
+      case TaskbarReplacementState.preparing:
+        return TaskbarLifecycleState.validating;
+      case TaskbarReplacementState.nativeTaskbarDetected:
+        return TaskbarLifecycleState.waitingForProcess;
+      case TaskbarReplacementState.customTaskbarCreating:
+        return TaskbarLifecycleState.startingDock;
+      case TaskbarReplacementState.customTaskbarReady:
+        return TaskbarLifecycleState.verifyingVisibility;
+      case TaskbarReplacementState.starting:
+        return TaskbarLifecycleState.waitingForWindow;
+      case TaskbarReplacementState.wallSyncTaskbarActive:
+        return _settings.nativeTaskbarHideEnabled
+            ? TaskbarLifecycleState.activeReplacement
+            : TaskbarLifecycleState.activeAlongside;
+      case TaskbarReplacementState.nativeTaskbarHidePending:
+        return TaskbarLifecycleState.verifyingVisibility;
+      case TaskbarReplacementState.windowsTaskbarHidden:
+        return TaskbarLifecycleState.activeReplacement;
+      case TaskbarReplacementState.restoring:
+        return TaskbarLifecycleState.rollingBack;
+      case TaskbarReplacementState.restoredSuccessfully:
+        return TaskbarLifecycleState.inactive;
+      case TaskbarReplacementState.failedToActivate:
+      case TaskbarReplacementState.failedToRestore:
+      case TaskbarReplacementState.recoveryRequired:
+        return TaskbarLifecycleState.failed;
+    }
+  }
 
   bool get isCustomTaskbarActive =>
       _state == TaskbarReplacementState.wallSyncTaskbarActive ||
@@ -260,14 +311,31 @@ class WindowsTaskbarService extends ChangeNotifier {
   /// Transactionally enable WallSync custom taskbar / dock, optionally hiding
   /// the native Windows taskbar.
   Future<bool> enableCustomTaskbar({bool hideNativeTaskbar = false}) async {
+    if (_operationInProgress) {
+      logWarning(
+        'WindowsTaskbarService',
+        'Skipping duplicate custom taskbar activation while a transaction is already running.',
+      );
+      return false;
+    }
+    if (_lastFailureAt != null &&
+        DateTime.now().difference(_lastFailureAt!) < _failureCooldown) {
+      logWarning(
+        'WindowsTaskbarService',
+        'Custom taskbar activation is in failure cooldown until ${_lastFailureAt!.add(_failureCooldown).toIso8601String()}.',
+      );
+      return false;
+    }
+
     final opId = ++_currentOperationId;
     final configRev = ++_configurationRevision;
     _operationInProgress = true;
+    _lastUserAction = hideNativeTaskbar ? 'fullReplacement' : 'dockAlongside';
 
     _updateState(TaskbarReplacementState.preparing);
     logInfo(
       'WindowsTaskbarService',
-      'Beginning transactional custom taskbar activation (opId=$opId, rev=$configRev, hideNativeTaskbar=$hideNativeTaskbar)...',
+      'Beginning transactional custom taskbar activation (opId=$opId, rev=$configRev, hideNativeTaskbar=$hideNativeTaskbar, userAction=$_lastUserAction)...',
     );
 
     try {
@@ -315,9 +383,62 @@ class WindowsTaskbarService extends ChangeNotifier {
         return false;
       }
 
+      // Step 3, 4, 5, 6: Authoritative Verification Gate
+      // Verify Process, HWND, IPC, and Visibility BEFORE touching Windows Taskbar!
+      if (!isTest) {
+        // Criterion 2 & 3: Process Record & Identity
+        final dockRecord = await _getDockRecord();
+        if (dockRecord == null) {
+          throw Exception(
+            'Criterion failed: Dock process record missing after startup.',
+          );
+        }
+        final inspection = await _inspectProcess(dockRecord.pid);
+        if (inspection == null ||
+            !inspection.isRunning ||
+            !inspection.matches(dockRecord)) {
+          throw Exception(
+            'Criterion failed: Dock process PID ${dockRecord.pid} not running or identity mismatch.',
+          );
+        }
+
+        // Criterion 4 & 5: Native Window HWND & PID Match
+        final windowVerification = await verifyDockWindow(dockRecord.pid);
+        if (windowVerification['found'] != true) {
+          throw Exception(
+            'Criterion failed: Dock window HWND not found for PID ${dockRecord.pid}.',
+          );
+        }
+        if (windowVerification['pidMatches'] != true) {
+          throw Exception(
+            'Criterion failed: Dock window HWND does not match PID ${dockRecord.pid}.',
+          );
+        }
+
+        // Criterion 6, 7, 8: Desktop Visibility, Usable Bounds & Enabled
+        if (windowVerification['isVisible'] != true) {
+          throw Exception(
+            'Criterion failed: Dock window is not visible on desktop.',
+          );
+        }
+        final rect = windowVerification['rect'] as Map?;
+        final width = (rect?['width'] as num?)?.toInt() ?? 0;
+        final height = (rect?['height'] as num?)?.toInt() ?? 0;
+        if (width <= 0 || height <= 0) {
+          throw Exception(
+            'Criterion failed: Dock window bounds are unusable (${width}x$height).',
+          );
+        }
+        if (windowVerification['isEnabled'] != true) {
+          throw Exception(
+            'Criterion failed: Dock window is not interactive / enabled.',
+          );
+        }
+      }
+
       _updateState(TaskbarReplacementState.customTaskbarReady);
 
-      // Step 3: Set recovery pending flag before modifying shell state
+      // Step 7: ONLY AFTER DOCK IS FULLY READY -> Set recovery state & commit taskbar mode
       _settings = _settings.copyWith(
         recoveryPending: true,
         customTaskbarEnabled: true,
@@ -325,7 +446,7 @@ class WindowsTaskbarService extends ChangeNotifier {
         nativeTaskbarVisibilityBeforeActivation: wasInitiallyVisible,
         configurationVersion: configRev,
         desktopTaskbarMode: hideNativeTaskbar
-            ? DesktopTaskbarMode.dockWithNativeHidden
+            ? DesktopTaskbarMode.customTaskbar
             : DesktopTaskbarMode.dockOnly,
       );
       await _persistSettings();
@@ -338,7 +459,7 @@ class WindowsTaskbarService extends ChangeNotifier {
         return false;
       }
 
-      // Step 4: If native taskbar should be hidden, safely hide it
+      // If native taskbar should be hidden, safely hide it AFTER dock readiness verified
       if (hideNativeTaskbar) {
         _updateState(TaskbarReplacementState.nativeTaskbarHidePending);
         final hideSuccess = await setWindowsTaskbarVisibility(false);
@@ -358,73 +479,6 @@ class WindowsTaskbarService extends ChangeNotifier {
           final secondCheck = await getWindowsTaskbarInfo();
           if (secondCheck['anyVisible'] as bool? ?? false) {
             throw Exception('Native taskbar remains visible after retry.');
-          }
-        }
-      }
-
-      // Step 5: Authoritative 9-Criteria Verification Gate
-      if (opId != _currentOperationId) {
-        throw Exception(
-          'Operation $opId superseded before final verification gate.',
-        );
-      }
-
-      if (!isTest) {
-        // Criterion 2 & 3: Process Record & Identity
-        final dockRecord = await _getDockRecord();
-        if (dockRecord == null) {
-          throw Exception(
-            'Criterion failed: Dock process record missing after startup.',
-          );
-        }
-        final inspection = await _inspectProcess(dockRecord.pid);
-        if (inspection == null ||
-            !inspection.isRunning ||
-            !inspection.matches(dockRecord)) {
-          throw Exception(
-            'Criterion failed: Dock process PID ${dockRecord.pid} not running or identity mismatch.',
-          );
-        }
-
-        // Criterion 4, 5, 6, 7, 8: Native Window HWND, Visibility, Bounds, Enabled
-        final windowVerification = await verifyDockWindow(dockRecord.pid);
-        if (windowVerification['found'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window HWND not found for PID ${dockRecord.pid}.',
-          );
-        }
-        if (windowVerification['pidMatches'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window HWND does not match PID ${dockRecord.pid}.',
-          );
-        }
-        if (windowVerification['isVisible'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window is not visible on desktop.',
-          );
-        }
-        final rect = windowVerification['rect'] as Map?;
-        final width = (rect?['width'] as num?)?.toInt() ?? 0;
-        final height = (rect?['height'] as num?)?.toInt() ?? 0;
-        if (width <= 0 || height <= 0) {
-          throw Exception(
-            'Criterion failed: Dock window bounds are unusable (${width}x$height).',
-          );
-        }
-        if (windowVerification['isEnabled'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window is not interactive / enabled.',
-          );
-        }
-
-        // Criterion 9: Native taskbar visibility match
-        if (hideNativeTaskbar) {
-          final postHideInfo = await getWindowsTaskbarInfo();
-          final anyVisible = postHideInfo['anyVisible'] as bool? ?? false;
-          if (anyVisible) {
-            throw Exception(
-              'Criterion failed: Native taskbar remains visible when hiding was requested.',
-            );
           }
         }
       }
@@ -460,6 +514,8 @@ class WindowsTaskbarService extends ChangeNotifier {
         st,
       );
 
+      _lastFailureAt = DateTime.now();
+
       // Invalidate current operation so no late-running async callbacks can report success
       _currentOperationId++;
       _operationInProgress = false;
@@ -473,6 +529,9 @@ class WindowsTaskbarService extends ChangeNotifier {
 
   /// Guaranteed emergency restoration of native Windows taskbar on all monitors.
   Future<bool> restoreWindowsTaskbar() async {
+    if (_operationInProgress) {
+      _lastUserAction = 'restoreTaskbar';
+    }
     _currentOperationId++;
     _operationInProgress = false;
     _updateState(TaskbarReplacementState.restoring);
@@ -503,6 +562,7 @@ class WindowsTaskbarService extends ChangeNotifier {
         lastSuccessfulRestoration: DateTime.now(),
         desktopTaskbarMode: DesktopTaskbarMode.windowsTaskbar,
       );
+      _lastFailureAt = null;
       await _persistSettings();
 
       _updateState(TaskbarReplacementState.restoredSuccessfully);

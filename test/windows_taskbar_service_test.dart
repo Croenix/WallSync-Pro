@@ -69,6 +69,25 @@ void main() {
       expect(updated.configurationVersion, original.configurationVersion);
     });
 
+    test('resolved mode normalizes dock replacement aliases', () {
+      final replacement = TaskbarSettings(
+        desktopTaskbarMode: DesktopTaskbarMode.dockWithNativeHidden,
+        customTaskbarEnabled: true,
+        nativeTaskbarHideEnabled: true,
+      );
+      expect(
+        replacement.resolvedDesktopTaskbarMode,
+        DesktopTaskbarMode.customTaskbar,
+      );
+
+      final alongside = TaskbarSettings(
+        desktopTaskbarMode: DesktopTaskbarMode.dockOnly,
+        customTaskbarEnabled: true,
+        nativeTaskbarHideEnabled: false,
+      );
+      expect(alongside.resolvedDesktopTaskbarMode, DesktopTaskbarMode.dockOnly);
+    });
+
     test('fromJson gracefully falls back for unknown/null values', () {
       final empty = TaskbarSettings.fromJson({});
       expect(empty.desktopTaskbarMode, DesktopTaskbarMode.windowsTaskbar);

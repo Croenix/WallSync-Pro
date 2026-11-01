@@ -147,6 +147,33 @@ Future<void> _restoreStartupWallpaper(WidgetSettings settings) async {
   );
 }
 
+void _emitOverlayBootstrapEvent(
+  String eventName, {
+  required int pid,
+  required String instanceId,
+  required int? operationId,
+  required int configRevision,
+  required Stopwatch stopwatch,
+  String? overlayType,
+  String? reason,
+}) {
+  final fields = <String>[
+    'event=$eventName',
+    'pid=$pid',
+    'instanceId=${instanceId.isEmpty ? 'unknown' : instanceId}',
+    'operationId=${operationId ?? 'n/a'}',
+    'configRevision=$configRevision',
+    'elapsedMs=${stopwatch.elapsedMilliseconds}',
+  ];
+  if (overlayType != null && overlayType.isNotEmpty) {
+    fields.add('overlayType=$overlayType');
+  }
+  if (reason != null && reason.isNotEmpty) {
+    fields.add('reason=${reason.replaceAll(RegExp(r'\s+'), ' ')}');
+  }
+  logInfo('OverlayBootstrap', fields.join(' | '));
+}
+
 Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
   if (settings.exitOverlay) {
     logInfo(
@@ -220,6 +247,44 @@ void main(List<String> args) async {
         orElse: () => '--startup-trigger=manual',
       )
       .substring('--startup-trigger='.length);
+  final startupArgsStopwatch = Stopwatch()..start();
+  _emitOverlayBootstrapEvent(
+    'arguments_received',
+    pid: pid,
+    instanceId: args
+        .firstWhere(
+          (argument) => argument.startsWith('--instance-id='),
+          orElse: () => '',
+        )
+        .replaceFirst('--instance-id=', '')
+        .trim(),
+    operationId: int.tryParse(
+      args
+          .firstWhere(
+            (argument) => argument.startsWith('--operation-id='),
+            orElse: () => '--operation-id=',
+          )
+          .replaceFirst('--operation-id=', '')
+          .trim(),
+    ),
+    configRevision: int.tryParse(
+      args
+          .firstWhere(
+            (argument) => argument.startsWith('--config-revision='),
+            orElse: () => '--config-revision=1',
+          )
+          .replaceFirst('--config-revision=', '')
+          .trim(),
+    ) ?? 1,
+    stopwatch: startupArgsStopwatch,
+    overlayType: args
+        .firstWhere(
+          (argument) => argument.startsWith('--overlay-type='),
+          orElse: () => '',
+        )
+        .replaceFirst('--overlay-type=', '')
+        .trim(),
+  );
   final videoPathIndex = args.indexOf('--video-path');
   final wallpaperVideoPath =
       videoPathIndex >= 0 && videoPathIndex + 1 < args.length
@@ -250,8 +315,44 @@ void main(List<String> args) async {
 
   // ── Step 2: Initialize Flutter bindings and error handlers ──
   WidgetsFlutterBinding.ensureInitialized();
-  if (kDebugMode && !isWallpaperMode) {
-    assert(() {
+  _emitOverlayBootstrapEvent(
+    'flutter_engine_initialized',
+    pid: pid,
+    instanceId: args
+        .firstWhere(
+          (argument) => argument.startsWith('--instance-id='),
+          orElse: () => '',
+        )
+        .replaceFirst('--instance-id=', '')
+        .trim(),
+    operationId: int.tryParse(
+      args
+          .firstWhere(
+            (argument) => argument.startsWith('--operation-id='),
+            orElse: () => '--operation-id=',
+          )
+          .replaceFirst('--operation-id=', '')
+          .trim(),
+    ),
+    configRevision: int.tryParse(
+      args
+          .firstWhere(
+            (argument) => argument.startsWith('--config-revision='),
+            orElse: () => '--config-revision=1',
+          )
+          .replaceFirst('--config-revision=', '')
+          .trim(),
+    ) ?? 1,
+    stopwatch: startupStopwatch,
+    overlayType: args
+        .firstWhere(
+          (argument) => argument.startsWith('--overlay-type='),
+          orElse: () => '',
+        )
+        .replaceFirst('--overlay-type=', '')
+        .trim(),
+  );
+  if (kDebugMode && !isWallpaperMode) {    assert(() {
       debugProfileBuildsEnabled = true;
       return true;
     }());
@@ -343,6 +444,43 @@ void main(List<String> args) async {
     // Cannot continue without window manager
     exit(1);
   }
+  _emitOverlayBootstrapEvent(
+    'runtime_initialized',
+    pid: pid,
+    instanceId: args
+        .firstWhere(
+          (argument) => argument.startsWith('--instance-id='),
+          orElse: () => '',
+        )
+        .replaceFirst('--instance-id=', '')
+        .trim(),
+    operationId: int.tryParse(
+      args
+          .firstWhere(
+            (argument) => argument.startsWith('--operation-id='),
+            orElse: () => '--operation-id=',
+          )
+          .replaceFirst('--operation-id=', '')
+          .trim(),
+    ),
+    configRevision: int.tryParse(
+      args
+          .firstWhere(
+            (argument) => argument.startsWith('--config-revision='),
+            orElse: () => '--config-revision=1',
+          )
+          .replaceFirst('--config-revision=', '')
+          .trim(),
+    ) ?? 1,
+    stopwatch: startupStopwatch,
+    overlayType: args
+        .firstWhere(
+          (argument) => argument.startsWith('--overlay-type='),
+          orElse: () => '',
+        )
+        .replaceFirst('--overlay-type=', '')
+        .trim(),
+  );
 
   final overlayInstanceId = args
       .firstWhere(
@@ -359,6 +497,19 @@ void main(List<String> args) async {
       )
       .replaceFirst('--overlay-type=', '')
       .trim();
+  final normalizedOverlayType =
+      overlayType.isEmpty ? 'classic' : overlayType.toLowerCase();
+
+  if (isOverlayMode &&
+      normalizedOverlayType != 'classic' &&
+      normalizedOverlayType != 'taskbar_dock') {
+    logError(
+      'OverlayStartup',
+      'Unsupported overlay type "$overlayType". Only classic and taskbar_dock are permitted.',
+    );
+    await flushPendingLogs();
+    exit(1);
+  }
 
   final opIdArg = args.firstWhere(
     (argument) => argument.startsWith('--operation-id='),
@@ -375,6 +526,16 @@ void main(List<String> args) async {
   final overlayConfigRevision = revArg.isNotEmpty
       ? (int.tryParse(revArg.substring('--config-revision='.length)) ?? 1)
       : 1;
+
+  _emitOverlayBootstrapEvent(
+    'arguments_parsed',
+    pid: pid,
+    instanceId: overlayInstanceId,
+    operationId: overlayOperationId,
+    configRevision: overlayConfigRevision,
+    stopwatch: startupArgsStopwatch,
+    overlayType: normalizedOverlayType,
+  );
 
   // ── Step 4: Load settings ──
   final settingsService = SettingsService(
@@ -452,9 +613,36 @@ void main(List<String> args) async {
     'Main',
     'Settings loaded. backgroundType=${settings.backgroundType}, size=${settings.width}x${settings.height}',
   );
+  _emitOverlayBootstrapEvent(
+    'configuration_loaded',
+    pid: pid,
+    instanceId: overlayInstanceId,
+    operationId: overlayOperationId,
+    configRevision: overlayConfigRevision,
+    stopwatch: startupStopwatch,
+    overlayType: normalizedOverlayType,
+  );
 
   // ── Step 5: Branch into Overlay, Wallpaper, or Dashboard mode ──
   if (isOverlayMode) {
+    _emitOverlayBootstrapEvent(
+      'overlay_mode_selected',
+      pid: pid,
+      instanceId: overlayInstanceId,
+      operationId: overlayOperationId,
+      configRevision: overlayConfigRevision,
+      stopwatch: startupStopwatch,
+      overlayType: normalizedOverlayType,
+    );
+    _emitOverlayBootstrapEvent(
+      'overlay_type_selected',
+      pid: pid,
+      instanceId: overlayInstanceId,
+      operationId: overlayOperationId,
+      configRevision: overlayConfigRevision,
+      stopwatch: startupStopwatch,
+      overlayType: normalizedOverlayType,
+    );
     logInfo(
       'OverlayStartup',
       'Runtime preparation stage started for installed executable '
@@ -565,7 +753,7 @@ void main(List<String> args) async {
 
     int? overlayHwnd;
     try {
-      final h = await const MethodChannel('com.example.wallsync/live_wallpaper')
+      final h = await const MethodChannel('wallsync/live_wallpaper')
           .invokeMethod<int>('getNativeWindowHandle');
       if (h != null && h != 0) overlayHwnd = h;
     } catch (_) {}
@@ -801,15 +989,34 @@ void main(List<String> args) async {
           'Overlay window is visible and usable '
               '(${actualWindowSize.width}x${actualWindowSize.height}).',
         );
+        _emitOverlayBootstrapEvent(
+          'window_creation_started',
+          pid: pid,
+          instanceId: overlayInstanceId,
+          operationId: overlayOperationId,
+          configRevision: overlayConfigRevision,
+          stopwatch: startupStopwatch,
+          overlayType: normalizedOverlayType,
+        );
 
         final windowInitMs = DateTime.now().millisecondsSinceEpoch;
         if (overlayHwnd == null) {
           try {
-            final h = await const MethodChannel('com.example.wallsync/live_wallpaper')
+            final h = await const MethodChannel('wallsync/live_wallpaper')
                 .invokeMethod<int>('getNativeWindowHandle');
             if (h != null && h != 0) overlayHwnd = h;
           } catch (_) {}
         }
+        _emitOverlayBootstrapEvent(
+          'hwnd_created',
+          pid: pid,
+          instanceId: overlayInstanceId,
+          operationId: overlayOperationId,
+          configRevision: overlayConfigRevision,
+          stopwatch: startupStopwatch,
+          overlayType: normalizedOverlayType,
+          reason: overlayHwnd == null ? 'native-hwnd-not-yet-known' : 'hwnd=$overlayHwnd',
+        );
         await OverlayLifecycleService.updateCurrentProcessState(
           settingsService,
           state: OverlayLifecycleState.windowInitialized,
@@ -819,6 +1026,16 @@ void main(List<String> args) async {
           operationId: overlayOperationId,
           configurationRevision: overlayConfigRevision,
           windowInitMs: windowInitMs,
+        );
+        _emitOverlayBootstrapEvent(
+          'hwnd_registered',
+          pid: pid,
+          instanceId: overlayInstanceId,
+          operationId: overlayOperationId,
+          configRevision: overlayConfigRevision,
+          stopwatch: startupStopwatch,
+          overlayType: normalizedOverlayType,
+          reason: overlayHwnd == null ? 'hwnd-not-registered' : 'hwnd=$overlayHwnd',
         );
 
         overlayConfigurationComplete = true;
@@ -883,6 +1100,16 @@ void main(List<String> args) async {
       readinessRegistration = registration;
       await registration;
       readinessRegistered = true;
+      _emitOverlayBootstrapEvent(
+        'readiness_acknowledged',
+        pid: pid,
+        instanceId: overlayInstanceId,
+        operationId: overlayOperationId,
+        configRevision: overlayConfigRevision,
+        stopwatch: startupStopwatch,
+        overlayType: normalizedOverlayType,
+        reason: 'readyPublishedMs=$readyPublishedMs, hwnd=${overlayHwnd ?? 0}',
+      );
       logInfo(
         'OverlayStartup',
         'Overlay visible and ready; startup completed after native window configuration '
@@ -894,11 +1121,30 @@ void main(List<String> args) async {
     }
 
     windowManager.waitUntilReadyToShow(windowOptions, () async {
+      _emitOverlayBootstrapEvent(
+        'ipc_server_started',
+        pid: pid,
+        instanceId: overlayInstanceId,
+        operationId: overlayOperationId,
+        configRevision: overlayConfigRevision,
+        stopwatch: startupStopwatch,
+        overlayType: normalizedOverlayType,
+      );
       logInfo(
         'OverlayStartup',
         'Overlay window created and ready; applying position and visibility.',
       );
       await showAndPositionOverlay();
+      _emitOverlayBootstrapEvent(
+        'parent_connected',
+        pid: pid,
+        instanceId: overlayInstanceId,
+        operationId: overlayOperationId,
+        configRevision: overlayConfigRevision,
+        stopwatch: startupStopwatch,
+        overlayType: normalizedOverlayType,
+        reason: 'hwnd=${overlayHwnd ?? 0}',
+      );
       try {
         await markOverlayReady();
       } catch (error, stackTrace) {
@@ -1078,8 +1324,8 @@ void main(List<String> args) async {
 
     // Configure the standard dashboard window
     const WindowOptions windowOptions = WindowOptions(
-      size: Size(850, 600),
-      minimumSize: Size(700, 500),
+      size: Size(1100, 720),
+      minimumSize: Size(960, 600),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
@@ -1090,6 +1336,7 @@ void main(List<String> args) async {
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       try {
         await windowManager.setPreventClose(true);
+        await windowManager.setMinimumSize(const Size(960, 600));
         if (!isMinimized) {
           await windowManager.show();
           await windowManager.focus();

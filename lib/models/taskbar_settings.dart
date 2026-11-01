@@ -69,6 +69,64 @@ extension DockReadinessStageX on DockReadinessStage {
       this == DockReadinessStage.failed || this == DockReadinessStage.stopped;
 }
 
+enum TaskbarLifecycleState {
+  inactive,
+  validating,
+  startingDock,
+  waitingForProcess,
+  waitingForWindow,
+  waitingForIPC,
+  verifyingVisibility,
+  activeAlongside,
+  activeReplacement,
+  stopping,
+  rollingBack,
+  failed,
+}
+
+class TaskbarActivationSnapshot {
+  const TaskbarActivationSnapshot({
+    required this.lifecycleState,
+    required this.operationId,
+    required this.configurationRevision,
+    required this.operationInProgress,
+    required this.lastUserAction,
+    required this.lastFailureAt,
+    required this.taskbarMode,
+    required this.customTaskbarEnabled,
+    required this.nativeTaskbarHidden,
+    required this.nativeTaskbarVisible,
+  });
+
+  final TaskbarLifecycleState lifecycleState;
+  final int operationId;
+  final int configurationRevision;
+  final bool operationInProgress;
+  final String lastUserAction;
+  final DateTime? lastFailureAt;
+  final DesktopTaskbarMode taskbarMode;
+  final bool customTaskbarEnabled;
+  final bool nativeTaskbarHidden;
+  final bool nativeTaskbarVisible;
+
+  bool get canRetry =>
+      !operationInProgress &&
+      (lastFailureAt == null ||
+          DateTime.now().difference(lastFailureAt!) >
+              const Duration(seconds: 3));
+
+  bool get isStandardWindows => taskbarMode == DesktopTaskbarMode.windowsTaskbar;
+
+  bool get isDockAlongside =>
+      taskbarMode == DesktopTaskbarMode.dockOnly ||
+      lifecycleState == TaskbarLifecycleState.activeAlongside;
+
+  bool get isFullReplacement =>
+      taskbarMode == DesktopTaskbarMode.customTaskbar ||
+      taskbarMode == DesktopTaskbarMode.dockWithNativeHidden ||
+      lifecycleState == TaskbarLifecycleState.activeReplacement;
+}
+
 /// Explicit lifecycle and verification states for taskbar replacement.
 enum TaskbarReplacementState {
   /// Custom dock and taskbar replacement disabled.
@@ -246,6 +304,35 @@ class TaskbarSettings {
     );
   }
 
+  static DesktopTaskbarMode normalizeDesktopTaskbarMode({
+    required DesktopTaskbarMode mode,
+    required bool customTaskbarEnabled,
+    required bool nativeTaskbarHideEnabled,
+  }) {
+    if (!customTaskbarEnabled) return DesktopTaskbarMode.windowsTaskbar;
+    if (mode == DesktopTaskbarMode.disabled) {
+      return DesktopTaskbarMode.disabled;
+    }
+    if (mode == DesktopTaskbarMode.customTaskbar ||
+        mode == DesktopTaskbarMode.dockWithNativeHidden) {
+      return DesktopTaskbarMode.customTaskbar;
+    }
+    if (mode == DesktopTaskbarMode.dockOnly) {
+      return DesktopTaskbarMode.dockOnly;
+    }
+    return nativeTaskbarHideEnabled
+        ? DesktopTaskbarMode.customTaskbar
+        : DesktopTaskbarMode.dockOnly;
+  }
+
+  DesktopTaskbarMode get resolvedDesktopTaskbarMode {
+    return normalizeDesktopTaskbarMode(
+      mode: desktopTaskbarMode,
+      customTaskbarEnabled: customTaskbarEnabled,
+      nativeTaskbarHideEnabled: nativeTaskbarHideEnabled,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'desktopTaskbarMode': desktopTaskbarMode.name,
@@ -289,11 +376,13 @@ class TaskbarSettings {
       lastRestoration = DateTime.tryParse(json['lastSuccessfulRestoration'] as String);
     }
 
+    final customEnabled = json['customTaskbarEnabled'] as bool? ?? false;
+    final hideNative = json['nativeTaskbarHideEnabled'] as bool? ?? false;
+
     return TaskbarSettings(
       desktopTaskbarMode: mode,
-      customTaskbarEnabled: json['customTaskbarEnabled'] as bool? ?? false,
-      nativeTaskbarHideEnabled:
-          json['nativeTaskbarHideEnabled'] as bool? ?? false,
+      customTaskbarEnabled: customEnabled,
+      nativeTaskbarHideEnabled: hideNative,
       nativeTaskbarVisibilityBeforeActivation:
           json['nativeTaskbarVisibilityBeforeActivation'] as bool? ?? true,
       activeTemplateId:

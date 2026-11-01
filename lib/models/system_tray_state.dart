@@ -21,5 +21,8 @@ enum SystemTrayState {
   /// Whether tray integration could not be established.
   bool get isUnavailableOrFailed =>
       this == SystemTrayState.unavailable || this == SystemTrayState.failed;
-}
 
+  /// Whether the tray should be retried after a compatibility fallback or a failed init.
+  bool get isRetryable =>
+      this == SystemTrayState.unavailable || this == SystemTrayState.failed;
+}

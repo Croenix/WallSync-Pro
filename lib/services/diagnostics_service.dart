@@ -839,13 +839,16 @@ class DiagnosticsService {
         try {
           final content = (await pidFile.readAsString()).trim();
           final record = OverlayProcessRecord.tryParse(content);
-          if (record != null && record.ready && record.creationTime != null) {
+          if (record != null) {
             final inspection = await inspectWindowsProcess(record.pid);
             if (inspection != null &&
                 inspection.isRunning &&
                 inspection.matches(record)) {
-              activePids.add(record.pid);
-              newPidToWidgetId[record.pid] = widgetId;
+              if (record.ready) {
+                activePids.add(record.pid);
+                newPidToWidgetId[record.pid] = widgetId;
+              }
+              // Active process is alive and healthy/starting: NEVER delete PID file!
             } else {
               // The process has stopped or identity changed: clean up dead PID record
               try {
@@ -853,9 +856,12 @@ class DiagnosticsService {
               } catch (_) {}
             }
           } else {
-            // Malformed record: clean up dead PID file
+            // Unparseable record: only remove if file is older than 10s to avoid race with writes
             try {
-              if (await pidFile.exists()) await pidFile.delete();
+              final stat = await pidFile.stat();
+              if (DateTime.now().difference(stat.modified) > const Duration(seconds: 10)) {
+                if (await pidFile.exists()) await pidFile.delete();
+              }
             } catch (_) {}
           }
         } catch (_) {}
@@ -1800,6 +1806,11 @@ class DiagnosticsService {
     int? hwnd,
     String? executable,
     List<String>? args,
+    String? workingDirectory,
+    String? pidFilePath,
+    bool? pidFileCreated,
+    String? ipcStatus,
+    String? timeoutReason,
     String? details,
   }) {
     final pidStr = pid != null ? ' | pid=$pid' : '';
@@ -1807,9 +1818,14 @@ class DiagnosticsService {
     final hwndStr = hwnd != null ? ' | hwnd=0x${hwnd.toRadixString(16)}' : '';
     final exeStr = executable != null ? ' | exe="$executable"' : '';
     final argsStr = (args != null && args.isNotEmpty) ? ' | args=$args' : '';
+    final workDirStr = workingDirectory != null ? ' | workDir="$workingDirectory"' : '';
+    final pidFileStr = pidFilePath != null ? ' | pidFile="$pidFilePath"' : '';
+    final pidCreatedStr = pidFileCreated != null ? ' | pidCreated=$pidFileCreated' : '';
+    final ipcStr = ipcStatus != null ? ' | ipcStatus=$ipcStatus' : '';
+    final timeoutStr = timeoutReason != null ? ' | timeoutReason="$timeoutReason"' : '';
     final detailStr = details != null ? ' | details=$details' : '';
     final message =
-        'WidgetLifecycle widget="$widgetId" | stage=$stage$pidStr$exitStr$hwndStr$exeStr$argsStr$detailStr';
+        'WidgetLifecycle widget="$widgetId" | stage=$stage$pidStr$exitStr$hwndStr$exeStr$argsStr$workDirStr$pidFileStr$pidCreatedStr$ipcStr$timeoutStr$detailStr';
     final isFailure = stage == 'failed' || stage == 'exited' || (exitCode != null && exitCode != 0);
     recordHistoryEntry(
       severity: isFailure ? 'WARN' : 'INFO',

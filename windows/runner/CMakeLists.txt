@@ -61,6 +61,15 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cnativeapi.dll")
   )
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/native_assets.json")
+  add_custom_command(
+    TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/native_assets.json"
+      "$<TARGET_FILE_DIR:${BINARY_NAME}>/native_assets.json"
+  )
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../plugins")
   add_custom_command(
     TARGET ${BINARY_NAME} POST_BUILD

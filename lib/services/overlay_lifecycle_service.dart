@@ -361,7 +361,10 @@ enum WidgetProcessLifecycleState {
   spawned,
   processAlive,
   runtimeInitializing,
+  pidFileReady,
+  windowCreating,
   windowReady,
+  ipcConnecting,
   ipcReady,
   ready,
   failed,
@@ -371,7 +374,10 @@ enum WidgetProcessLifecycleState {
       this == WidgetProcessLifecycleState.spawned ||
       this == WidgetProcessLifecycleState.processAlive ||
       this == WidgetProcessLifecycleState.runtimeInitializing ||
+      this == WidgetProcessLifecycleState.pidFileReady ||
+      this == WidgetProcessLifecycleState.windowCreating ||
       this == WidgetProcessLifecycleState.windowReady ||
+      this == WidgetProcessLifecycleState.ipcConnecting ||
       this == WidgetProcessLifecycleState.ipcReady ||
       this == WidgetProcessLifecycleState.ready;
 }
@@ -563,9 +569,14 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
     }
   }
 
-  if (latestRecord == null && expectedPid != null && latestInspection == null) {
+  final pidToCheck = latestRecord?.pid ?? expectedPid;
+  if (pidToCheck != null &&
+      (latestInspection == null || !latestInspection.isRunning)) {
     try {
-      latestInspection = await inspectProcess(expectedPid);
+      final finalInsp = await inspectProcess(pidToCheck);
+      if (finalInsp != null) {
+        latestInspection = finalInsp;
+      }
     } catch (_) {}
   }
 
@@ -758,12 +769,7 @@ class OverlayLifecycleService {
         } catch (_) {}
       }
 
-      if (ready) {
-        if (existingRecord == null) {
-          throw StateError(
-            'Cannot acknowledge overlay readiness without a PID record.',
-          );
-        }
+      if (ready && existingRecord != null) {
         if (!existingRecord.matches(record)) {
           throw StateError(
             'Overlay PID record changed before readiness acknowledgement.',
