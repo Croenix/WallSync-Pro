@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/desktop_studio_template.dart';
 import '../services/desktop_studio_service.dart';
+import '../services/windows_taskbar_service.dart';
 import 'desktop_studio_preview.dart';
 import 'desktop_studio_sidebar.dart';
 
@@ -493,7 +494,27 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
               onPressed: _handleSave,
             ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+
+          // Restore Windows Taskbar Quick Button
+          IconButton(
+            icon: const Icon(Icons.settings_backup_restore_rounded, size: 18),
+            color: const Color(0xFF38BDF8),
+            tooltip: 'Restore Windows Taskbar (Ctrl+Alt+Shift+R)',
+            onPressed: () async {
+              await WindowsTaskbarService.instance.restoreWindowsTaskbar();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Windows Taskbar restored successfully.'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+
+          const SizedBox(width: 8),
 
           // Apply to Desktop Button
           FilledButton.icon(

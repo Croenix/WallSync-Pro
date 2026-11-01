@@ -14,6 +14,7 @@ import 'services/settings_service.dart';
 import 'services/wallpaper_engine.dart';
 import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
+import 'services/windows_taskbar_service.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
 import 'widgets/splash_screen.dart';
@@ -419,6 +420,7 @@ void main(List<String> args) async {
         }),
       );
     }
+    unawaited(WindowsTaskbarService.instance.init());
   }
   logInfo(
     'Main',
@@ -1036,6 +1038,12 @@ void main(List<String> args) async {
         _runStartupRecoveryStage(
           'widgets',
           () => _restoreStartupOverlay(settings),
+        ),
+      );
+      unawaited(
+        _runStartupRecoveryStage(
+          'taskbar',
+          () => WindowsTaskbarService.instance.init(),
         ),
       );
     }

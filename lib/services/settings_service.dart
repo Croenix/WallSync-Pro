@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import '../models/taskbar_settings.dart';
 import 'overlay_startup_service.dart';
 
 Future<File>? _appLogFileCache;
@@ -834,6 +835,7 @@ class WidgetSettings {
   bool taskbarShowMedia;
   String activeDockTemplateId;
   String? activeDockTemplateJson;
+  TaskbarSettings taskbarSettings;
 
   double? separatorWidth;
   double? separatorHeight;
@@ -966,6 +968,7 @@ class WidgetSettings {
     this.taskbarShowMedia = true,
     this.activeDockTemplateId = 'wallsync.preset.centered_dock',
     this.activeDockTemplateJson,
+    TaskbarSettings? taskbarSettings,
     List<int>? customGradientColors,
     List<RecentWallpaperItem>? recentWallpapers,
     List<CustomWidgetElement>? customElements,
@@ -989,7 +992,8 @@ class WidgetSettings {
        elementTranslateZ = elementTranslateZ ?? {},
        elementRotateX = elementRotateX ?? {},
        elementRotateY = elementRotateY ?? {},
-       elementRotateZ = elementRotateZ ?? {};
+       elementRotateZ = elementRotateZ ?? {},
+       taskbarSettings = taskbarSettings ?? const TaskbarSettings();
 
   /// Returns the effective gradient (list of ARGB ints) for a given element key,
   /// or null if the element should use solid color rendering.
@@ -1492,6 +1496,9 @@ class WidgetSettings {
       taskbarShowMedia: json['taskbarShowMedia'] ?? true,
       activeDockTemplateId: json['activeDockTemplateId'] ?? 'wallsync.preset.centered_dock',
       activeDockTemplateJson: json['activeDockTemplateJson'] as String?,
+      taskbarSettings: json['taskbarSettings'] != null
+          ? TaskbarSettings.fromJson(json['taskbarSettings'] as Map<String, dynamic>)
+          : const TaskbarSettings(),
     );
   }
 
@@ -1589,6 +1596,7 @@ class WidgetSettings {
       'taskbarShowMedia': taskbarShowMedia,
       'activeDockTemplateId': activeDockTemplateId,
       'activeDockTemplateJson': activeDockTemplateJson,
+      'taskbarSettings': taskbarSettings.toJson(),
       'customElements': customElements.map((e) => e.toJson()).toList(),
       'savedCustomWidgets': savedCustomWidgets.map((w) => w.toJson()).toList(),
       'recentWallpapers': recentWallpapers.map((r) => r.toJson()).toList(),
@@ -1689,6 +1697,7 @@ class WidgetSettings {
     bool? taskbarShowMedia,
     String? activeDockTemplateId,
     String? activeDockTemplateJson,
+    TaskbarSettings? taskbarSettings,
     List<RecentWallpaperItem>? recentWallpapers,
     List<CustomWidgetElement>? customElements,
     List<SavedCustomWidget>? savedCustomWidgets,
@@ -1802,6 +1811,7 @@ class WidgetSettings {
       taskbarShowMedia: taskbarShowMedia ?? this.taskbarShowMedia,
       activeDockTemplateId: activeDockTemplateId ?? this.activeDockTemplateId,
       activeDockTemplateJson: activeDockTemplateJson ?? this.activeDockTemplateJson,
+      taskbarSettings: taskbarSettings ?? this.taskbarSettings,
       recentWallpapers: recentWallpapers ?? List.from(this.recentWallpapers),
       customElements:
           customElements ??

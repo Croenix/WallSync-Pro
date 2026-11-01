@@ -267,6 +267,9 @@ class LiveWallpaperPlugin::Impl {
   bool SetDesktopIconsVisible(bool visible);
   bool GetDesktopIconsVisible();
   bool SetTaskbarBlur(int mode);
+  flutter::EncodableMap GetWindowsTaskbarInfo();
+  bool SetWindowsTaskbarVisibility(bool visible);
+  bool RestoreWindowsTaskbar();
   bool IsOtherAudioPlaying();
   flutter::EncodableMap GetWindowsAccentColor();
   bool IsProcessRunning(const std::string& process_name);
@@ -335,6 +338,7 @@ class LiveWallpaperPlugin::Impl {
   HANDLE low_mem_stop_event_ = nullptr;
   std::atomic<bool> low_mem_running_{false};
   std::thread low_mem_thread_;
+  UINT taskbar_created_msg_ = 0;
 };
 
 LiveWallpaperPlugin::Impl::Impl(
@@ -363,6 +367,7 @@ LiveWallpaperPlugin::Impl::Impl(
     RefreshBatterySaverStatus();
   }
   StartLowMemoryMonitor();
+  taskbar_created_msg_ = RegisterWindowMessageW(L"TaskbarCreated");
 }
 
 LiveWallpaperPlugin::Impl::~Impl() {
@@ -526,6 +531,26 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
       }
     }
     result->Success(flutter::EncodableValue(SetTaskbarBlur(mode)));
+    return;
+  }
+  if (call.method_name() == "getWindowsTaskbarInfo") {
+    result->Success(flutter::EncodableValue(GetWindowsTaskbarInfo()));
+    return;
+  }
+  if (call.method_name() == "setWindowsTaskbarVisibility") {
+    bool visible = true;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("visible"));
+      if (it != args->end()) {
+        visible = GetBoolFromEncodable(it->second, true);
+      }
+    }
+    result->Success(flutter::EncodableValue(SetWindowsTaskbarVisibility(visible)));
+    return;
+  }
+  if (call.method_name() == "restoreWindowsTaskbar") {
+    result->Success(flutter::EncodableValue(RestoreWindowsTaskbar()));
     return;
   }
   if (call.method_name() == "isOtherAudioPlaying") {
@@ -1788,6 +1813,10 @@ std::optional<LRESULT> LiveWallpaperPlugin::Impl::HandleWindowMessage(
   } else if (message == WM_POWERBROADCAST &&
              wparam == PBT_APMPOWERSTATUSCHANGE) {
     RefreshBatterySaverStatus();
+  } else if (taskbar_created_msg_ != 0 && message == taskbar_created_msg_) {
+    if (channel_) {
+      channel_->InvokeMethod("onWindowsExplorerRestarted", nullptr);
+    }
   }
   return std::nullopt;
 }
@@ -2205,6 +2234,95 @@ bool LiveWallpaperPlugin::Impl::SetTaskbarBlur(int mode) {
     }
   } while (sec_tray);
 
+  return true;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsTaskbarInfo() {
+  flutter::EncodableMap info;
+  HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
+  bool primary_present = (tray != nullptr);
+  bool primary_visible = false;
+  flutter::EncodableMap rect_map;
+  if (tray) {
+    primary_visible = (IsWindowVisible(tray) != FALSE);
+    RECT r{};
+    GetWindowRect(tray, &r);
+    rect_map[flutter::EncodableValue("left")] = flutter::EncodableValue(static_cast<int64_t>(r.left));
+    rect_map[flutter::EncodableValue("top")] = flutter::EncodableValue(static_cast<int64_t>(r.top));
+    rect_map[flutter::EncodableValue("right")] = flutter::EncodableValue(static_cast<int64_t>(r.right));
+    rect_map[flutter::EncodableValue("bottom")] = flutter::EncodableValue(static_cast<int64_t>(r.bottom));
+    rect_map[flutter::EncodableValue("width")] = flutter::EncodableValue(static_cast<int64_t>(r.right - r.left));
+    rect_map[flutter::EncodableValue("height")] = flutter::EncodableValue(static_cast<int64_t>(r.bottom - r.top));
+  }
+  int64_t secondary_count = 0;
+  int64_t secondary_visible_count = 0;
+  HWND sec_tray = nullptr;
+  while ((sec_tray = FindWindowExW(nullptr, sec_tray, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr) {
+    secondary_count++;
+    if (IsWindowVisible(sec_tray)) {
+      secondary_visible_count++;
+    }
+  }
+
+  info[flutter::EncodableValue("primaryPresent")] = flutter::EncodableValue(primary_present);
+  info[flutter::EncodableValue("primaryVisible")] = flutter::EncodableValue(primary_visible);
+  info[flutter::EncodableValue("primaryRect")] = flutter::EncodableValue(rect_map);
+  info[flutter::EncodableValue("secondaryCount")] = flutter::EncodableValue(secondary_count);
+  info[flutter::EncodableValue("secondaryVisibleCount")] = flutter::EncodableValue(secondary_visible_count);
+  info[flutter::EncodableValue("allVisible")] = flutter::EncodableValue(primary_visible && (secondary_count == 0 || secondary_visible_count == secondary_count));
+  info[flutter::EncodableValue("anyVisible")] = flutter::EncodableValue(primary_visible || secondary_visible_count > 0);
+  return info;
+}
+
+bool LiveWallpaperPlugin::Impl::SetWindowsTaskbarVisibility(bool visible) {
+  int cmd = visible ? SW_SHOW : SW_HIDE;
+  HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
+  if (tray) {
+    ShowWindow(tray, cmd);
+    if (visible) {
+      SetWindowPos(tray, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    }
+  }
+
+  HWND sec_tray = nullptr;
+  while ((sec_tray = FindWindowExW(nullptr, sec_tray, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr) {
+    ShowWindow(sec_tray, cmd);
+    if (visible) {
+      SetWindowPos(sec_tray, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    }
+  }
+
+  SystemParametersInfoW(SPI_SETWORKAREA, 0, nullptr, SPIF_SENDCHANGE);
+  RedrawWindow(nullptr, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+
+  return true;
+}
+
+bool LiveWallpaperPlugin::Impl::RestoreWindowsTaskbar() {
+  SetWindowsTaskbarVisibility(true);
+
+  HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
+  if (tray) {
+    ShowWindow(tray, SW_SHOW);
+    SetWindowPos(tray, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(tray, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  }
+
+  HWND sec_tray = nullptr;
+  while ((sec_tray = FindWindowExW(nullptr, sec_tray, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr) {
+    ShowWindow(sec_tray, SW_SHOW);
+    SetWindowPos(sec_tray, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(sec_tray, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  }
+
+  SystemParametersInfoW(SPI_SETWORKAREA, 0, nullptr, SPIF_SENDCHANGE);
+  RedrawWindow(nullptr, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
   return true;
 }
 

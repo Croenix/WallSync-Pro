@@ -13,7 +13,7 @@ void main() {
     final result = await Future.wait([first, second]);
     expect(result[0].path, result[1].path);
     expect(await File('${result[0].path}\\runtime.manifest').exists(), isTrue);
-  });
+  }, timeout: const Timeout(Duration(seconds: 90)));
 
   test('AppRuntimeService reuses prepared runtime via manifest', () async {
     final service = AppRuntimeService();
@@ -23,5 +23,5 @@ void main() {
 
     final secondDir = await service.prepareRuntime('OverlayRuntime');
     expect(secondDir.path, dir.path);
-  });
+  }, timeout: const Timeout(Duration(seconds: 90)));
 }

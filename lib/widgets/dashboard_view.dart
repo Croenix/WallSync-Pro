@@ -48,6 +48,8 @@ import '../models/desktop_studio_template.dart';
 import '../services/desktop_studio_service.dart';
 import 'desktop_studio_view.dart';
 import 'template_gallery_view.dart';
+import '../models/taskbar_settings.dart';
+import '../services/windows_taskbar_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DashboardView — the main customizer window
@@ -1693,6 +1695,10 @@ class _DashboardViewState extends State<DashboardView>
                   ? 'Pause Live Wallpaper'
                   : 'Resume Live Wallpaper',
             ),
+          MenuItem(
+            key: 'restore_windows_taskbar',
+            label: 'Restore Windows Taskbar Now',
+          ),
           MenuItem.separator(),
           MenuItem(key: 'exit_app', label: 'Exit WallSync Pro'),
         ],
@@ -1799,6 +1805,9 @@ class _DashboardViewState extends State<DashboardView>
       case 'toggle_wallpaper':
         await _toggleLiveWallpaperPlayback();
         await _updateTrayMenu();
+        break;
+      case 'restore_windows_taskbar':
+        await WindowsTaskbarService.instance.restoreWindowsTaskbar();
         break;
       case 'exit_app':
         await _exitApplication();
@@ -3370,7 +3379,28 @@ class _DashboardViewState extends State<DashboardView>
       );
     }
     developer.Timeline.finishSync();
-    return result;
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          if (HardwareKeyboard.instance.isControlPressed &&
+              HardwareKeyboard.instance.isAltPressed &&
+              HardwareKeyboard.instance.isShiftPressed &&
+              event.logicalKey == LogicalKeyboardKey.keyR) {
+            WindowsTaskbarService.instance.restoreWindowsTaskbar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Emergency Taskbar Restoration Triggered (Ctrl+Alt+Shift+R)'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: result,
+    );
   }
 
   Widget _buildTopNavBar() {
@@ -17029,6 +17059,8 @@ class _DashboardViewState extends State<DashboardView>
           ),
           const SizedBox(height: 28),
 
+          _buildTaskbarReplacementControlCard(),
+
           // 2. Windows 11 Taskbar Visualizer Simulation Bar
           const Text(
             'LIVE WINDOWS 11 TASKBAR SIMULATOR',
@@ -17125,21 +17157,27 @@ class _DashboardViewState extends State<DashboardView>
                 ),
                 const Spacer(),
                 // Embedded Live Widget preview
-                Container(
-                  height: 42,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Center(
-                    child: _buildEmbeddedTaskbarPreview(
-                      _settings.widgetTemplate.startsWith('taskbar_')
-                          ? _settings.widgetTemplate
-                          : 'taskbar_dock',
+                Flexible(
+                  flex: 3,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Container(
+                      height: 42,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Center(
+                        child: _buildEmbeddedTaskbarPreview(
+                          _settings.widgetTemplate.startsWith('taskbar_')
+                              ? _settings.widgetTemplate
+                              : 'taskbar_dock',
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -17819,6 +17857,476 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
+  Widget _buildTaskbarReplacementControlCard() {
+    final taskbarService = WindowsTaskbarService.instance;
+    return AnimatedBuilder(
+      animation: taskbarService,
+      builder: (builderCtx, _) {
+        final state = taskbarService.state;
+        final isCustomActive = taskbarService.isCustomTaskbarActive;
+        final hideNative = _settings.taskbarSettings.nativeTaskbarHideEnabled;
+
+        Color stateColor;
+        IconData stateIcon;
+        switch (state) {
+          case TaskbarReplacementState.windowsTaskbarActive:
+            stateColor = const Color(0xFF38BDF8);
+            stateIcon = Icons.window_rounded;
+            break;
+          case TaskbarReplacementState.preparing:
+          case TaskbarReplacementState.starting:
+          case TaskbarReplacementState.restoring:
+            stateColor = const Color(0xFFF59E0B);
+            stateIcon = Icons.hourglass_top_rounded;
+            break;
+          case TaskbarReplacementState.wallSyncTaskbarActive:
+            stateColor = const Color(0xFF10B981);
+            stateIcon = Icons.dock_rounded;
+            break;
+          case TaskbarReplacementState.windowsTaskbarHidden:
+            stateColor = const Color(0xFFA855F7);
+            stateIcon = Icons.visibility_off_rounded;
+            break;
+          case TaskbarReplacementState.restoredSuccessfully:
+            stateColor = const Color(0xFF10B981);
+            stateIcon = Icons.check_circle_rounded;
+            break;
+          case TaskbarReplacementState.failedToActivate:
+          case TaskbarReplacementState.failedToRestore:
+          case TaskbarReplacementState.recoveryRequired:
+            stateColor = const Color(0xFFEF4444);
+            stateIcon = Icons.warning_amber_rounded;
+            break;
+        }
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 28),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10141E),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isCustomActive
+                  ? const Color(0xFF38BDF8).withValues(alpha: 0.35)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 20,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header row with Title and Verified State Badge
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.desktop_windows_rounded,
+                          size: 20,
+                          color: Color(0xFF38BDF8),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Windows Taskbar Replacement & Dock Control',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Explicitly activate WallSync dock as desktop taskbar or run alongside Windows',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  // Status Pill with 9 verified states
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: stateColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: stateColor.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(stateIcon, size: 13, color: stateColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          state.displayName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: stateColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Divider(color: Colors.white10, height: 1),
+              const SizedBox(height: 20),
+
+              // Master Switch: Enable WallSync Custom Taskbar
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                activeColor: const Color(0xFF38BDF8),
+                value: isCustomActive,
+                onChanged: (enabled) async {
+                  if (enabled) {
+                    await taskbarService.enableCustomTaskbar(
+                      hideNativeTaskbar: hideNative,
+                    );
+                  } else {
+                    await taskbarService.restoreWindowsTaskbar();
+                  }
+                  setState(() {
+                    _settings = _settingsService.settings;
+                  });
+                },
+                title: const Text(
+                  'Enable WallSync Custom Taskbar',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                subtitle: Text(
+                  'Transactionally positions and activates WallSync dock on desktop as a taskbar replacement.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.65),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Secondary Switch: Hide Native Windows Taskbar
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                activeColor: const Color(0xFFA855F7),
+                value: hideNative,
+                onChanged: (hide) async {
+                  final updatedTaskbar = _settings.taskbarSettings.copyWith(
+                    nativeTaskbarHideEnabled: hide,
+                  );
+                  final updatedSettings = _settings.copyWith(
+                    taskbarSettings: updatedTaskbar,
+                  );
+                  await _settingsService.save(updatedSettings);
+                  setState(() => _settings = updatedSettings);
+
+                  if (isCustomActive) {
+                    await taskbarService.setWindowsTaskbarVisibility(!hide);
+                  }
+                },
+                title: const Text(
+                  'Hide Native Windows Taskbar',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                subtitle: Text(
+                  'Safely hides Shell_TrayWnd across primary & secondary displays and refreshes work area.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 18),
+
+              // Emergency Restore Action Row
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.shield_rounded, size: 20, color: Color(0xFF38BDF8)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Emergency Taskbar Recovery',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Immediately restores standard Windows taskbars across all monitors (Shortcut: Ctrl+Alt+Shift+R)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        await taskbarService.restoreWindowsTaskbar();
+                        setState(() => _settings = _settingsService.settings);
+                        if (builderCtx.mounted) {
+                          ScaffoldMessenger.of(builderCtx).showSnackBar(
+                            const SnackBar(
+                              content: Text('Windows Taskbar restored successfully.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.settings_backup_restore_rounded, size: 16),
+                      label: const Text('Restore Windows Taskbar Now'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF38BDF8),
+                        foregroundColor: Colors.black,
+                        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              // 3-Tier Reset Section
+              const Text(
+                '3-TIER TASKBAR RESET & RECOVERY OPTIONS',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: Colors.white38,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  // Option A: Reset Appearance
+                  Expanded(
+                    child: _buildResetOptionCard(
+                      title: 'Option A: Appearance',
+                      desc: 'Reverts colors, glass blur, gradient & icons to default. Retains layout & pinned apps.',
+                      buttonLabel: 'Reset Appearance',
+                      icon: Icons.palette_outlined,
+                      accentColor: const Color(0xFF38BDF8),
+                      onPressed: () async {
+                        await taskbarService.resetAppearance();
+                        setState(() => _settings = _settingsService.settings);
+                        if (builderCtx.mounted) {
+                          ScaffoldMessenger.of(builderCtx).showSnackBar(
+                            const SnackBar(content: Text('Taskbar appearance reset to default.')),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Option B: Reset Layout
+                  Expanded(
+                    child: _buildResetOptionCard(
+                      title: 'Option B: Layout',
+                      desc: 'Reverts dimensions, dock position & module visibility. Retains templates & themes.',
+                      buttonLabel: 'Reset Layout',
+                      icon: Icons.view_quilt_outlined,
+                      accentColor: const Color(0xFFF59E0B),
+                      onPressed: () async {
+                        await taskbarService.resetLayout();
+                        setState(() => _settings = _settingsService.settings);
+                        if (builderCtx.mounted) {
+                          ScaffoldMessenger.of(builderCtx).showSnackBar(
+                            const SnackBar(content: Text('Taskbar layout reset to default.')),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Option C: Full Reset
+                  Expanded(
+                    child: _buildResetOptionCard(
+                      title: 'Option C: Full Reset',
+                      desc: 'Restores Windows taskbar, stops custom dock, clears state. Preserves user templates.',
+                      buttonLabel: 'Full Taskbar Reset',
+                      icon: Icons.restart_alt_rounded,
+                      accentColor: const Color(0xFFEF4444),
+                      onPressed: () => _confirmFullTaskbarReset(context),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildResetOptionCard({
+    required String title,
+    required String desc,
+    required String buttonLabel,
+    required IconData icon,
+    required Color accentColor,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B26),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: accentColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: accentColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            desc,
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.4,
+              color: Colors.white.withValues(alpha: 0.55),
+            ),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onPressed,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: accentColor,
+                side: BorderSide(color: accentColor.withValues(alpha: 0.4)),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                buttonLabel,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmFullTaskbarReset(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF10141E),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444)),
+            SizedBox(width: 10),
+            Text('Full Taskbar Reset', style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to perform a Full Taskbar Reset?\n\n'
+          '• Standard Windows Taskbar will be guaranteed restored on all monitors.\n'
+          '• WallSync custom dock replacement will be stopped.\n'
+          '• Taskbar settings will be reset to safe factory defaults.\n'
+          '• All your custom-created templates will be safely PRESERVED.',
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await WindowsTaskbarService.instance.resetFullTaskbar();
+      setState(() => _settings = _settingsService.settings);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Full Taskbar Reset completed and Windows taskbar restored.'),
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildTaskbarPresetChip(String label, String templateKey, double w, double h) {
     final isSel = _settings.widgetTemplate == templateKey;
     return InkWell(
@@ -17992,9 +18500,14 @@ class _DashboardViewState extends State<DashboardView>
             const SizedBox(width: 8),
             const Icon(Icons.music_note_rounded, size: 12, color: Color(0xFFEC4899)),
             const SizedBox(width: 4),
-            Text(
-              mediaSnap.title.isNotEmpty ? mediaSnap.title : 'Track Audio',
-              style: const TextStyle(fontSize: 10, color: Colors.white),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 110),
+              child: Text(
+                mediaSnap.title.isNotEmpty ? mediaSnap.title : 'Track Audio',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, color: Colors.white),
+              ),
             ),
             const SizedBox(width: 8),
             Container(width: 1, height: 12, color: Colors.white24),
@@ -18011,9 +18524,14 @@ class _DashboardViewState extends State<DashboardView>
           children: [
             const Icon(Icons.album_rounded, size: 14, color: Color(0xFFEC4899)),
             const SizedBox(width: 6),
-            Text(
-              mediaSnap.title.isNotEmpty ? mediaSnap.title : 'No Playing Media',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Text(
+                mediaSnap.title.isNotEmpty ? mediaSnap.title : 'No Playing Media',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+              ),
             ),
             const SizedBox(width: 8),
             Row(
@@ -18051,9 +18569,14 @@ class _DashboardViewState extends State<DashboardView>
           children: [
             const Icon(Icons.sports_esports_rounded, size: 13, color: Color(0xFF66C0F4)),
             const SizedBox(width: 6),
-            Text(
-              steamSnap.isDownloading ? steamSnap.gameTitle : 'Steam Ready',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 110),
+              child: Text(
+                steamSnap.isDownloading ? steamSnap.gameTitle : 'Steam Ready',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+              ),
             ),
             const SizedBox(width: 6),
             if (steamSnap.isDownloading)
@@ -18069,9 +18592,14 @@ class _DashboardViewState extends State<DashboardView>
           children: [
             const Icon(Icons.headset_mic_rounded, size: 13, color: Color(0xFF5865F2)),
             const SizedBox(width: 6),
-            Text(
-              discordSnap.isConnectedToVoice ? discordSnap.channelName : 'Discord Voice',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 110),
+              child: Text(
+                discordSnap.isConnectedToVoice ? discordSnap.channelName : 'Discord Voice',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+              ),
             ),
             const SizedBox(width: 6),
             Icon(

@@ -437,45 +437,48 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
                   width: isSelected ? 1.5 : 1.0,
                 ),
               ),
-              child: ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                leading: Icon(
-                  DockElementType.getIcon(elem.type),
-                  size: 18,
-                  color: isSelected ? const Color(0xFF38BDF8) : Colors.white70,
-                ),
-                title: Text(
-                  elem.label.isNotEmpty ? elem.label : DockElementType.getDisplayName(elem.type),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.85),
+              child: Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  leading: Icon(
+                    DockElementType.getIcon(elem.type),
+                    size: 18,
+                    color: isSelected ? const Color(0xFF38BDF8) : Colors.white70,
                   ),
-                ),
-                subtitle: Text(
-                  elem.type,
-                  style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.4)),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                      color: Colors.redAccent.withValues(alpha: 0.7),
-                      onPressed: () {
-                        final list = List<DockItemElement>.from(elements)..removeAt(index);
-                        _update(widget.template.copyWith(elements: list));
-                        if (widget.selectedElementId == elem.id) {
-                          widget.onSelectElement(null);
-                        }
-                      },
-                      tooltip: 'Remove',
+                  title: Text(
+                    elem.label.isNotEmpty ? elem.label : DockElementType.getDisplayName(elem.type),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.85),
                     ),
-                    const Icon(Icons.drag_indicator_rounded, size: 18, color: Colors.white24),
-                  ],
+                  ),
+                  subtitle: Text(
+                    elem.type,
+                    style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.4)),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                        color: Colors.redAccent.withValues(alpha: 0.7),
+                        onPressed: () {
+                          final list = List<DockItemElement>.from(elements)..removeAt(index);
+                          _update(widget.template.copyWith(elements: list));
+                          if (widget.selectedElementId == elem.id) {
+                            widget.onSelectElement(null);
+                          }
+                        },
+                        tooltip: 'Remove',
+                      ),
+                      const Icon(Icons.drag_indicator_rounded, size: 18, color: Colors.white24),
+                    ],
+                  ),
+                  onTap: () => widget.onSelectElement(elem.id),
                 ),
-                onTap: () => widget.onSelectElement(elem.id),
               ),
             );
           },
