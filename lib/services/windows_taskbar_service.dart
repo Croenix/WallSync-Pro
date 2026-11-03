@@ -1,11 +1,52 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import '../models/taskbar_settings.dart';
 import 'overlay_lifecycle_service.dart';
+import 'process_diagnostics.dart';
 import 'settings_service.dart';
 import 'wallpaper_engine.dart';
+
+class DockWindowInfo {
+  const DockWindowInfo({
+    required this.handle,
+    required this.processId,
+    required this.title,
+    required this.executable,
+    required this.isForeground,
+  });
+
+  final int handle;
+  final int processId;
+  final String title;
+  final String executable;
+  final bool isForeground;
+
+  factory DockWindowInfo.fromMap(Map<dynamic, dynamic> map) {
+    return DockWindowInfo(
+      handle: (map['hwnd'] as num?)?.toInt() ?? 0,
+      processId: (map['pid'] as num?)?.toInt() ?? 0,
+      title: map['title'] as String? ?? '',
+      executable: map['executable'] as String? ?? '',
+      isForeground: map['isForeground'] as bool? ?? false,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is DockWindowInfo &&
+      other.handle == handle &&
+      other.processId == processId &&
+      other.title == title &&
+      other.executable == executable &&
+      other.isForeground == isForeground;
+
+  @override
+  int get hashCode =>
+      Object.hash(handle, processId, title, executable, isForeground);
+}
 
 /// Service responsible for managing Windows desktop taskbar replacement,
 /// custom dock integration, visibility control, crash recovery, and 3-tier resets.
@@ -42,17 +83,17 @@ class WindowsTaskbarService extends ChangeNotifier {
   bool get operationInProgress => _operationInProgress;
 
   TaskbarActivationSnapshot get runtimeState => TaskbarActivationSnapshot(
-        lifecycleState: _resolveLifecycleState(),
-        operationId: _currentOperationId,
-        configurationRevision: _configurationRevision,
-        operationInProgress: _operationInProgress,
-        lastUserAction: _lastUserAction,
-        lastFailureAt: _lastFailureAt,
-        taskbarMode: _settings.resolvedDesktopTaskbarMode,
-        customTaskbarEnabled: _settings.customTaskbarEnabled,
-        nativeTaskbarHidden: _settings.nativeTaskbarHideEnabled,
-        nativeTaskbarVisible: _settings.nativeTaskbarHideEnabled == false,
-      );
+    lifecycleState: _resolveLifecycleState(),
+    operationId: _currentOperationId,
+    configurationRevision: _configurationRevision,
+    operationInProgress: _operationInProgress,
+    lastUserAction: _lastUserAction,
+    lastFailureAt: _lastFailureAt,
+    taskbarMode: _settings.resolvedDesktopTaskbarMode,
+    customTaskbarEnabled: _settings.customTaskbarEnabled,
+    nativeTaskbarHidden: _settings.nativeTaskbarHideEnabled,
+    nativeTaskbarVisible: _settings.nativeTaskbarHideEnabled == false,
+  );
 
   TaskbarLifecycleState _resolveLifecycleState() {
     switch (_state) {
@@ -96,6 +137,95 @@ class WindowsTaskbarService extends ChangeNotifier {
 
   bool get isWindowsTaskbarHidden =>
       _state == TaskbarReplacementState.windowsTaskbarHidden;
+
+  Future<List<DockWindowInfo>> getDesktopWindows() async {
+    if (!Platform.isWindows) return const [];
+    try {
+      final result = await _channel.invokeMethod<List<dynamic>>(
+        'getDesktopWindows',
+      );
+      return (result ?? const [])
+          .whereType<Map<dynamic, dynamic>>()
+          .map(DockWindowInfo.fromMap)
+          .where((window) => window.handle != 0 && window.title.isNotEmpty)
+          .toList(growable: false);
+    } catch (e) {
+      logWarning(
+        'WindowsTaskbarService',
+        'Could not enumerate desktop windows: $e',
+      );
+      return const [];
+    }
+  }
+
+  Future<bool> activateDesktopWindow(int handle) async {
+    if (!Platform.isWindows || handle == 0) return false;
+    try {
+      final activated = await _channel.invokeMethod<bool>(
+        'activateDesktopWindow',
+        {'hwnd': handle},
+      );
+      if (activated != true) {
+        logWarning(
+          'WindowsTaskbarService',
+          'Windows could not activate desktop window $handle.',
+        );
+      }
+      return activated == true;
+    } catch (e) {
+      logWarning(
+        'WindowsTaskbarService',
+        'Could not activate desktop window $handle: $e',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> launchDockItem(String target) async {
+    final normalizedTarget = target.trim();
+    if (!Platform.isWindows || normalizedTarget.isEmpty) return false;
+    try {
+      final launched = await _channel.invokeMethod<bool>('launchDockItem', {
+        'target': normalizedTarget,
+      });
+      if (launched != true) {
+        logWarning(
+          'WindowsTaskbarService',
+          'Windows could not open dock target "$normalizedTarget".',
+        );
+      }
+      return launched == true;
+    } catch (e) {
+      logWarning(
+        'WindowsTaskbarService',
+        'Could not open dock target "$normalizedTarget": $e',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> runTaskbarCommand(String command) async {
+    if (!Platform.isWindows || command.trim().isEmpty) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('runTaskbarCommand', {
+        'command': command,
+      });
+      if (result != true) {
+        logWarning(
+          'WindowsTaskbarService',
+          'Windows did not complete taskbar command "$command".',
+        );
+      }
+      return result == true;
+    } catch (e) {
+      logError(
+        'WindowsTaskbarService',
+        'Taskbar command "$command" failed: $e',
+        e,
+      );
+      return false;
+    }
+  }
 
   bool _isTest = false;
   bool get isTest => _isTest || _isTestEnvironment();
@@ -145,16 +275,19 @@ class WindowsTaskbarService extends ChangeNotifier {
   Future<Map<String, dynamic>> verifyDockWindow(
     int pid, {
     String instanceId = 'taskbar_dock',
+    int? operationId,
   }) async {
     if (isTest) {
       return {
         'found': true,
         'hwnd': 123456,
         'pidMatches': true,
+        'ownerPid': pid,
         'isVisible': true,
         'isIconic': false,
         'isEnabled': true,
         'onMonitor': true,
+        'ipcReady': operationId != null,
         'rect': {
           'left': 0,
           'top': 1030,
@@ -169,6 +302,7 @@ class WindowsTaskbarService extends ChangeNotifier {
       final res = await _channel.invokeMethod<Map>('verifyDockWindow', {
         'pid': pid,
         'instanceId': instanceId,
+        'operationId': ?operationId,
       });
       if (res != null) {
         return Map<String, dynamic>.from(res);
@@ -186,6 +320,41 @@ class WindowsTaskbarService extends ChangeNotifier {
       'onMonitor': false,
       'rect': {},
     };
+  }
+
+  Future<Map<String, dynamic>> _ensureDockWindowVisible(
+    int pid, {
+    int? operationId,
+  }) async {
+    var verification = await verifyDockWindow(pid, operationId: operationId);
+    if (verification['found'] != true ||
+        verification['pidMatches'] != true ||
+        (verification['isVisible'] == true &&
+            verification['isIconic'] != true)) {
+      return verification;
+    }
+
+    try {
+      final activated = await _channel.invokeMethod<bool>(
+        'activateDockWindow',
+        {'pid': pid, 'instanceId': 'taskbar_dock'},
+      );
+      if (activated == true) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        verification = await verifyDockWindow(pid, operationId: operationId);
+      } else {
+        logWarning(
+          'WindowsTaskbarService',
+          'Could not reactivate the existing dock window (PID $pid).',
+        );
+      }
+    } catch (e) {
+      logWarning(
+        'WindowsTaskbarService',
+        'Dock window reactivation failed for PID $pid: $e',
+      );
+    }
+    return verification;
   }
 
   /// Initialize the service, listen for native window messages (Explorer restarts),
@@ -269,8 +438,7 @@ class WindowsTaskbarService extends ChangeNotifier {
   /// Query the native Windows taskbar HWND and visibility information.
   Future<Map<String, dynamic>> getWindowsTaskbarInfo() async {
     try {
-      final res =
-          await _channel.invokeMethod<Map>('getWindowsTaskbarInfo');
+      final res = await _channel.invokeMethod<Map>('getWindowsTaskbarInfo');
       if (res != null) {
         return Map<String, dynamic>.from(res);
       }
@@ -342,6 +510,15 @@ class WindowsTaskbarService extends ChangeNotifier {
       // Step 1: Query initial state & HWND
       final info = await getWindowsTaskbarInfo();
       final wasInitiallyVisible = info['allVisible'] as bool? ?? true;
+      final secondaryVisibleCount =
+          (info['secondaryVisibleCount'] as num?)?.toInt() ?? 0;
+      if (hideNativeTaskbar && secondaryVisibleCount > 0) {
+        throw Exception(
+          'Full Replacement requires a verified replacement window on each '
+          'display; $secondaryVisibleCount secondary Windows taskbar(s) are '
+          'visible, so they will be left untouched.',
+        );
+      }
       if (opId != _currentOperationId) {
         logWarning(
           'WindowsTaskbarService',
@@ -353,7 +530,7 @@ class WindowsTaskbarService extends ChangeNotifier {
 
       // Step 2: Ensure WallSync Custom Taskbar / Dock window is running
       _updateState(TaskbarReplacementState.customTaskbarCreating);
-      await syncDockSettings();
+      await syncDockSettings(replacementMode: hideNativeTaskbar);
       if (opId != _currentOperationId) {
         logWarning(
           'WindowsTaskbarService',
@@ -365,14 +542,16 @@ class WindowsTaskbarService extends ChangeNotifier {
       final dockRunning = _taskbarSpawner != null
           ? await _taskbarSpawner!()
           : (isTest
-              ? true
+                ? true
                 : await _ensureDockProcessRunning(
                     operationId: opId,
                     configurationRevision: configRev,
                   ));
 
       if (!dockRunning) {
-        throw Exception('Failed to spawn or verify custom taskbar dock window.');
+        throw Exception(
+          'Failed to spawn or verify custom taskbar dock window.',
+        );
       }
 
       if (opId != _currentOperationId) {
@@ -385,12 +564,28 @@ class WindowsTaskbarService extends ChangeNotifier {
 
       // Step 3, 4, 5, 6: Authoritative Verification Gate
       // Verify Process, HWND, IPC, and Visibility BEFORE touching Windows Taskbar!
+      OverlayProcessRecord? dockRecord;
       if (!isTest) {
         // Criterion 2 & 3: Process Record & Identity
-        final dockRecord = await _getDockRecord();
+        dockRecord = await _getDockRecord();
         if (dockRecord == null) {
           throw Exception(
             'Criterion failed: Dock process record missing after startup.',
+          );
+        }
+        if (!dockRecord.ready ||
+            dockRecord.instanceId != 'taskbar_dock' ||
+            dockRecord.processMode != 'taskbar_dock' ||
+            dockRecord.operationId != opId ||
+            dockRecord.configurationRevision != configRev ||
+            dockRecord.hwnd == null ||
+            dockRecord.diagnosticLogPath == null) {
+          throw Exception(
+            'Criterion failed: Dock process record identity is incomplete or '
+            'does not match operation $opId revision $configRev '
+            '(mode=${dockRecord.processMode}, instance=${dockRecord.instanceId}, '
+            'operation=${dockRecord.operationId}, revision=${dockRecord.configurationRevision}, '
+            'hwnd=${dockRecord.hwnd}).',
           );
         }
         final inspection = await _inspectProcess(dockRecord.pid);
@@ -401,38 +596,82 @@ class WindowsTaskbarService extends ChangeNotifier {
             'Criterion failed: Dock process PID ${dockRecord.pid} not running or identity mismatch.',
           );
         }
+      }
 
-        // Criterion 4 & 5: Native Window HWND & PID Match
-        final windowVerification = await verifyDockWindow(dockRecord.pid);
-        if (windowVerification['found'] != true) {
+      final dockPid = dockRecord?.pid ?? 5678;
+      final dockHwnd = dockRecord?.hwnd ?? 123456;
+      Map<String, dynamic>? replacementTargetBounds;
+      if (hideNativeTaskbar) {
+        final positioning = await _channel.invokeMethod<Map>(
+          'positionDockForReplacement',
+          {'pid': dockPid, 'hwnd': dockHwnd},
+        );
+        if (positioning == null ||
+            positioning['success'] != true ||
+            positioning['hwnd'] != dockHwnd ||
+            positioning['ownerPid'] != dockPid ||
+            positioning['targetRect'] is! Map) {
           throw Exception(
-            'Criterion failed: Dock window HWND not found for PID ${dockRecord.pid}.',
+            'Replacement dock could not be aligned to the native taskbar '
+            'bounds (positioning=$positioning).',
           );
         }
-        if (windowVerification['pidMatches'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window HWND does not match PID ${dockRecord.pid}.',
-          );
-        }
+        replacementTargetBounds = Map<String, dynamic>.from(
+          positioning['targetRect'] as Map,
+        );
+      }
 
-        // Criterion 6, 7, 8: Desktop Visibility, Usable Bounds & Enabled
-        if (windowVerification['isVisible'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window is not visible on desktop.',
-          );
-        }
-        final rect = windowVerification['rect'] as Map?;
-        final width = (rect?['width'] as num?)?.toInt() ?? 0;
-        final height = (rect?['height'] as num?)?.toInt() ?? 0;
-        if (width <= 0 || height <= 0) {
-          throw Exception(
-            'Criterion failed: Dock window bounds are unusable (${width}x$height).',
-          );
-        }
-        if (windowVerification['isEnabled'] != true) {
-          throw Exception(
-            'Criterion failed: Dock window is not interactive / enabled.',
-          );
+      final windowVerification = isTest
+          ? await verifyDockWindow(dockPid, operationId: opId)
+          : await _ensureDockWindowVisible(dockPid, operationId: opId);
+      if (windowVerification['found'] != true ||
+          windowVerification['hwnd'] != dockHwnd) {
+        throw Exception(
+          'Criterion failed: Dock window HWND not found for PID $dockPid.',
+        );
+      }
+      if (windowVerification['pidMatches'] != true ||
+          windowVerification['ownerPid'] != dockPid) {
+        throw Exception(
+          'Criterion failed: Dock HWND owner PID does not match $dockPid.',
+        );
+      }
+      if (windowVerification['isVisible'] != true) {
+        throw Exception(
+          'Criterion failed: Dock window is not visible on desktop.',
+        );
+      }
+      final rect = windowVerification['rect'] as Map?;
+      final width = (rect?['width'] as num?)?.toInt() ?? 0;
+      final height = (rect?['height'] as num?)?.toInt() ?? 0;
+      if (width <= 0 || height <= 0) {
+        throw Exception(
+          'Criterion failed: Dock window bounds are unusable (${width}x$height).',
+        );
+      }
+      if (windowVerification['isEnabled'] != true) {
+        throw Exception(
+          'Criterion failed: Dock window is not interactive / enabled.',
+        );
+      }
+      if (windowVerification['isIconic'] == true ||
+          windowVerification['onMonitor'] != true ||
+          windowVerification['ipcReady'] != true) {
+        throw Exception(
+          'Criterion failed: Dock window positioning or IPC readiness '
+          'failed (verification=$windowVerification).',
+        );
+      }
+      if (replacementTargetBounds != null) {
+        for (final edge in const ['left', 'top', 'right', 'bottom']) {
+          final expected = (replacementTargetBounds[edge] as num?)?.toInt();
+          final actual = (rect?[edge] as num?)?.toInt();
+          if (expected == null || actual != expected) {
+            throw Exception(
+              'Replacement dock $edge bound $actual does not match the '
+              'native taskbar bound $expected.',
+            );
+          }
         }
       }
 
@@ -464,7 +703,9 @@ class WindowsTaskbarService extends ChangeNotifier {
         _updateState(TaskbarReplacementState.nativeTaskbarHidePending);
         final hideSuccess = await setWindowsTaskbarVisibility(false);
         if (!hideSuccess) {
-          throw Exception('Failed to hide native Windows taskbar via platform channel.');
+          throw Exception(
+            'Failed to hide native Windows taskbar via platform channel.',
+          );
         }
 
         // Verify taskbar is hidden
@@ -597,9 +838,15 @@ class WindowsTaskbarService extends ChangeNotifier {
 
   /// Synchronize all current taskbar and dock settings to the dedicated
   /// `overlay_settings_taskbar_dock.json` instance file for live hot-reloading.
-  Future<void> syncDockSettings([WidgetSettings? settings]) async {
+  Future<void> syncDockSettings({
+    WidgetSettings? settings,
+    bool? replacementMode,
+  }) async {
     try {
       final current = settings ?? _settingsService.settings;
+      final isReplacementMode =
+          replacementMode ?? current.taskbarSettings.nativeTaskbarHideEnabled;
+      final isActivationSync = replacementMode != null;
       final dockService = SettingsService(instanceId: 'taskbar_dock');
       WidgetSettings dockCurrent;
       try {
@@ -610,7 +857,14 @@ class WindowsTaskbarService extends ChangeNotifier {
 
       final updated = dockCurrent.copyWith(
         widgetTemplate: 'taskbar_dock',
-        taskbarSettings: current.taskbarSettings,
+        taskbarSettings: current.taskbarSettings.copyWith(
+          customTaskbarEnabled:
+              current.taskbarSettings.customTaskbarEnabled || isActivationSync,
+          nativeTaskbarHideEnabled: isReplacementMode,
+          desktopTaskbarMode: isReplacementMode
+              ? DesktopTaskbarMode.customTaskbar
+              : DesktopTaskbarMode.dockOnly,
+        ),
         taskbarBgColor: current.taskbarBgColor,
         taskbarBorderColor: current.taskbarBorderColor,
         taskbarAccentColor: current.taskbarAccentColor,
@@ -632,9 +886,18 @@ class WindowsTaskbarService extends ChangeNotifier {
         exitOverlay: false,
       );
       await dockService.saveSettings(updated, immediate: true);
-      logInfo('WindowsTaskbarService', 'Synced taskbar settings to taskbar_dock instance.');
-    } catch (e) {
-      logWarning('WindowsTaskbarService', 'Could not sync dock settings: $e');
+      logInfo(
+        'WindowsTaskbarService',
+        'Synced taskbar settings to taskbar_dock instance.',
+      );
+    } catch (e, st) {
+      logError(
+        'WindowsTaskbarService',
+        'Could not sync dock settings; activation cannot continue: $e',
+        e,
+        st,
+      );
+      rethrow;
     }
   }
 
@@ -651,46 +914,125 @@ class WindowsTaskbarService extends ChangeNotifier {
 
     // Check if already running and healthy, OR clean up stale PID file
     if (await pidFile.exists()) {
+      late final String content;
       try {
-        final content = (await pidFile.readAsString()).trim();
-        final record = OverlayProcessRecord.tryParse(content);
-        if (record != null) {
-          final inspection = await _inspectProcess(record.pid);
-          if (inspection != null &&
-              inspection.isRunning &&
-              inspection.matches(record)) {
-            final dockVerification = await verifyDockWindow(record.pid);
-            if (dockVerification['found'] == true &&
-                dockVerification['isVisible'] == true &&
-                (dockVerification['rect']?['width'] ?? 0) > 0) {
-              logInfo(
-                'WindowsTaskbarService',
-                'Dock overlay already running, visible and verified (PID ${record.pid}, HWND ${dockVerification['hwnd']}).',
-              );
-              return true;
-            }
-          } else {
-            logWarning(
-              'WindowsTaskbarService',
-              'Found stale PID file for dead process (PID ${record.pid}); cleaning up before spawn.',
-            );
-            try {
-              await pidFile.delete();
-            } catch (_) {}
-          }
-        } else {
-          try {
-            await pidFile.delete();
-          } catch (_) {}
-        }
+        content = (await pidFile.readAsString()).trim();
       } catch (e) {
+        logError(
+          'WindowsTaskbarService',
+          'Could not read the dock PID record at ${pidFile.path}; refusing to spawn a second dock.',
+          e,
+        );
+        return false;
+      }
+      final record = OverlayProcessRecord.tryParse(content);
+      if (record == null) {
+        logError(
+          'WindowsTaskbarService',
+          'Dock PID record at ${pidFile.path} is malformed; retaining it until its process identity can be verified.',
+        );
+        return false;
+      }
+      final inspection = await _inspectProcess(record.pid);
+      if (inspection == null) {
+        logError(
+          'WindowsTaskbarService',
+          'Could not verify dock PID ${record.pid}; refusing to delete its record or launch a duplicate.',
+        );
+        return false;
+      }
+      var replacedExistingDock = false;
+      if (inspection.isRunning && inspection.matches(record)) {
+        final operationMatches =
+            operationId == null || record.operationId == operationId;
+        final revisionMatches =
+            configurationRevision == null ||
+            record.configurationRevision == configurationRevision;
+        final dockVerification = await _ensureDockWindowVisible(
+          record.pid,
+          operationId: record.operationId,
+        );
+        if (operationMatches &&
+            revisionMatches &&
+            record.instanceId == 'taskbar_dock' &&
+            record.processMode == 'taskbar_dock' &&
+            record.ready &&
+            record.hwnd != null &&
+            dockVerification['found'] == true &&
+            dockVerification['hwnd'] == record.hwnd &&
+            dockVerification['pidMatches'] == true &&
+            dockVerification['ownerPid'] == record.pid &&
+            dockVerification['isVisible'] == true &&
+            dockVerification['isEnabled'] == true &&
+            dockVerification['isIconic'] != true &&
+            dockVerification['onMonitor'] == true &&
+            dockVerification['ipcReady'] == true &&
+            (dockVerification['rect']?['width'] ?? 0) > 0 &&
+            (dockVerification['rect']?['height'] ?? 0) > 0) {
+          logInfo(
+            'WindowsTaskbarService',
+            'Dock overlay already running and fully verified (PID ${record.pid}, HWND ${record.hwnd}, operationId=${record.operationId}, revision=${record.configurationRevision}).',
+          );
+          return true;
+        }
         logWarning(
           'WindowsTaskbarService',
-          'Error checking existing PID record: $e',
+          'Replacing the verified existing dock process before starting the new activation identity (PID=${record.pid}, operationId=${record.operationId}, requestedOperationId=$operationId, revision=${record.configurationRevision}, requestedRevision=$configurationRevision).',
+        );
+        if (!await setWindowsTaskbarVisibility(true)) {
+          logError(
+            'WindowsTaskbarService',
+            'Could not restore the native taskbar before replacing the dock process.',
+          );
+          return false;
+        }
+        await _terminateDockProcess();
+        final stoppedInspection = await _inspectProcess(record.pid);
+        if (stoppedInspection == null || stoppedInspection.isRunning) {
+          logError(
+            'WindowsTaskbarService',
+            'Existing dock PID ${record.pid} could not be verified stopped; refusing to start a duplicate.',
+          );
+          return false;
+        }
+        if (await pidFile.exists()) {
+          try {
+            await pidFile.delete();
+          } on FileSystemException catch (error) {
+            logError(
+              'WindowsTaskbarService',
+              'Could not remove the verified stopped dock record ${pidFile.path}.',
+              error,
+            );
+            return false;
+          }
+        }
+        replacedExistingDock = true;
+      }
+
+      if (!replacedExistingDock) {
+        if (inspection.isRunning) {
+          logError(
+            'WindowsTaskbarService',
+            'Dock PID ${record.pid} is running but its process identity does not match the record; refusing to delete the record or start another dock.',
+          );
+          return false;
+        }
+
+        logWarning(
+          'WindowsTaskbarService',
+          'Dock PID record points to a stopped or mismatched process (PID ${record.pid}); removing only the verified stale record.',
         );
         try {
           await pidFile.delete();
-        } catch (_) {}
+        } on FileSystemException catch (error) {
+          logError(
+            'WindowsTaskbarService',
+            'Could not remove stale dock PID record ${pidFile.path}.',
+            error,
+          );
+          return false;
+        }
       }
     }
 
@@ -708,7 +1050,12 @@ class WindowsTaskbarService extends ChangeNotifier {
           appPath = runtimeExe.path;
           workingDir = runtimeDir.path;
         }
-      } catch (_) {}
+      } catch (error) {
+        logWarning(
+          'WindowsTaskbarService',
+          'Could not prepare the shadow runtime; using the installed executable. Error: $error',
+        );
+      }
 
       if (!await File(appPath).exists()) {
         logError(
@@ -732,73 +1079,253 @@ class WindowsTaskbarService extends ChangeNotifier {
         'WindowsTaskbarService',
         'Launching dock overlay directly: $appPath with args=$launchArgs',
       );
-      int? launchedPid;
-      try {
-        final process = await Process.start(
-          appPath,
-          launchArgs,
-          workingDirectory: workingDir,
-          mode: ProcessStartMode.detached,
+      final process = await Process.start(
+        appPath,
+        launchArgs,
+        workingDirectory: workingDir,
+        mode: ProcessStartMode.normal,
+      );
+      final launchedPid = process.pid;
+      File? childDiagnosticFile;
+      int? childExitCode;
+
+      Future<File?> findChildLog() async {
+        for (var attempt = 0; attempt < 40; attempt++) {
+          final file = await ProcessDiagnosticLog.findForProcess(launchedPid);
+          if (file != null) return file;
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        return null;
+      }
+
+      void captureChildOutput(Stream<List<int>> output, String stage) {
+        output
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .transform(const LineSplitter())
+            .listen(
+              (line) {
+                unawaited(() async {
+                  try {
+                    childDiagnosticFile ??= await findChildLog();
+                    final file = childDiagnosticFile;
+                    if (file != null) {
+                      await ProcessDiagnosticLog.appendToFile(
+                        file,
+                        stage,
+                        'processMode=main parentPid=$pid childPid=$launchedPid '
+                        'output="$line"',
+                      );
+                    }
+                    logInfo(
+                      'WindowsTaskbarService',
+                      'Child PID $launchedPid $stage: $line',
+                    );
+                  } catch (error, stackTrace) {
+                    logError(
+                      'WindowsTaskbarService',
+                      'Could not capture child PID $launchedPid $stage.',
+                      error,
+                      stackTrace,
+                    );
+                  }
+                }());
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                logError(
+                  'WindowsTaskbarService',
+                  'Child PID $launchedPid $stage stream failed.',
+                  error,
+                  stackTrace,
+                );
+              },
+            );
+      }
+
+      captureChildOutput(process.stdout, 'child_stdout');
+      captureChildOutput(process.stderr, 'child_stderr');
+      unawaited(
+        process.exitCode
+            .then<void>((exitCode) async {
+              childExitCode = exitCode;
+              childDiagnosticFile ??= await findChildLog();
+              final file = childDiagnosticFile;
+              final lastStage = await ProcessDiagnosticLog.lastCompletedStage(
+                file,
+              );
+              if (file != null) {
+                await ProcessDiagnosticLog.appendToFile(
+                  file,
+                  'child_process_exit',
+                  'processMode=main parentPid=$pid childPid=$launchedPid '
+                      'exitCode=$exitCode lastCompletedStartupStage=$lastStage',
+                );
+              }
+              logInfo(
+                'WindowsTaskbarService',
+                'Dock child exited: PID=$launchedPid exitCode=$exitCode '
+                    'lastCompletedStartupStage=$lastStage '
+                    'diagnosticLog=${file?.path ?? '<not-created>'}.',
+              );
+            })
+            .catchError((Object error, StackTrace stackTrace) {
+              logError(
+                'WindowsTaskbarService',
+                'Could not observe dock child PID $launchedPid exit.',
+                error,
+                stackTrace,
+              );
+            }),
+      );
+      childDiagnosticFile = await findChildLog();
+      if (childDiagnosticFile == null) {
+        logError(
+          'WindowsTaskbarService',
+          'Dock child PID $launchedPid started but did not create its native startup log.',
         );
-        launchedPid = process.pid;
+      } else {
         logInfo(
           'WindowsTaskbarService',
-          'Dock overlay process started (PID $launchedPid, opId=$operationId, rev=$configurationRevision).',
+          'Dock child PID $launchedPid diagnostic log: ${childDiagnosticFile!.path}',
         );
-      } catch (directError) {
-        logWarning(
-          'WindowsTaskbarService',
-          'Direct start failed ($directError); falling back to cmd.exe',
+        await ProcessDiagnosticLog.appendToFile(
+          childDiagnosticFile!,
+          'parent_process_spawned',
+          'processMode=main parentPid=$pid childPid=$launchedPid '
+              'operationId=$operationId configurationRevision=$configurationRevision',
         );
-        final process = await Process.start(
-          'cmd.exe',
-          ['/c', 'start', '""',
-            appPath,
-            ...launchArgs],
-          workingDirectory: workingDir,
-          mode: ProcessStartMode.detached,
-        );
-        launchedPid = process.pid;
       }
+      logInfo(
+        'WindowsTaskbarService',
+        'Dock overlay process started (PID $launchedPid, opId=$operationId, rev=$configurationRevision).',
+      );
 
       // Wait for readiness with distinct diagnostics
       final readiness = await waitForOverlayReadiness(
         readRecord: () async {
           if (!await pidFile.exists()) return null;
           final content = (await pidFile.readAsString()).trim();
-          return content.isEmpty ? null : OverlayProcessRecord.tryParse(content);
+          return content.isEmpty
+              ? null
+              : OverlayProcessRecord.tryParse(content);
         },
         inspectProcess: _inspectProcess,
         expectedPid: launchedPid,
-        timeout: const Duration(seconds: 10),
+        expectedInstanceId: 'taskbar_dock',
+        expectedProcessMode: 'taskbar_dock',
+        expectedOperationId: operationId,
+        expectedConfigurationRevision: configurationRevision,
+        requireWindowHandle: true,
+        timeout: overlayStartupReadinessTimeout,
         pollInterval: const Duration(milliseconds: 150),
+        onStatusChanged: (status, record, inspection, elapsed) {
+          logInfo(
+            'WindowsTaskbarService',
+            'Dock readiness status=${status.name}, '
+                'state=${record?.state.name}, stage=${record?.stage.name}, '
+                'pid=${record?.pid ?? launchedPid}, '
+                'processMode=${record?.processMode}, '
+                'instanceId=${record?.instanceId}, '
+                'operationId=${record?.operationId}, '
+                'revision=${record?.configurationRevision}, '
+                'hwnd=${record?.hwnd}, '
+                'processRunning=${inspection?.isRunning}, '
+                'ready=${record?.ready}, elapsed=${elapsed.inMilliseconds}ms.',
+          );
+        },
       );
 
       if (!readiness.isReady || readiness.record == null) {
+        if (readiness.inspection?.isRunning == false) {
+          childExitCode ??= await process.exitCode;
+        }
+        childDiagnosticFile ??= await findChildLog();
+        final lastStage = await ProcessDiagnosticLog.lastCompletedStage(
+          childDiagnosticFile,
+        );
         final lastErr =
             readiness.record?.failureReason ??
             'Handshake incomplete or timed out';
         logError(
           'WindowsTaskbarService',
-          'Dock overlay readiness failed (status=${readiness.status.name}, pid=${readiness.record?.pid ?? launchedPid}, hwnd=${readiness.record?.hwnd ?? 0}, stage=${readiness.stage.name}, elapsed=${readiness.elapsed.inMilliseconds}ms, error=$lastErr).',
+          'Dock overlay readiness failed (status=${readiness.status.name}, '
+              'pid=${readiness.record?.pid ?? launchedPid}, '
+              'exitCode=${childExitCode ?? 'still-running'}, '
+              'lastCompletedStartupStage=$lastStage, '
+              'instanceId=${readiness.record?.instanceId}, '
+              'processMode=${readiness.record?.processMode}, '
+              'operationId=${readiness.record?.operationId}, '
+              'revision=${readiness.record?.configurationRevision}, '
+              'hwnd=${readiness.record?.hwnd ?? 0}, '
+              'stage=${readiness.stage.name}, '
+              'elapsed=${readiness.elapsed.inMilliseconds}ms, '
+              'diagnosticLog=${childDiagnosticFile?.path ?? '<not-created>'}, '
+              'error=$lastErr).',
         );
         return false;
       }
 
       // Win32 HWND verification
-      final dockVerification = await verifyDockWindow(readiness.record!.pid);
+      final dockVerification = await _ensureDockWindowVisible(
+        readiness.record!.pid,
+        operationId: operationId,
+      );
       if (dockVerification['found'] != true ||
-          dockVerification['isVisible'] != true) {
+          dockVerification['hwnd'] != readiness.record!.hwnd ||
+          dockVerification['pidMatches'] != true ||
+          dockVerification['ownerPid'] != readiness.record!.pid ||
+          dockVerification['isVisible'] != true ||
+          dockVerification['isEnabled'] != true ||
+          dockVerification['isIconic'] == true ||
+          dockVerification['onMonitor'] != true ||
+          dockVerification['ipcReady'] != true ||
+          (dockVerification['rect']?['width'] ?? 0) <= 0 ||
+          (dockVerification['rect']?['height'] ?? 0) <= 0) {
         logError(
           'WindowsTaskbarService',
-          'Native dock window verification failed (status=windowVerificationFailed, pid=${readiness.record!.pid}, verification=$dockVerification).',
+          'Native dock window or IPC verification failed '
+              '(status=windowVerificationFailed, pid=${readiness.record!.pid}, '
+              'recordHwnd=${readiness.record!.hwnd}, verification=$dockVerification, '
+              'diagnosticLog=${readiness.record!.diagnosticLogPath}).',
         );
         return false;
       }
 
+      final recordLogPath = readiness.record!.diagnosticLogPath;
+      if (recordLogPath == null || recordLogPath.isEmpty) {
+        logError(
+          'WindowsTaskbarService',
+          'Dock readiness record did not include its child diagnostic log path.',
+        );
+        return false;
+      }
+      childDiagnosticFile = File(recordLogPath);
+      if (!await childDiagnosticFile!.exists()) {
+        logError(
+          'WindowsTaskbarService',
+          'Dock child diagnostic log is missing at $recordLogPath.',
+        );
+        return false;
+      }
+      await ProcessDiagnosticLog.appendToFile(
+        childDiagnosticFile!,
+        'parent_connection_acknowledged',
+        'processMode=main parentPid=$pid childPid=$launchedPid '
+            'instanceId=taskbar_dock operationId=$operationId '
+            'configurationRevision=$configurationRevision '
+            'hwnd=${readiness.record!.hwnd} hwndOwnerPid=${dockVerification['ownerPid']} '
+            'ipcReady=${dockVerification['ipcReady']} '
+            'visible=${dockVerification['isVisible']} '
+            'onMonitor=${dockVerification['onMonitor']}',
+      );
+
       logInfo(
         'WindowsTaskbarService',
-        'Dock overlay launched and verified successfully (PID ${readiness.record!.pid}, HWND ${dockVerification['hwnd']}, stage=${readiness.stage.name}, bounds=${dockVerification['rect']}).',
+        'Dock overlay launched and verified successfully '
+            '(PID ${readiness.record!.pid}, HWND ${dockVerification['hwnd']}, '
+            'ownerPid=${dockVerification['ownerPid']}, ipcReady=${dockVerification['ipcReady']}, '
+            'operationId=$operationId, revision=$configurationRevision, '
+            'stage=${readiness.stage.name}, bounds=${dockVerification['rect']}, '
+            'diagnosticLog=$recordLogPath).',
       );
       return true;
     } catch (e, st) {
@@ -815,32 +1342,26 @@ class WindowsTaskbarService extends ChangeNotifier {
   Future<void> _terminateDockProcess() async {
     final dockService = SettingsService(instanceId: 'taskbar_dock');
     try {
-      // 1. Tell overlay to exit gracefully via settings file
-      final dockSettings = await dockService.loadSettings();
-      await dockService.saveSettings(dockSettings.copyWith(exitOverlay: true), immediate: true);
-
-      // 2. Check PID file and wait briefly for clean exit
-      final pidFile = await dockService.pidFile;
-      if (await pidFile.exists()) {
-        final content = (await pidFile.readAsString()).trim();
-        final record = OverlayProcessRecord.tryParse(content);
-        if (record != null && Platform.isWindows) {
-          final sw = Stopwatch()..start();
-          while (sw.elapsedMilliseconds < 1200) {
-            final inspection = await _inspectProcess(record.pid);
-            if (inspection == null || !inspection.isRunning) break;
-            await Future.delayed(const Duration(milliseconds: 150));
-          }
-          final finalInspection = await _inspectProcess(record.pid);
-          if (finalInspection != null && finalInspection.isRunning) {
-            logWarning('WindowsTaskbarService', 'Dock overlay (PID ${record.pid}) did not exit gracefully; terminating.');
-            Process.killPid(record.pid);
-          }
-        }
-        try { await pidFile.delete(); } catch (_) {}
+      final result = await OverlayLifecycleService.forApp(dockService).close();
+      if (result == OverlayCloseResult.stoppedGracefully ||
+          result == OverlayCloseResult.stoppedAfterForceTermination ||
+          result == OverlayCloseResult.noProcessRecord) {
+        logInfo(
+          'WindowsTaskbarService',
+          'Dock process shutdown completed with lifecycle result=${result.name}.',
+        );
+      } else {
+        logError(
+          'WindowsTaskbarService',
+          'Dock process shutdown could not be verified; PID record was retained when identity was uncertain (result=${result.name}).',
+        );
       }
     } catch (e) {
-      logWarning('WindowsTaskbarService', 'Error terminating dock process: $e');
+      logError(
+        'WindowsTaskbarService',
+        'Error terminating dock process with verified lifecycle handling.',
+        e,
+      );
     }
   }
 
@@ -864,7 +1385,7 @@ class WindowsTaskbarService extends ChangeNotifier {
       taskbarFontSize: 11.0,
     );
     await _settingsService.save(updated);
-    await syncDockSettings(updated);
+    await syncDockSettings(settings: updated);
     notifyListeners();
   }
 
@@ -891,7 +1412,7 @@ class WindowsTaskbarService extends ChangeNotifier {
     );
     _settings = updated.taskbarSettings;
     await _settingsService.save(updated);
-    await syncDockSettings(updated);
+    await syncDockSettings(settings: updated);
     notifyListeners();
   }
 
@@ -932,7 +1453,7 @@ class WindowsTaskbarService extends ChangeNotifier {
 
     _settings = defaultSettings;
     await _settingsService.save(updated);
-    await syncDockSettings(updated);
+    await syncDockSettings(settings: updated);
     _updateState(TaskbarReplacementState.windowsTaskbarActive);
     notifyListeners();
   }
@@ -941,7 +1462,7 @@ class WindowsTaskbarService extends ChangeNotifier {
     final current = _settingsService.settings;
     final updated = current.copyWith(taskbarSettings: _settings);
     await _settingsService.save(updated);
-    await syncDockSettings(updated);
+    await syncDockSettings(settings: updated);
     notifyListeners();
   }
 }

@@ -22,10 +22,14 @@ import '../services/discord_ipc_service.dart';
 import '../services/steam_monitor_service.dart';
 import '../services/device_optimization_service.dart';
 import '../services/live_wallpaper_manager.dart';
+import '../services/windows_taskbar_service.dart';
 import 'custom_widget_renderer.dart';
 import '../models/desktop_studio_template.dart';
 
-Future<Uint8List> _decodeMediaThumbnailAsync(String encoded, String owner) async {
+Future<Uint8List> _decodeMediaThumbnailAsync(
+  String encoded,
+  String owner,
+) async {
   final stopwatch = Stopwatch()..start();
   final task = developer.TimelineTask()
     ..start(
@@ -44,7 +48,6 @@ Future<Uint8List> _decodeMediaThumbnailAsync(String encoded, String owner) async
     );
   }
 }
-
 
 class DesktopWidget extends StatefulWidget {
   final WidgetSettings? initialSettings;
@@ -89,6 +92,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
   Timer? _weatherTimer;
   bool _isFetchingWeather = false;
   bool _isRefreshingSystemMetrics = false;
+  final List<DockWindowInfo> _dockWindows = [];
+  bool _isRefreshingDockWindows = false;
+  final Set<String> _hoveredTaskbarActions = {};
+  bool get _isTaskbarReplacement =>
+      _settings.widgetTemplate == 'taskbar_dock' &&
+      _settings.taskbarSettings.nativeTaskbarHideEnabled;
 
   // Media session state
   StreamSubscription<MediaInfo>? _mediaSubscription;
@@ -112,17 +121,22 @@ class _DesktopWidgetState extends State<DesktopWidget>
   SystemMetricsSnapshot _systemMetrics = const SystemMetricsSnapshot();
 
   void _updateSystemStats() {
-    SystemOptimizerService.instance.getPerformanceMetrics().then((metrics) {
-      if (!mounted) return;
-      if (metrics != null) {
-        if (metrics.cpuPercent != null) _cpuUsage = metrics.cpuPercent!;
-        if (metrics.ramLoadPercent != null) _ramUsage = metrics.ramLoadPercent!;
-        return;
-      }
-      _updateSystemStatsFallback();
-    }).catchError((_) {
-      _updateSystemStatsFallback();
-    });
+    SystemOptimizerService.instance
+        .getPerformanceMetrics()
+        .then((metrics) {
+          if (!mounted) return;
+          if (metrics != null) {
+            if (metrics.cpuPercent != null) _cpuUsage = metrics.cpuPercent!;
+            if (metrics.ramLoadPercent != null) {
+              _ramUsage = metrics.ramLoadPercent!;
+            }
+            return;
+          }
+          _updateSystemStatsFallback();
+        })
+        .catchError((_) {
+          _updateSystemStatsFallback();
+        });
   }
 
   void _updateSystemStatsFallback() {
@@ -219,7 +233,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
       return const SystemMetricsSnapshot();
     }
     try {
-      return await SystemMetricsService.readSnapshotAsync(settings.taskbarDiskDrive);
+      return await SystemMetricsService.readSnapshotAsync(
+        settings.taskbarDiskDrive,
+      );
     } catch (error, stackTrace) {
       logWarning(
         'DesktopWidget',
@@ -233,7 +249,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
     if (_isRefreshingSystemMetrics) return;
     _isRefreshingSystemMetrics = true;
     try {
-      final metrics = await SystemMetricsService.readSnapshotAsync(_settings.taskbarDiskDrive);
+      final metrics = await SystemMetricsService.readSnapshotAsync(
+        _settings.taskbarDiskDrive,
+      );
       if (!mounted ||
           !_settingsNeedSystemMetrics(_settings) ||
           metrics == _systemMetrics) {
@@ -287,8 +305,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
   void initState() {
     super.initState();
     _settingsService = SettingsService(instanceId: widget.instanceId);
-    windowManager.addListener(this);
     _settings = widget.initialSettings ?? WidgetSettings();
+    windowManager.addListener(this);
     _isLoading = widget.initialSettings == null;
     _visualEditorModeActive = _settings.editorMode;
     _dateTime = DateTime.now();
@@ -306,6 +324,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
         }
         if (_settingsNeedSystemMetrics(_settings) && timer.tick % 15 == 0) {
           unawaited(_refreshSystemMetrics());
+        }
+        if (_settings.widgetTemplate == 'taskbar_dock' && timer.tick % 2 == 0) {
+          unawaited(_refreshDockWindows());
         }
         if (shouldUpdate) {
           setState(() {
@@ -343,21 +364,22 @@ class _DesktopWidgetState extends State<DesktopWidget>
       _updatePlaybackPosition(_mediaInfo);
       if (_mediaInfo.thumbnail.isNotEmpty) {
         final initialThumb = _mediaInfo.thumbnail;
-        _decodeMediaThumbnailAsync(
-          initialThumb,
-          'initial overlay media state',
-        ).then((bytes) {
-          if (mounted && _mediaInfo.thumbnail == initialThumb) {
-            setState(() => _thumbnailBytes = bytes);
-          }
-        }).catchError((error, stackTrace) {
-          logWarning(
-            'DesktopWidget',
-            'Initial media artwork base64 decoding failed: $error\n$stackTrace',
-          );
-        });
+        _decodeMediaThumbnailAsync(initialThumb, 'initial overlay media state')
+            .then((bytes) {
+              if (mounted && _mediaInfo.thumbnail == initialThumb) {
+                setState(() => _thumbnailBytes = bytes);
+              }
+            })
+            .catchError((error, stackTrace) {
+              logWarning(
+                'DesktopWidget',
+                'Initial media artwork base64 decoding failed: $error\n$stackTrace',
+              );
+            });
       }
-      _mediaSubscription = MediaSessionService().mediaStream.listen(_onMediaInfoChanged);
+      _mediaSubscription = MediaSessionService().mediaStream.listen(
+        _onMediaInfoChanged,
+      );
       MediaSessionService().start(owner: 'overlay');
     } else if (!needed && _mediaSubscription != null) {
       _mediaSubscription?.cancel();
@@ -395,22 +417,21 @@ class _DesktopWidgetState extends State<DesktopWidget>
     if (thumbChanged) {
       final targetThumb = info.thumbnail;
       if (targetThumb.isNotEmpty) {
-        _decodeMediaThumbnailAsync(
-          targetThumb,
-          'overlay media update',
-        ).then((bytes) {
-          if (mounted && _mediaInfo.thumbnail == targetThumb) {
-            setState(() => _thumbnailBytes = bytes);
-          }
-        }).catchError((error, stackTrace) {
-          if (mounted) {
-            setState(() => _thumbnailBytes = null);
-            logWarning(
-              'DesktopWidget',
-              'Media artwork base64 decoding failed: $error\n$stackTrace',
-            );
-          }
-        });
+        _decodeMediaThumbnailAsync(targetThumb, 'overlay media update')
+            .then((bytes) {
+              if (mounted && _mediaInfo.thumbnail == targetThumb) {
+                setState(() => _thumbnailBytes = bytes);
+              }
+            })
+            .catchError((error, stackTrace) {
+              if (mounted) {
+                setState(() => _thumbnailBytes = null);
+                logWarning(
+                  'DesktopWidget',
+                  'Media artwork base64 decoding failed: $error\n$stackTrace',
+                );
+              }
+            });
       } else {
         _thumbnailBytes = null;
       }
@@ -438,7 +459,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
       try {
         loaded = await _settingsService.loadSettings();
       } catch (e, st) {
-        logError('DesktopWidget', 'Failed to initialize widget settings', e, st);
+        logError(
+          'DesktopWidget',
+          'Failed to initialize widget settings',
+          e,
+          st,
+        );
         if (mounted) {
           setState(() {
             _startupError = 'Widget settings could not be loaded.';
@@ -470,6 +496,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
       if (_needsSystemStats) _updateSystemStats();
       if (_needsWeather) _startWeatherTimer();
       _syncMediaServiceState();
+      if (loaded.widgetTemplate == 'taskbar_dock') {
+        unawaited(_refreshDockWindows());
+      }
       _syncConnectivityService();
       if (loaded.widgetTemplate == 'taskbar_discord') {
         _discordSub = DiscordIpcService.instance.stream.listen((_) {
@@ -542,13 +571,17 @@ class _DesktopWidgetState extends State<DesktopWidget>
         final prevEditorMode = _settings.editorMode;
         try {
           final isTaskbar = updated.widgetTemplate.startsWith('taskbar_');
+          final isReplacementTaskbar =
+              updated.widgetTemplate == 'taskbar_dock' &&
+              updated.taskbarSettings.nativeTaskbarHideEnabled;
           await windowManager.setMinimumSize(
             isTaskbar ? const Size(120, 36) : const Size(180, 60),
           );
           final currentSize = await windowManager.getSize();
           final widthDelta = (updated.width - currentSize.width).abs();
           final heightDelta = (updated.height - currentSize.height).abs();
-          if (widthDelta >= 3.0 || heightDelta >= 3.0) {
+          if (!isReplacementTaskbar &&
+              (widthDelta >= 3.0 || heightDelta >= 3.0)) {
             logInfo(
               'DesktopWidget',
               'Resizing window overlay to: ${updated.width}x${updated.height}',
@@ -566,13 +599,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
           }
 
           if (isTaskbar &&
+              !isReplacementTaskbar &&
               (updated.taskbarSettings.taskbarPosition !=
                       _settings.taskbarSettings.taskbarPosition ||
                   widthDelta >= 3.0 ||
                   heightDelta >= 3.0)) {
             try {
-              final primaryDisplay =
-                  await ScreenRetriever.instance.getPrimaryDisplay();
+              final primaryDisplay = await ScreenRetriever.instance
+                  .getPrimaryDisplay();
               final screenSize = primaryDisplay.size;
               final posType = updated.taskbarSettings.taskbarPosition;
               Offset targetPos;
@@ -647,6 +681,165 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   void _syncMediaServiceState() {
     _syncMediaSubscription();
+  }
+
+  Future<void> _refreshDockWindows() async {
+    if (_isRefreshingDockWindows || !Platform.isWindows) return;
+    _isRefreshingDockWindows = true;
+    try {
+      final windows = await WindowsTaskbarService.instance.getDesktopWindows();
+      if (!mounted || listEquals(windows, _dockWindows)) return;
+      setState(() {
+        _dockWindows
+          ..clear()
+          ..addAll(windows);
+      });
+    } finally {
+      _isRefreshingDockWindows = false;
+    }
+  }
+
+  Future<void> _activateDockWindow(DockWindowInfo window) async {
+    final activated = await WindowsTaskbarService.instance
+        .activateDesktopWindow(window.handle);
+    if (activated) await _refreshDockWindows();
+  }
+
+  Future<void> _runTaskbarAction(String command) async {
+    await WindowsTaskbarService.instance.runTaskbarCommand(command);
+  }
+
+  Widget _buildTaskbarActionButton(
+    String command,
+    IconData icon,
+    String tooltip,
+  ) {
+    return Tooltip(
+      message: tooltip,
+      child: MouseRegion(
+        onEnter: (_) {
+          if (_hoveredTaskbarActions.add(command)) setState(() {});
+        },
+        onExit: (_) {
+          if (_hoveredTaskbarActions.remove(command)) setState(() {});
+        },
+        child: AnimatedScale(
+          scale: _hoveredTaskbarActions.contains(command) ? 1.12 : 1,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          child: InkWell(
+            onTap: () => unawaited(_runTaskbarAction(command)),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.all(7),
+              child: Icon(
+                icon,
+                size: 18,
+                color: _hoveredTaskbarActions.contains(command)
+                    ? Color(_settings.taskbarAccentColor)
+                    : Color(_settings.taskbarIconColor),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskbarRunningApps() {
+    if (_dockWindows.isEmpty) return const SizedBox.shrink();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: _dockWindows.take(5).map((window) {
+        return Tooltip(
+          message: window.title,
+          child: InkWell(
+            onTap: () => _activateDockWindow(window),
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    _dockWindowIcon(window),
+                    size: 20,
+                    color: window.isForeground
+                        ? Color(_settings.taskbarAccentColor)
+                        : Color(_settings.taskbarIconColor),
+                  ),
+                  if (window.isForeground)
+                    Positioned(
+                      bottom: 1,
+                      child: Container(
+                        width: 12,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: Color(_settings.taskbarAccentColor),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Future<void> _launchDockElement(DockItemElement element) async {
+    if (element.actionType == 'dashboard') {
+      _openDashboard(
+        element.actionPayload.isNotEmpty
+            ? element.actionPayload
+            : 'desktop_studio',
+      );
+      return;
+    }
+    if (element.actionType == 'default' ||
+        element.actionType == 'app' ||
+        element.actionType == 'url') {
+      if (element.actionPayload.trim().isEmpty) {
+        logWarning(
+          'DesktopWidget',
+          'Dock item "${element.label}" has no launch target configured.',
+        );
+        return;
+      }
+      await WindowsTaskbarService.instance.launchDockItem(
+        element.actionPayload,
+      );
+      return;
+    }
+    logWarning(
+      'DesktopWidget',
+      'Dock item "${element.label}" uses unsupported action '
+          '"${element.actionType}".',
+    );
+  }
+
+  IconData _dockWindowIcon(DockWindowInfo window) {
+    final executable = window.executable
+        .split(RegExp(r'[\\/]'))
+        .last
+        .toLowerCase();
+    if (executable.contains('explorer')) return Icons.folder_rounded;
+    if (executable.contains('chrome') ||
+        executable.contains('msedge') ||
+        executable.contains('firefox')) {
+      return Icons.language_rounded;
+    }
+    if (executable.contains('code')) return Icons.code_rounded;
+    if (executable.contains('terminal') ||
+        executable == 'wt.exe' ||
+        executable.contains('powershell') ||
+        executable == 'cmd.exe') {
+      return Icons.terminal_rounded;
+    }
+    return Icons.window_rounded;
   }
 
   bool get _needsMediaSession {
@@ -729,7 +922,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   @override
   void onWindowResized() {
-    if (_isApplyingExternalResize) return;
+    if (_isApplyingExternalResize || _isTaskbarReplacement) return;
     _handleInteraction();
     if (_isUserInteractingWithWindow) return;
     _scheduleWindowBoundsSave();
@@ -737,14 +930,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   @override
   void onWindowMoved() {
-    if (_isApplyingExternalResize) return;
+    if (_isApplyingExternalResize || _isTaskbarReplacement) return;
     _handleInteraction();
     if (_isUserInteractingWithWindow) return;
     _scheduleWindowBoundsSave();
   }
 
   void _scheduleWindowBoundsSave({bool immediate = false}) {
-    if (_isApplyingExternalResize || _isUserInteractingWithWindow) return;
+    if (_isApplyingExternalResize ||
+        _isUserInteractingWithWindow ||
+        _isTaskbarReplacement) {
+      return;
+    }
     _boundsSaveDebounce?.cancel();
     _boundsSaveDebounce = Timer(
       Duration(milliseconds: immediate ? 350 : 650),
@@ -814,20 +1011,28 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   Future<void> _applyAutoSizing() async {
     final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
+    if (_settings.widgetTemplate == 'taskbar_dock' &&
+        _settings.taskbarSettings.nativeTaskbarHideEnabled) {
+      return;
+    }
     final defaults =
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
-    final baseWidth = _settings.widgetTemplate == 'custom' && _settings.width > 0
+    final baseWidth =
+        _settings.widgetTemplate == 'custom' && _settings.width > 0
         ? _settings.width
         : defaults['width']!;
-    final baseHeight = _settings.widgetTemplate == 'custom' && _settings.height > 0
+    final baseHeight =
+        _settings.widgetTemplate == 'custom' && _settings.height > 0
         ? _settings.height
         : defaults['height']!;
 
-    final targetWidth = ((isTaskbar ? baseWidth : (baseWidth + 40.0)) * _settings.sizeFactor)
-        .clamp(isTaskbar ? 120.0 : 180.0, 1920.0);
-    final targetHeight = ((isTaskbar ? baseHeight : (baseHeight + 32.0)) * _settings.sizeFactor)
-        .clamp(isTaskbar ? 36.0 : 60.0, 1080.0);
+    final targetWidth =
+        ((isTaskbar ? baseWidth : (baseWidth + 40.0)) * _settings.sizeFactor)
+            .clamp(isTaskbar ? 120.0 : 180.0, 1920.0);
+    final targetHeight =
+        ((isTaskbar ? baseHeight : (baseHeight + 32.0)) * _settings.sizeFactor)
+            .clamp(isTaskbar ? 36.0 : 60.0, 1080.0);
 
     setState(() {
       _settings.width = targetWidth;
@@ -841,10 +1046,15 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   void _openDashboard([String? tab]) {
     try {
-      final args = (tab != null && tab.isNotEmpty) ? ['--open-tab=$tab'] : <String>[];
+      final args = (tab != null && tab.isNotEmpty)
+          ? ['--open-tab=$tab']
+          : <String>[];
       Process.start(Platform.resolvedExecutable, args);
     } catch (e) {
-      logWarning('DesktopWidget', 'Could not launch main application window: $e');
+      logWarning(
+        'DesktopWidget',
+        'Could not launch main application window: $e',
+      );
     }
   }
 
@@ -865,8 +1075,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   void _openWidgetCustomization() => _openDashboard('widgets');
 
-  Future<void> _showContextMenu(BuildContext context, Offset globalPosition) async {
-    final RenderBox? overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+  Future<void> _showContextMenu(
+    BuildContext context,
+    Offset globalPosition,
+  ) async {
+    final RenderBox? overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
 
     final isLocked = _settings.isLocked;
@@ -898,7 +1112,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
               SizedBox(width: 10),
               Text(
                 'Customize Widget',
-                style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -911,17 +1129,27 @@ class _DesktopWidgetState extends State<DesktopWidget>
               Icon(
                 isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
                 size: 17,
-                color: isLocked ? const Color(0xFFF43F5E) : const Color(0xFF10B981),
+                color: isLocked
+                    ? const Color(0xFFF43F5E)
+                    : const Color(0xFF10B981),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   isLocked ? 'Lock Position (ON)' : 'Lock Position (OFF)',
-                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
               if (isLocked)
-                const Icon(Icons.check_rounded, size: 15, color: Color(0xFFF43F5E)),
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFFF43F5E),
+                ),
             ],
           ),
         ),
@@ -932,14 +1160,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
           child: Row(
             children: [
               Icon(
-                isEdit ? Icons.check_circle_outline_rounded : Icons.crop_free_rounded,
+                isEdit
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.crop_free_rounded,
                 size: 17,
                 color: isLocked ? Colors.white24 : const Color(0xFF38BDF8),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  isEdit ? 'Exit Edit Mode' : 'Edit Widget (Reposition / Resize)',
+                  isEdit
+                      ? 'Exit Edit Mode'
+                      : 'Edit Widget (Reposition / Resize)',
                   style: TextStyle(
                     color: isLocked ? Colors.white38 : Colors.white,
                     fontSize: 12.5,
@@ -948,7 +1180,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 ),
               ),
               if (isEdit)
-                const Icon(Icons.check_rounded, size: 15, color: Color(0xFF38BDF8)),
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF38BDF8),
+                ),
             ],
           ),
         ),
@@ -966,11 +1202,19 @@ class _DesktopWidgetState extends State<DesktopWidget>
               Expanded(
                 child: Text(
                   isAutoSizing ? 'Auto Sizing (ON)' : 'Auto Sizing (OFF)',
-                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
               if (isAutoSizing)
-                const Icon(Icons.check_rounded, size: 15, color: Color(0xFF10B981)),
+                const Icon(
+                  Icons.check_rounded,
+                  size: 15,
+                  color: Color(0xFF10B981),
+                ),
             ],
           ),
         ),
@@ -979,11 +1223,19 @@ class _DesktopWidgetState extends State<DesktopWidget>
           height: 40,
           child: Row(
             children: [
-              Icon(Icons.restart_alt_rounded, size: 17, color: Colors.amberAccent),
+              Icon(
+                Icons.restart_alt_rounded,
+                size: 17,
+                color: Colors.amberAccent,
+              ),
               SizedBox(width: 10),
               Text(
                 'Reset Position',
-                style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -998,7 +1250,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
               SizedBox(width: 10),
               Text(
                 'Close Widget',
-                style: TextStyle(color: Color(0xFFF43F5E), fontSize: 12.5, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: Color(0xFFF43F5E),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -1019,7 +1275,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
             _visualEditorModeActive = false;
           }
         });
-        unawaited(_settingsService.updateSettings((c) => c.copyWith(isLocked: newLocked)));
+        unawaited(
+          _settingsService.updateSettings(
+            (c) => c.copyWith(isLocked: newLocked),
+          ),
+        );
         _scheduleWindowBoundsSave(immediate: true);
         break;
       case 'edit':
@@ -1028,7 +1288,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
           _visualEditorModeActive = !_visualEditorModeActive;
           _settings.editorMode = _visualEditorModeActive;
         });
-        unawaited(_settingsService.updateSettings((c) => c.copyWith(editorMode: _visualEditorModeActive)));
+        unawaited(
+          _settingsService.updateSettings(
+            (c) => c.copyWith(editorMode: _visualEditorModeActive),
+          ),
+        );
         _resetInactivityTimer();
         _scheduleWindowBoundsSave(immediate: true);
         break;
@@ -1037,7 +1301,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
         setState(() {
           _settings.autoSizing = newAutoSizing;
         });
-        unawaited(_settingsService.updateSettings((c) => c.copyWith(autoSizing: newAutoSizing)));
+        unawaited(
+          _settingsService.updateSettings(
+            (c) => c.copyWith(autoSizing: newAutoSizing),
+          ),
+        );
         if (newAutoSizing) {
           _applyAutoSizing();
         }
@@ -1051,7 +1319,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
             _settings.posX = pos.dx;
             _settings.posY = pos.dy;
           });
-          unawaited(_settingsService.updateSettings((c) => c.copyWith(posX: pos.dx, posY: pos.dy)));
+          unawaited(
+            _settingsService.updateSettings(
+              (c) => c.copyWith(posX: pos.dx, posY: pos.dy),
+            ),
+          );
           _scheduleWindowBoundsSave(immediate: true);
         } catch (_) {}
         break;
@@ -1624,14 +1896,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _apply3D(
-                ElementKey.hours,
-                Text(_hours, style: hoursStyle),
-              ),
-              _apply3D(
-                ElementKey.minutes,
-                Text(_minutes, style: minutesStyle),
-              ),
+              _apply3D(ElementKey.hours, Text(_hours, style: hoursStyle)),
+              _apply3D(ElementKey.minutes, Text(_minutes, style: minutesStyle)),
               if (_settings.showSeconds) ...[
                 const SizedBox(height: 2),
                 _apply3D(
@@ -1656,14 +1922,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
             Container(
               width: _settings.effectiveSeparatorWidth > 20
                   ? 4
-                  : (_settings.effectiveSeparatorWidth < 2 ? 3.5 : _settings.effectiveSeparatorWidth),
+                  : (_settings.effectiveSeparatorWidth < 2
+                        ? 3.5
+                        : _settings.effectiveSeparatorWidth),
               height: 76,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    barColor,
-                    const Color(0xFF8B5CF6),
-                  ],
+                  colors: [barColor, const Color(0xFF8B5CF6)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -1686,18 +1951,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _apply3D(
-                ElementKey.day,
-                Text(monthAbbr, style: monthStyle),
-              ),
-              _apply3D(
-                ElementKey.date,
-                Text(dayNum, style: dayNumStyle),
-              ),
-              _apply3D(
-                ElementKey.year,
-                Text(weekdayAbbr, style: weekStyle),
-              ),
+              _apply3D(ElementKey.day, Text(monthAbbr, style: monthStyle)),
+              _apply3D(ElementKey.date, Text(dayNum, style: dayNumStyle)),
+              _apply3D(ElementKey.year, Text(weekdayAbbr, style: weekStyle)),
             ],
           ),
         ],
@@ -3081,14 +3337,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
     double? width,
     double? height,
     EdgeInsetsGeometry? padding,
+    BorderRadiusGeometry? borderRadius,
   }) {
     return Container(
       width: width,
       height: height,
-      padding: padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding:
+          padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: Color(_settings.taskbarBgColor),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: borderRadius ?? BorderRadius.circular(10),
         border: Border.all(
           color: Color(_settings.taskbarBorderColor),
           width: 1.0,
@@ -3114,7 +3372,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
     );
   }
 
-  Widget _buildTaskbarEqualizer({int barCount = 5, Color? color, double maxHeight = 16}) {
+  Widget _buildTaskbarEqualizer({
+    int barCount = 5,
+    Color? color,
+    double maxHeight = 16,
+  }) {
     final barColor = color ?? const Color(0xFF38BDF8);
     final sec = _dateTime.second + _dateTime.millisecond / 1000.0;
     return Row(
@@ -3132,10 +3394,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
             color: barColor,
             borderRadius: BorderRadius.circular(1.5),
             boxShadow: [
-              BoxShadow(
-                color: barColor.withValues(alpha: 0.4),
-                blurRadius: 3,
-              ),
+              BoxShadow(color: barColor.withValues(alpha: 0.4), blurRadius: 3),
             ],
           ),
         );
@@ -3187,7 +3446,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
     );
   }
 
-  Widget _buildStudioElement(DockItemElement elem, DockAppearanceConfig appearance) {
+  Widget _buildStudioElement(
+    DockItemElement elem,
+    DockAppearanceConfig appearance,
+  ) {
     final iconSize = appearance.iconSize;
     final activeColor = Color(appearance.activeIndicatorColor);
 
@@ -3225,15 +3487,23 @@ class _DesktopWidgetState extends State<DesktopWidget>
       case DockElementType.pinnedApp:
       case DockElementType.customAction:
         return Tooltip(
-          message: elem.label.isNotEmpty ? elem.label : 'Application',
+          message: elem.actionPayload.isNotEmpty
+              ? '${elem.label}: ${elem.actionPayload}'
+              : elem.label.isNotEmpty
+              ? elem.label
+              : 'Configure dock launch target in Desktop Studio',
           child: InkWell(
-            onTap: () => _openDashboard('desktop_studio'),
+            onTap: () => _launchDockElement(elem),
             borderRadius: BorderRadius.circular(6),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Icon(
-                // ignore: non_const_argument_for_const_parameter
-                IconData(elem.iconCodePoint, fontFamily: 'MaterialIcons'),
+                IconData(
+                  // ignore: non_const_argument_for_const_parameter
+                  elem.iconCodePoint,
+                  // ignore: non_const_argument_for_const_parameter
+                  fontFamily: elem.iconFontFamily ?? 'MaterialIcons',
+                ),
                 size: iconSize,
                 color: elem.customColor != null
                     ? Color(elem.customColor!)
@@ -3244,15 +3514,54 @@ class _DesktopWidgetState extends State<DesktopWidget>
         );
 
       case DockElementType.runningTasks:
+        if (_dockWindows.isEmpty) {
+          return Tooltip(
+            message: 'No open applications',
+            child: Icon(
+              Icons.apps_rounded,
+              size: iconSize,
+              color: Colors.white38,
+            ),
+          );
+        }
         return Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.code_rounded, size: iconSize, color: Colors.white),
-            const SizedBox(width: 8),
-            Icon(Icons.terminal_rounded, size: iconSize, color: Colors.white70),
-            const SizedBox(width: 8),
-            Icon(Icons.folder_open_rounded, size: iconSize, color: Colors.white70),
-          ],
+          children: _dockWindows.take(8).map((window) {
+            return Tooltip(
+              message: window.title,
+              child: InkWell(
+                onTap: () => _activateDockWindow(window),
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: iconSize + 8,
+                  height: iconSize + 10,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _dockWindowIcon(window),
+                        size: iconSize,
+                        color: window.isForeground
+                            ? activeColor
+                            : Colors.white.withValues(alpha: 0.78),
+                      ),
+                      const SizedBox(height: 2),
+                      Container(
+                        width: 4,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: window.isForeground
+                              ? activeColor
+                              : Colors.white38,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         );
 
       case DockElementType.clock:
@@ -3276,8 +3585,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
       case DockElementType.date:
         final now = DateTime.now();
         final monthNames = [
-          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
         ];
         return Text(
           '${monthNames[now.month - 1]} ${now.day}',
@@ -3290,7 +3609,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
         );
 
       case DockElementType.weatherSlot:
-        final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
+        final tempStr = _settings.weatherTemp.isNotEmpty
+            ? '${_settings.weatherTemp}°'
+            : '22°';
         return Tooltip(
           message: 'Local Weather',
           child: InkWell(
@@ -3298,7 +3619,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.wb_sunny_rounded, size: iconSize * 0.8, color: const Color(0xFFFBBF24)),
+                Icon(
+                  Icons.wb_sunny_rounded,
+                  size: iconSize * 0.8,
+                  color: const Color(0xFFFBBF24),
+                ),
                 const SizedBox(width: 4),
                 Text(
                   tempStr,
@@ -3321,7 +3646,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
           children: [
             InkWell(
               onTap: () => MediaSessionService().previous(),
-              child: Icon(Icons.skip_previous_rounded, size: iconSize * 0.75, color: Colors.white70),
+              child: Icon(
+                Icons.skip_previous_rounded,
+                size: iconSize * 0.75,
+                color: Colors.white70,
+              ),
             ),
             const SizedBox(width: 4),
             InkWell(
@@ -3333,7 +3662,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 }
               },
               child: Icon(
-                isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                isPlaying
+                    ? Icons.pause_circle_filled_rounded
+                    : Icons.play_circle_fill_rounded,
                 size: iconSize * 0.95,
                 color: activeColor,
               ),
@@ -3341,7 +3672,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
             const SizedBox(width: 4),
             InkWell(
               onTap: () => MediaSessionService().next(),
-              child: Icon(Icons.skip_next_rounded, size: iconSize * 0.75, color: Colors.white70),
+              child: Icon(
+                Icons.skip_next_rounded,
+                size: iconSize * 0.75,
+                color: Colors.white70,
+              ),
             ),
           ],
         );
@@ -3350,7 +3685,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.volume_up_rounded, size: iconSize * 0.8, color: Colors.white70),
+            Icon(
+              Icons.volume_up_rounded,
+              size: iconSize * 0.8,
+              color: Colors.white70,
+            ),
             const SizedBox(width: 4),
             Container(
               width: 32,
@@ -3374,13 +3713,21 @@ class _DesktopWidgetState extends State<DesktopWidget>
         );
 
       case DockElementType.networkStatus:
-        return Icon(Icons.wifi_rounded, size: iconSize * 0.8, color: Colors.white70);
+        return Icon(
+          Icons.wifi_rounded,
+          size: iconSize * 0.8,
+          color: Colors.white70,
+        );
 
       case DockElementType.batteryStatus:
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.battery_charging_full_rounded, size: iconSize * 0.8, color: const Color(0xFF10B981)),
+            Icon(
+              Icons.battery_charging_full_rounded,
+              size: iconSize * 0.8,
+              color: const Color(0xFF10B981),
+            ),
             const SizedBox(width: 3),
             Text(
               '95%',
@@ -3397,7 +3744,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
       case DockElementType.cpuSparkline:
         final cpuCol = _cpuUsage > 85
             ? const Color(0xFFF43F5E)
-            : (_cpuUsage > 60 ? const Color(0xFFF59E0B) : const Color(0xFF38BDF8));
+            : (_cpuUsage > 60
+                  ? const Color(0xFFF59E0B)
+                  : const Color(0xFF38BDF8));
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3418,7 +3767,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
       case DockElementType.ramSparkline:
         final ramCol = _ramUsage > 85
             ? const Color(0xFFF43F5E)
-            : (_ramUsage > 70 ? const Color(0xFFF59E0B) : const Color(0xFFA855F7));
+            : (_ramUsage > 70
+                  ? const Color(0xFFF59E0B)
+                  : const Color(0xFFA855F7));
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3451,27 +3802,104 @@ class _DesktopWidgetState extends State<DesktopWidget>
           message: 'Device Optimization',
           child: InkWell(
             onTap: () => _openDashboard('device_optimization'),
-            child: Icon(Icons.tune_rounded, size: iconSize * 0.8, color: Colors.white70),
+            child: Icon(
+              Icons.tune_rounded,
+              size: iconSize * 0.8,
+              color: Colors.white70,
+            ),
           ),
         );
 
       default:
-        return Icon(Icons.widgets_rounded, size: iconSize, color: Colors.white70);
+        return Icon(
+          Icons.widgets_rounded,
+          size: iconSize,
+          color: Colors.white70,
+        );
     }
   }
 
   Widget _buildTaskbarDockLayout() {
+    final isReplacementMode =
+        _settings.taskbarSettings.nativeTaskbarHideEnabled;
     if (_settings.activeDockTemplateJson != null &&
         _settings.activeDockTemplateJson!.isNotEmpty) {
       try {
         final decoded =
-            jsonDecode(_settings.activeDockTemplateJson!) as Map<String, dynamic>;
+            jsonDecode(_settings.activeDockTemplateJson!)
+                as Map<String, dynamic>;
         final template = DesktopStudioTemplate.fromJson(decoded);
-        return _buildStudioTemplateDockLayout(template);
+        final templateLayout = _buildStudioTemplateDockLayout(template);
+        if (!isReplacementMode) return templateLayout;
+        return _buildTaskbarGlassContainer(
+          width: double.infinity,
+          height: double.infinity,
+          borderRadius: BorderRadius.zero,
+          child: Row(
+            children: [
+              _buildTaskbarActionButton(
+                'search',
+                Icons.search_rounded,
+                'Windows Search',
+              ),
+              _buildTaskbarActionButton(
+                'task-view',
+                Icons.view_carousel_rounded,
+                'Task View and virtual desktops',
+              ),
+              _buildTaskbarActionButton(
+                'file-explorer',
+                Icons.folder_rounded,
+                'File Explorer',
+              ),
+              _buildTaskbarActionButton(
+                'copilot',
+                Icons.auto_awesome_rounded,
+                'Copilot',
+              ),
+              _buildTaskbarRunningApps(),
+              Expanded(child: Center(child: templateLayout)),
+              _buildTaskbarActionButton(
+                'wifi-settings',
+                Icons.wifi_rounded,
+                'Wi-Fi settings',
+              ),
+              _buildTaskbarActionButton(
+                'quick-settings',
+                Icons.tune_rounded,
+                'Quick settings',
+              ),
+              _buildTaskbarActionButton(
+                'sound-settings',
+                Icons.volume_up_rounded,
+                'Audio settings',
+              ),
+              _buildTaskbarActionButton(
+                'battery-settings',
+                Icons.battery_charging_full_rounded,
+                'Battery and power settings',
+              ),
+              _buildTaskbarActionButton(
+                'notifications',
+                Icons.notifications_rounded,
+                'Notifications',
+              ),
+              _buildTaskbarActionButton(
+                'show-desktop',
+                Icons.desktop_windows_rounded,
+                'Show desktop',
+              ),
+            ],
+          ),
+        );
       } catch (_) {}
     }
-    final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
-    final locStr = _settings.weatherLocation.isNotEmpty ? _settings.weatherLocation : 'Local';
+    final tempStr = _settings.weatherTemp.isNotEmpty
+        ? '${_settings.weatherTemp}°'
+        : '22°';
+    final locStr = _settings.weatherLocation.isNotEmpty
+        ? _settings.weatherLocation
+        : 'Local';
     final hasMedia = _mediaInfo.title.isNotEmpty || _mediaInfo.isPlaying;
     final isVideoWallpaper = _settings.activeWallpaperType == 'video';
     final isPaused = !LiveWallpaperManager().isPlaying;
@@ -3479,61 +3907,312 @@ class _DesktopWidgetState extends State<DesktopWidget>
     // CPU color-coded threshold
     final cpuColor = _cpuUsage > 85
         ? const Color(0xFFF43F5E)
-        : (_cpuUsage > 60 ? const Color(0xFFF59E0B) : Color(_settings.taskbarAccentColor));
+        : (_cpuUsage > 60
+              ? const Color(0xFFF59E0B)
+              : Color(_settings.taskbarAccentColor));
 
     // RAM color-coded threshold
     final ramColor = _ramUsage > 85
         ? const Color(0xFFF43F5E)
         : (_ramUsage > 70 ? const Color(0xFFF59E0B) : const Color(0xFFA855F7));
 
-    return _buildTaskbarGlassContainer(
-      height: 48,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.center,
-        child: Row(
+    final taskbarContents = Row(
+      mainAxisSize: isReplacementMode ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: isReplacementMode
+          ? MainAxisAlignment.spaceBetween
+          : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 1. Home / WallSync Logo Button (opens Dashboard)
+        Tooltip(
+          message: 'WallSync Dashboard — Click to open',
+          child: InkWell(
+            onTap: () => _openDashboard('wallpapers'),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF38BDF8,
+                          ).withValues(alpha: 0.35),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.widgets_rounded,
+                      size: 14,
+                      color: Color(0xFF070B12),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'WallSync',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                      fontFamily: 'Segoe UI',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        _buildTaskbarDivider(),
+        if (isReplacementMode) ...[
+          _buildTaskbarActionButton(
+            'search',
+            Icons.search_rounded,
+            'Windows Search',
+          ),
+          _buildTaskbarActionButton(
+            'task-view',
+            Icons.view_carousel_rounded,
+            'Task View and virtual desktops',
+          ),
+          _buildTaskbarActionButton(
+            'file-explorer',
+            Icons.folder_rounded,
+            'File Explorer',
+          ),
+          _buildTaskbarActionButton(
+            'copilot',
+            Icons.auto_awesome_rounded,
+            'Copilot',
+          ),
+          _buildTaskbarRunningApps(),
+          _buildTaskbarDivider(),
+        ],
+
+        // 2. Wallpaper Mode & Playback Pill
+        Tooltip(
+          message: isVideoWallpaper
+              ? 'Video Wallpaper Active (Click to ${isPaused ? "Play" : "Pause"})'
+              : 'Static Wallpaper Active',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color:
+                  (isVideoWallpaper
+                          ? const Color(0xFF38BDF8)
+                          : const Color(0xFF818CF8))
+                      .withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color:
+                    (isVideoWallpaper
+                            ? const Color(0xFF38BDF8)
+                            : const Color(0xFF818CF8))
+                        .withValues(alpha: 0.30),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isVideoWallpaper
+                      ? Icons.movie_filter_rounded
+                      : Icons.image_rounded,
+                  size: (_settings.taskbarIconSize - 4).clamp(10.0, 16.0),
+                  color: isVideoWallpaper
+                      ? const Color(0xFF38BDF8)
+                      : const Color(0xFF818CF8),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isVideoWallpaper ? 'VIDEO' : 'STATIC',
+                  style: TextStyle(
+                    color: isVideoWallpaper
+                        ? const Color(0xFF38BDF8)
+                        : const Color(0xFF818CF8),
+                    fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 12.0),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                if (isVideoWallpaper) ...[
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () {
+                      if (isPaused) {
+                        LiveWallpaperManager().play();
+                      } else {
+                        LiveWallpaperManager().pause();
+                      }
+                      setState(() {});
+                    },
+                    child: Icon(
+                      isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                      size: 14,
+                      color: const Color(0xFF38BDF8),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        _buildTaskbarDivider(),
+
+        // 3. Hardware Monitoring Chips (CPU, RAM, GPU, Profile)
+        Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 1. Home / WallSync Logo Button (opens Dashboard)
+            // CPU Pill
+            if (_settings.taskbarShowCpu) ...[
+              Tooltip(
+                message:
+                    'CPU Usage: ${_cpuUsage.toStringAsFixed(1)}% (${Platform.numberOfProcessors} Cores)\nClick to open Device Optimization',
+                child: InkWell(
+                  onTap: () => _openDashboard('device_optimization'),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cpuColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: cpuColor.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.memory_rounded,
+                          size: (_settings.taskbarIconSize - 5).clamp(
+                            9.0,
+                            16.0,
+                          ),
+                          color: cpuColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_cpuUsage.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            color: cpuColor,
+                            fontSize: (_settings.taskbarFontSize - 1).clamp(
+                              8.0,
+                              14.0,
+                            ),
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Segoe UI',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+
+            // RAM Pill
+            if (_settings.taskbarShowRam) ...[
+              Tooltip(
+                message:
+                    'System RAM: ${_ramUsage.toStringAsFixed(0)}% used\nClick to open Device Optimization',
+                child: InkWell(
+                  onTap: () => _openDashboard('device_optimization'),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: ramColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: ramColor.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.developer_board_rounded,
+                          size: (_settings.taskbarIconSize - 5).clamp(
+                            9.0,
+                            16.0,
+                          ),
+                          color: ramColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_ramUsage.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            color: ramColor,
+                            fontSize: (_settings.taskbarFontSize - 1).clamp(
+                              8.0,
+                              14.0,
+                            ),
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Segoe UI',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+
+            // GPU / Target FPS Pill
             Tooltip(
-              message: 'WallSync Dashboard — Click to open',
+              message:
+                  'GPU Graphics Engine: Impeller DXGI\nTarget: ${_settings.wallpaperFpsLimit} FPS\nClick to open Device Optimization',
               child: InkWell(
-                onTap: () => _openDashboard('wallpapers'),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                onTap: () => _openDashboard('device_optimization'),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.28),
+                    ),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.widgets_rounded,
-                          size: 14,
-                          color: Color(0xFF070B12),
-                        ),
+                      Icon(
+                        Icons.speed_rounded,
+                        size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
+                        color: const Color(0xFF10B981),
                       ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'WallSync',
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_settings.wallpaperFpsLimit} FPS',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.2,
+                          color: const Color(0xFF10B981),
+                          fontSize: (_settings.taskbarFontSize - 1).clamp(
+                            8.0,
+                            14.0,
+                          ),
+                          fontWeight: FontWeight.w700,
                           fontFamily: 'Segoe UI',
                         ),
                       ),
@@ -3542,503 +4221,416 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 ),
               ),
             ),
-            _buildTaskbarDivider(),
+            const SizedBox(width: 6),
 
-            // 2. Wallpaper Mode & Playback Pill
+            // Performance Profile Pill (Click to cycle profile)
             Tooltip(
-              message: isVideoWallpaper
-                  ? 'Video Wallpaper Active (Click to ${isPaused ? "Play" : "Pause"})'
-                  : 'Static Wallpaper Active',
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: (isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: (isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8))
-                        .withValues(alpha: 0.30),
+              message:
+                  'Performance Profile: ${_settings.performanceProfile.toUpperCase()}\nClick to cycle profile',
+              child: InkWell(
+                onTap: _cyclePerformanceProfile,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isVideoWallpaper ? Icons.movie_filter_rounded : Icons.image_rounded,
-                      size: (_settings.taskbarIconSize - 4).clamp(10.0, 16.0),
-                      color: isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isVideoWallpaper ? 'VIDEO' : 'STATIC',
-                      style: TextStyle(
-                        color: isVideoWallpaper ? const Color(0xFF38BDF8) : const Color(0xFF818CF8),
-                        fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 12.0),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.tune_rounded,
+                        size: (_settings.taskbarIconSize - 6).clamp(9.0, 14.0),
+                        color: const Color(0xFF38BDF8),
                       ),
-                    ),
-                    if (isVideoWallpaper) ...[
-                      const SizedBox(width: 6),
-                      InkWell(
-                        onTap: () {
-                          if (isPaused) {
-                            LiveWallpaperManager().play();
-                          } else {
-                            LiveWallpaperManager().pause();
-                          }
-                          setState(() {});
-                        },
-                        child: Icon(
-                          isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                          size: 14,
+                      const SizedBox(width: 4),
+                      Text(
+                        _settings.performanceProfile.toUpperCase(),
+                        style: TextStyle(
                           color: const Color(0xFF38BDF8),
+                          fontSize: (_settings.taskbarFontSize - 2).clamp(
+                            8.0,
+                            12.0,
+                          ),
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
-            _buildTaskbarDivider(),
-
-            // 3. Hardware Monitoring Chips (CPU, RAM, GPU, Profile)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // CPU Pill
-                if (_settings.taskbarShowCpu) ...[
-                  Tooltip(
-                    message:
-                        'CPU Usage: ${_cpuUsage.toStringAsFixed(1)}% (${Platform.numberOfProcessors} Cores)\nClick to open Device Optimization',
-                    child: InkWell(
-                      onTap: () => _openDashboard('device_optimization'),
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: cpuColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: cpuColor.withValues(alpha: 0.28)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.memory_rounded,
-                                size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
-                                color: cpuColor),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${_cpuUsage.toStringAsFixed(0)}%',
-                              style: TextStyle(
-                                color: cpuColor,
-                                fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'Segoe UI',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-
-                // RAM Pill
-                if (_settings.taskbarShowRam) ...[
-                  Tooltip(
-                    message:
-                        'System RAM: ${_ramUsage.toStringAsFixed(0)}% used\nClick to open Device Optimization',
-                    child: InkWell(
-                      onTap: () => _openDashboard('device_optimization'),
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: ramColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: ramColor.withValues(alpha: 0.28)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.developer_board_rounded,
-                                size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
-                                color: ramColor),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${_ramUsage.toStringAsFixed(0)}%',
-                              style: TextStyle(
-                                color: ramColor,
-                                fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'Segoe UI',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-
-                // GPU / Target FPS Pill
-                Tooltip(
-                  message:
-                      'GPU Graphics Engine: Impeller DXGI\nTarget: ${_settings.wallpaperFpsLimit} FPS\nClick to open Device Optimization',
-                  child: InkWell(
-                    onTap: () => _openDashboard('device_optimization'),
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.28),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.speed_rounded,
-                              size: (_settings.taskbarIconSize - 5).clamp(9.0, 16.0),
-                              color: const Color(0xFF10B981)),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${_settings.wallpaperFpsLimit} FPS',
-                            style: TextStyle(
-                              color: const Color(0xFF10B981),
-                              fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 14.0),
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Segoe UI',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-
-                // Performance Profile Pill (Click to cycle profile)
-                Tooltip(
-                  message:
-                      'Performance Profile: ${_settings.performanceProfile.toUpperCase()}\nClick to cycle profile',
-                  child: InkWell(
-                    onTap: _cyclePerformanceProfile,
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.tune_rounded,
-                              size: (_settings.taskbarIconSize - 6).clamp(9.0, 14.0),
-                              color: const Color(0xFF38BDF8)),
-                          const SizedBox(width: 4),
-                          Text(
-                            _settings.performanceProfile.toUpperCase(),
-                            style: TextStyle(
-                              color: const Color(0xFF38BDF8),
-                              fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 12.0),
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            _buildTaskbarDivider(),
-
-            // 4. Time & Date Pill
-            if (_settings.taskbarShowTime) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.access_time_rounded,
-                    size: _settings.taskbarIconSize,
-                    color: Color(_settings.taskbarIconColor),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$_hours:$_minutes',
-                    style: TextStyle(
-                      color: Color(_settings.taskbarTextColor),
-                      fontSize: _settings.taskbarFontSize + 2,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Segoe UI',
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    DateFormat('E d').format(_dateTime).toUpperCase(),
-                    style: TextStyle(
-                      color: Color(_settings.taskbarTextColor).withValues(alpha: 0.6),
-                      fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 16.0),
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Segoe UI',
-                    ),
-                  ),
-                ],
-              ),
-              _buildTaskbarDivider(),
-            ],
-
-            // 5. Weather Pill
-            if (_settings.taskbarShowWeather) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.wb_sunny_rounded,
-                    size: (_settings.taskbarIconSize - 2).clamp(10.0, 24.0),
-                    color: const Color(0xFFFBBF24),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    tempStr,
-                    style: TextStyle(
-                      color: Color(_settings.taskbarTextColor),
-                      fontSize: _settings.taskbarFontSize,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Segoe UI',
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    locStr,
-                    style: TextStyle(
-                      color: Color(_settings.taskbarTextColor).withValues(alpha: 0.5),
-                      fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 16.0),
-                      fontFamily: 'Segoe UI',
-                    ),
-                  ),
-                ],
-              ),
-              _buildTaskbarDivider(),
-            ],
-
-            // 6. Mini Media Visualizer
-            if (_settings.taskbarShowMedia) ...[
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        if (_mediaInfo.isPlaying) {
-                          MediaSessionService().pause();
-                        } else {
-                          MediaSessionService().play();
-                        }
-                      },
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: Color(_settings.taskbarAccentColor).withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          _mediaInfo.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          size: (_settings.taskbarIconSize - 1).clamp(12.0, 20.0),
-                          color: Color(_settings.taskbarAccentColor),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            hasMedia ? _mediaInfo.title : 'TaskbarWidgets Audio',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Color(_settings.taskbarTextColor),
-                              fontSize: _settings.taskbarFontSize,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'Segoe UI',
-                            ),
-                          ),
-                          Text(
-                            hasMedia ? _mediaInfo.artist : 'WASAPI Spectrum Sync',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Color(_settings.taskbarTextColor).withValues(alpha: 0.5),
-                              fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 14.0),
-                              fontFamily: 'Segoe UI',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildTaskbarEqualizer(barCount: 5, color: Color(_settings.taskbarAccentColor), maxHeight: 15),
-                  ],
-                ),
-              ),
-              _buildTaskbarDivider(),
-            ],
-
-            // 7. Widget Controls & Navigation Toolbar
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Lock/Unlock Toggle
-                Tooltip(
-                  message: _settings.isLocked
-                      ? 'Position Locked (Click to Unlock)'
-                      : 'Position Unlocked (Click to Lock)',
-                  child: InkWell(
-                    onTap: () {
-                      final newLocked = !_settings.isLocked;
-                      setState(() {
-                        _settings.isLocked = newLocked;
-                        if (newLocked) _visualEditorModeActive = false;
-                      });
-                      unawaited(_settingsService.updateSettings((c) => c.copyWith(isLocked: newLocked)));
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Padding(
-                      padding: const EdgeInsets.all(5),
-                      child: Icon(
-                        _settings.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                        size: 16,
-                        color: _settings.isLocked ? const Color(0xFFF43F5E) : const Color(0xFF10B981),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // Edit Mode Toggle
-                Tooltip(
-                  message: _visualEditorModeActive ? 'Exit Layout Editor' : 'Edit Widget Layout',
-                  child: InkWell(
-                    onTap: () {
-                      if (_settings.isLocked) return;
-                      setState(() {
-                        _visualEditorModeActive = !_visualEditorModeActive;
-                        _settings.editorMode = _visualEditorModeActive;
-                      });
-                      unawaited(_settingsService.updateSettings((c) => c.copyWith(editorMode: _visualEditorModeActive)));
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Padding(
-                      padding: const EdgeInsets.all(5),
-                      child: Icon(
-                        _visualEditorModeActive ? Icons.check_circle_outline_rounded : Icons.crop_free_rounded,
-                        size: 16,
-                        color: _settings.isLocked
-                            ? Colors.white24
-                            : (_visualEditorModeActive ? const Color(0xFF38BDF8) : Colors.white60),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // Add Widget Shortcut
-                Tooltip(
-                  message: 'Add / Preset Widgets',
-                  child: InkWell(
-                    onTap: () => _openDashboard('widgets'),
-                    borderRadius: BorderRadius.circular(6),
-                    child: const Padding(
-                      padding: EdgeInsets.all(5),
-                      child: Icon(
-                        Icons.add_circle_outline_rounded,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // Diagnostics Shortcut
-                Tooltip(
-                  message: 'Performance & Diagnostics Monitor',
-                  child: InkWell(
-                    onTap: () => _openDashboard('diagnostics'),
-                    borderRadius: BorderRadius.circular(6),
-                    child: const Padding(
-                      padding: EdgeInsets.all(5),
-                      child: Icon(
-                        Icons.monitor_heart_rounded,
-                        size: 16,
-                        color: Color(0xFF38BDF8),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // Device Optimization Shortcut
-                Tooltip(
-                  message: 'Device Optimization System',
-                  child: InkWell(
-                    onTap: () => _openDashboard('device_optimization'),
-                    borderRadius: BorderRadius.circular(6),
-                    child: const Padding(
-                      padding: EdgeInsets.all(5),
-                      child: Icon(
-                        Icons.speed_rounded,
-                        size: 16,
-                        color: Color(0xFF10B981),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-
-                // Settings Shortcut
-                Tooltip(
-                  message: 'WallSync Settings',
-                  child: InkWell(
-                    onTap: () => _openDashboard('settings'),
-                    borderRadius: BorderRadius.circular(6),
-                    child: const Padding(
-                      padding: EdgeInsets.all(5),
-                      child: Icon(
-                        Icons.settings_rounded,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
-      ),
+        _buildTaskbarDivider(),
+
+        // 4. Time & Date Pill
+        if (_settings.taskbarShowTime) ...[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.access_time_rounded,
+                size: _settings.taskbarIconSize,
+                color: Color(_settings.taskbarIconColor),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$_hours:$_minutes',
+                style: TextStyle(
+                  color: Color(_settings.taskbarTextColor),
+                  fontSize: _settings.taskbarFontSize + 2,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                DateFormat('E d').format(_dateTime).toUpperCase(),
+                style: TextStyle(
+                  color: Color(
+                    _settings.taskbarTextColor,
+                  ).withValues(alpha: 0.6),
+                  fontSize: (_settings.taskbarFontSize - 1).clamp(8.0, 16.0),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+            ],
+          ),
+          _buildTaskbarDivider(),
+        ],
+
+        // 5. Weather Pill
+        if (_settings.taskbarShowWeather) ...[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.wb_sunny_rounded,
+                size: (_settings.taskbarIconSize - 2).clamp(10.0, 24.0),
+                color: const Color(0xFFFBBF24),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                tempStr,
+                style: TextStyle(
+                  color: Color(_settings.taskbarTextColor),
+                  fontSize: _settings.taskbarFontSize,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                locStr,
+                style: TextStyle(
+                  color: Color(
+                    _settings.taskbarTextColor,
+                  ).withValues(alpha: 0.5),
+                  fontSize: (_settings.taskbarFontSize - 2).clamp(8.0, 16.0),
+                  fontFamily: 'Segoe UI',
+                ),
+              ),
+            ],
+          ),
+          _buildTaskbarDivider(),
+        ],
+
+        // 6. Mini Media Visualizer
+        if (_settings.taskbarShowMedia) ...[
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    if (_mediaInfo.isPlaying) {
+                      MediaSessionService().pause();
+                    } else {
+                      MediaSessionService().play();
+                    }
+                  },
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: Color(
+                        _settings.taskbarAccentColor,
+                      ).withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _mediaInfo.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      size: (_settings.taskbarIconSize - 1).clamp(12.0, 20.0),
+                      color: Color(_settings.taskbarAccentColor),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hasMedia ? _mediaInfo.title : 'TaskbarWidgets Audio',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(_settings.taskbarTextColor),
+                          fontSize: _settings.taskbarFontSize,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                      Text(
+                        hasMedia ? _mediaInfo.artist : 'WASAPI Spectrum Sync',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(
+                            _settings.taskbarTextColor,
+                          ).withValues(alpha: 0.5),
+                          fontSize: (_settings.taskbarFontSize - 2).clamp(
+                            8.0,
+                            14.0,
+                          ),
+                          fontFamily: 'Segoe UI',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _buildTaskbarEqualizer(
+                  barCount: 5,
+                  color: Color(_settings.taskbarAccentColor),
+                  maxHeight: 15,
+                ),
+              ],
+            ),
+          ),
+          _buildTaskbarDivider(),
+        ],
+
+        if (isReplacementMode) ...[
+          _buildTaskbarActionButton(
+            'wifi-settings',
+            Icons.wifi_rounded,
+            'Wi-Fi settings',
+          ),
+          _buildTaskbarActionButton(
+            'quick-settings',
+            Icons.tune_rounded,
+            'Quick settings',
+          ),
+          _buildTaskbarActionButton(
+            'sound-settings',
+            Icons.volume_up_rounded,
+            'Audio settings',
+          ),
+          _buildTaskbarActionButton(
+            'battery-settings',
+            Icons.battery_charging_full_rounded,
+            'Battery and power settings',
+          ),
+          _buildTaskbarActionButton(
+            'notifications',
+            Icons.notifications_rounded,
+            'Notifications',
+          ),
+          _buildTaskbarActionButton(
+            'show-desktop',
+            Icons.desktop_windows_rounded,
+            'Show desktop',
+          ),
+          _buildTaskbarDivider(),
+        ],
+
+        // 7. Widget Controls & Navigation Toolbar
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Lock/Unlock Toggle
+            Tooltip(
+              message: _settings.isLocked
+                  ? 'Position Locked (Click to Unlock)'
+                  : 'Position Unlocked (Click to Lock)',
+              child: InkWell(
+                onTap: () {
+                  final newLocked = !_settings.isLocked;
+                  setState(() {
+                    _settings.isLocked = newLocked;
+                    if (newLocked) _visualEditorModeActive = false;
+                  });
+                  unawaited(
+                    _settingsService.updateSettings(
+                      (c) => c.copyWith(isLocked: newLocked),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Icon(
+                    _settings.isLocked
+                        ? Icons.lock_rounded
+                        : Icons.lock_open_rounded,
+                    size: 16,
+                    color: _settings.isLocked
+                        ? const Color(0xFFF43F5E)
+                        : const Color(0xFF10B981),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // Edit Mode Toggle
+            Tooltip(
+              message: _visualEditorModeActive
+                  ? 'Exit Layout Editor'
+                  : 'Edit Widget Layout',
+              child: InkWell(
+                onTap: () {
+                  if (_settings.isLocked) return;
+                  setState(() {
+                    _visualEditorModeActive = !_visualEditorModeActive;
+                    _settings.editorMode = _visualEditorModeActive;
+                  });
+                  unawaited(
+                    _settingsService.updateSettings(
+                      (c) => c.copyWith(editorMode: _visualEditorModeActive),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Icon(
+                    _visualEditorModeActive
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.crop_free_rounded,
+                    size: 16,
+                    color: _settings.isLocked
+                        ? Colors.white24
+                        : (_visualEditorModeActive
+                              ? const Color(0xFF38BDF8)
+                              : Colors.white60),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // Add Widget Shortcut
+            Tooltip(
+              message: 'Add / Preset Widgets',
+              child: InkWell(
+                onTap: () => _openDashboard('widgets'),
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.add_circle_outline_rounded,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // Diagnostics Shortcut
+            Tooltip(
+              message: 'Performance & Diagnostics Monitor',
+              child: InkWell(
+                onTap: () => _openDashboard('diagnostics'),
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.monitor_heart_rounded,
+                    size: 16,
+                    color: Color(0xFF38BDF8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // Device Optimization Shortcut
+            Tooltip(
+              message: 'Device Optimization System',
+              child: InkWell(
+                onTap: () => _openDashboard('device_optimization'),
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.speed_rounded,
+                    size: 16,
+                    color: Color(0xFF10B981),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+
+            // Settings Shortcut
+            Tooltip(
+              message: 'WallSync Settings',
+              child: InkWell(
+                onTap: () => _openDashboard('settings'),
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(
+                    Icons.settings_rounded,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    return _buildTaskbarGlassContainer(
+      width: isReplacementMode ? double.infinity : null,
+      height: isReplacementMode ? double.infinity : 48,
+      borderRadius: isReplacementMode ? BorderRadius.zero : null,
+      child: isReplacementMode
+          ? taskbarContents
+          : FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: taskbarContents,
+            ),
     );
   }
 
   Widget _buildTaskbarMediaLayout() {
-    final title = _mediaInfo.title.isNotEmpty ? _mediaInfo.title : 'Taskbar Media Player';
-    final artist = _mediaInfo.artist.isNotEmpty ? _mediaInfo.artist : 'WASAPI Real-time FFT';
+    final title = _mediaInfo.title.isNotEmpty
+        ? _mediaInfo.title
+        : 'Taskbar Media Player';
+    final artist = _mediaInfo.artist.isNotEmpty
+        ? _mediaInfo.artist
+        : 'WASAPI Real-time FFT';
 
     return _buildTaskbarGlassContainer(
       height: 44,
@@ -4057,7 +4649,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
             clipBehavior: Clip.antiAlias,
             child: _thumbnailBytes != null
                 ? Image.memory(_thumbnailBytes!, fit: BoxFit.cover)
-                : const Icon(Icons.music_note_rounded, size: 18, color: Color(0xFF38BDF8)),
+                : const Icon(
+                    Icons.music_note_rounded,
+                    size: 18,
+                    color: Color(0xFF38BDF8),
+                  ),
           ),
           const SizedBox(width: 10),
 
@@ -4094,7 +4690,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
           const SizedBox(width: 8),
 
           // Equalizer Spectrum
-          _buildTaskbarEqualizer(barCount: 7, color: const Color(0xFFEC4899), maxHeight: 18),
+          _buildTaskbarEqualizer(
+            barCount: 7,
+            color: const Color(0xFFEC4899),
+            maxHeight: 18,
+          ),
           const SizedBox(width: 10),
 
           // Transport controls
@@ -4129,7 +4729,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                     ),
                   ),
                   child: Icon(
-                    _mediaInfo.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    _mediaInfo.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
                     size: 14,
                     color: Colors.white,
                   ),
@@ -4296,12 +4898,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final title = isDownloading
         ? '${steam.gameTitle} Update'
         : (steam.activePlayingGame != null
-            ? 'Playing ${steam.activePlayingGame}'
-            : (steam.isSteamRunning ? 'Steam Ready · Up to date' : 'Steam Offline'));
+              ? 'Playing ${steam.activePlayingGame}'
+              : (steam.isSteamRunning
+                    ? 'Steam Ready · Up to date'
+                    : 'Steam Offline'));
     final speed = isDownloading
         ? '${steam.downloadSpeedMBs.toStringAsFixed(1)} MB/s'
         : (steam.isSteamRunning ? 'Synced' : 'Offline');
-    final progress = isDownloading ? steam.progressPercent : (steam.isSteamRunning ? 1.0 : 0.0);
+    final progress = isDownloading
+        ? steam.progressPercent
+        : (steam.isSteamRunning ? 1.0 : 0.0);
 
     return _buildTaskbarGlassContainer(
       height: 44,
@@ -4317,7 +4923,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 colors: [Color(0xFF171A21), Color(0xFF1B2838)],
               ),
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF66C0F4).withValues(alpha: 0.5)),
+              border: Border.all(
+                color: const Color(0xFF66C0F4).withValues(alpha: 0.5),
+              ),
             ),
             child: const Icon(
               Icons.sports_esports_rounded,
@@ -4396,7 +5004,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
               borderRadius: BorderRadius.circular(6),
             ),
             child: Icon(
-              isDownloading ? Icons.pause_rounded : Icons.check_circle_outline_rounded,
+              isDownloading
+                  ? Icons.pause_rounded
+                  : Icons.check_circle_outline_rounded,
               size: 14,
               color: isDownloading ? Colors.white70 : const Color(0xFF66C0F4),
             ),
@@ -4429,10 +5039,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 height: 28,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: haloColor,
-                    width: 2.0,
-                  ),
+                  border: Border.all(color: haloColor, width: 2.0),
                   boxShadow: isSpeaking
                       ? [
                           BoxShadow(
@@ -4469,7 +5076,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 Text(
                   isConnected
                       ? '🔊 ${discord.channelName}'
-                      : (discord.isRunning ? 'Discord Online' : 'Discord Offline'),
+                      : (discord.isRunning
+                            ? 'Discord Online'
+                            : 'Discord Offline'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -4485,7 +5094,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                       width: 5,
                       height: 5,
                       decoration: BoxDecoration(
-                        color: isConnected ? const Color(0xFF23A55A) : Colors.white30,
+                        color: isConnected
+                            ? const Color(0xFF23A55A)
+                            : Colors.white30,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -4494,7 +5105,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                       child: Text(
                         isConnected
                             ? 'Voice Connected · ${discord.pingMs}ms'
-                            : (discord.isRunning ? 'Not connected to voice' : 'Launch Discord to connect'),
+                            : (discord.isRunning
+                                  ? 'Not connected to voice'
+                                  : 'Launch Discord to connect'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -4523,14 +5136,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 child: Icon(
                   isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
                   size: 14,
-                  color: isMuted ? Colors.redAccent : Colors.white.withValues(alpha: 0.8),
+                  color: isMuted
+                      ? Colors.redAccent
+                      : Colors.white.withValues(alpha: 0.8),
                 ),
               ),
               const SizedBox(width: 6),
               Icon(
-                discord.isDeafened ? Icons.headset_off_rounded : Icons.headphones_rounded,
+                discord.isDeafened
+                    ? Icons.headset_off_rounded
+                    : Icons.headphones_rounded,
                 size: 14,
-                color: discord.isDeafened ? Colors.redAccent : Colors.white.withValues(alpha: 0.8),
+                color: discord.isDeafened
+                    ? Colors.redAccent
+                    : Colors.white.withValues(alpha: 0.8),
               ),
             ],
           ),
@@ -4540,16 +5159,26 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   Widget _buildTaskbarWeatherLayout() {
-    final tempStr = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°' : '22°';
-    final condStr = _settings.weatherStatus.isNotEmpty ? _settings.weatherStatus : 'Partly Cloudy';
-    final locStr = _settings.weatherLocation.isNotEmpty ? _settings.weatherLocation : 'Local City';
+    final tempStr = _settings.weatherTemp.isNotEmpty
+        ? '${_settings.weatherTemp}°'
+        : '22°';
+    final condStr = _settings.weatherStatus.isNotEmpty
+        ? _settings.weatherStatus
+        : 'Partly Cloudy';
+    final locStr = _settings.weatherLocation.isNotEmpty
+        ? _settings.weatherLocation
+        : 'Local City';
 
     return _buildTaskbarGlassContainer(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       child: Row(
         children: [
-          const Icon(Icons.cloud_queue_rounded, size: 18, color: Color(0xFF38BDF8)),
+          const Icon(
+            Icons.cloud_queue_rounded,
+            size: 18,
+            color: Color(0xFF38BDF8),
+          ),
           const SizedBox(width: 8),
           Text(
             tempStr,
@@ -4749,10 +5378,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
       suffix = 'th';
     } else {
       switch (day % 10) {
-        case 1: suffix = 'st'; break;
-        case 2: suffix = 'nd'; break;
-        case 3: suffix = 'rd'; break;
-        default: suffix = 'th'; break;
+        case 1:
+          suffix = 'st';
+          break;
+        case 2:
+          suffix = 'nd';
+          break;
+        case 3:
+          suffix = 'rd';
+          break;
+        default:
+          suffix = 'th';
+          break;
       }
     }
     return '${DateFormat('MMMM').format(dt)} $day$suffix';
@@ -4766,12 +5403,19 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final dayColor = Color(_settings.colorFor(ElementKey.day));
     final badgeColor = Color(_settings.colorFor(ElementKey.neonBadge));
 
-    final sepSize = _settings.sizeFor(ElementKey.separator, 10.0) * _settings.fontSizeMultiplier;
-    final dateSize = _settings.sizeFor(ElementKey.date, 10.0) * _settings.fontSizeMultiplier;
-    final daySize = _settings.sizeFor(ElementKey.day, 9.5) * _settings.fontSizeMultiplier;
-    final badgeSize = _settings.sizeFor(ElementKey.neonBadge, 9.0) * _settings.fontSizeMultiplier;
+    final sepSize =
+        _settings.sizeFor(ElementKey.separator, 10.0) *
+        _settings.fontSizeMultiplier;
+    final dateSize =
+        _settings.sizeFor(ElementKey.date, 10.0) * _settings.fontSizeMultiplier;
+    final daySize =
+        _settings.sizeFor(ElementKey.day, 9.5) * _settings.fontSizeMultiplier;
+    final badgeSize =
+        _settings.sizeFor(ElementKey.neonBadge, 9.0) *
+        _settings.fontSizeMultiplier;
 
-    final dateStr = '${_dateTime.day.toString().padLeft(2, '0')} ${DateFormat('MMM').format(_dateTime).toUpperCase()} ${_dateTime.year}';
+    final dateStr =
+        '${_dateTime.day.toString().padLeft(2, '0')} ${DateFormat('MMM').format(_dateTime).toUpperCase()} ${_dateTime.year}';
 
     return _apply3D(
       ElementKey.neonBox,
@@ -4914,7 +5558,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text('•', style: TextStyle(color: dayColor.withValues(alpha: 0.6), fontSize: daySize)),
+                  child: Text(
+                    '•',
+                    style: TextStyle(
+                      color: dayColor.withValues(alpha: 0.6),
+                      fontSize: daySize,
+                    ),
+                  ),
                 ),
                 _apply3D(
                   ElementKey.neonBadge,
@@ -4941,7 +5591,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
   Widget _buildAtomicCleanLayout() {
     final subColor = Color(_settings.colorFor(ElementKey.day));
     final dateColor = Color(_settings.colorFor(ElementKey.date));
-    final subSize = _settings.sizeFor(ElementKey.day, 10.5) * _settings.fontSizeMultiplier;
+    final subSize =
+        _settings.sizeFor(ElementKey.day, 10.5) * _settings.fontSizeMultiplier;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -5029,7 +5680,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
               ),
             ),
             const SizedBox(width: 6),
-            Text('•', style: TextStyle(color: subColor.withValues(alpha: 0.4), fontSize: subSize)),
+            Text(
+              '•',
+              style: TextStyle(
+                color: subColor.withValues(alpha: 0.4),
+                fontSize: subSize,
+              ),
+            ),
             const SizedBox(width: 6),
             _apply3D(
               ElementKey.date,
@@ -5092,7 +5749,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
         _apply3D(
           ElementKey.minutes,
           Text(
-            _settings.showSeconds ? '$_hours:$_minutes:$_seconds' : '$_hours:$_minutes',
+            _settings.showSeconds
+                ? '$_hours:$_minutes:$_seconds'
+                : '$_hours:$_minutes',
             style: _styleFor(
               ElementKey.minutes,
               baseSize: 22,
@@ -5208,7 +5867,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                         height: cardH,
                         fontSize: numSize,
                         fontKey: ElementKey.minutes,
-                        textColor: Color(_settings.colorFor(ElementKey.minutes)),
+                        textColor: Color(
+                          _settings.colorFor(ElementKey.minutes),
+                        ),
                         cardBg: cardBg,
                         fontFamily: _settings.fontFor(ElementKey.minutes),
                       ),
@@ -5219,7 +5880,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                         height: cardH,
                         fontSize: numSize,
                         fontKey: ElementKey.minutes,
-                        textColor: Color(_settings.colorFor(ElementKey.minutes)),
+                        textColor: Color(
+                          _settings.colorFor(ElementKey.minutes),
+                        ),
                         cardBg: cardBg,
                         fontFamily: _settings.fontFor(ElementKey.minutes),
                       ),
@@ -5239,7 +5902,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                           height: cardH * 0.7,
                           fontSize: numSize * 0.7,
                           fontKey: ElementKey.seconds,
-                          textColor: Color(_settings.colorFor(ElementKey.seconds)),
+                          textColor: Color(
+                            _settings.colorFor(ElementKey.seconds),
+                          ),
                           cardBg: cardBg,
                           fontFamily: _settings.fontFor(ElementKey.seconds),
                         ),
@@ -5250,7 +5915,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
                           height: cardH * 0.7,
                           fontSize: numSize * 0.7,
                           fontKey: ElementKey.seconds,
-                          textColor: Color(_settings.colorFor(ElementKey.seconds)),
+                          textColor: Color(
+                            _settings.colorFor(ElementKey.seconds),
+                          ),
                           cardBg: cardBg,
                           fontFamily: _settings.fontFor(ElementKey.seconds),
                         ),
@@ -5327,27 +5994,41 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
     final weekdayStr = DateFormat('EEEE').format(_dateTime);
     final monthDayStr = _formatWithOrdinal(_dateTime);
-    final currentTemp = _settings.weatherTemp.isNotEmpty ? '${_settings.weatherTemp}°C' : '--°C';
-    final currentIcon = WeatherService.getIconForStatus(_settings.weatherStatus);
+    final currentTemp = _settings.weatherTemp.isNotEmpty
+        ? '${_settings.weatherTemp}°C'
+        : '--°C';
+    final currentIcon = WeatherService.getIconForStatus(
+      _settings.weatherStatus,
+    );
 
     List<Map<String, dynamic>> forecastList = [];
     try {
       if (_settings.weatherForecastJson.isNotEmpty) {
         final decoded = jsonDecode(_settings.weatherForecastJson);
         if (decoded is List) {
-          forecastList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          forecastList = decoded
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
         }
       }
     } catch (_) {}
 
-    final col2Time = forecastList.isNotEmpty ? (forecastList[0]['time']?.toString() ?? '+1h') : '+1h';
-    final col2Temp = forecastList.isNotEmpty ? '${forecastList[0]['temp']}°C' : currentTemp;
+    final col2Time = forecastList.isNotEmpty
+        ? (forecastList[0]['time']?.toString() ?? '+1h')
+        : '+1h';
+    final col2Temp = forecastList.isNotEmpty
+        ? '${forecastList[0]['temp']}°C'
+        : currentTemp;
     final col2Icon = forecastList.isNotEmpty
         ? WeatherService.getIconForCode(forecastList[0]['code'] as int? ?? 0)
         : currentIcon;
 
-    final col3Time = forecastList.length > 1 ? (forecastList[1]['time']?.toString() ?? '+2h') : '+2h';
-    final col3Temp = forecastList.length > 1 ? '${forecastList[1]['temp']}°C' : currentTemp;
+    final col3Time = forecastList.length > 1
+        ? (forecastList[1]['time']?.toString() ?? '+2h')
+        : '+2h';
+    final col3Temp = forecastList.length > 1
+        ? '${forecastList[1]['temp']}°C'
+        : currentTemp;
     final col3Icon = forecastList.length > 1
         ? WeatherService.getIconForCode(forecastList[1]['code'] as int? ?? 0)
         : currentIcon;
@@ -5363,7 +6044,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
         ),
         decoration: BoxDecoration(
           color: pillBg,
-          borderRadius: BorderRadius.circular(44 * _settings.fontSizeMultiplier),
+          borderRadius: BorderRadius.circular(
+            44 * _settings.fontSizeMultiplier,
+          ),
           boxShadow: [
             BoxShadow(
               color: pillBg.withValues(alpha: 0.4),
@@ -5475,10 +6158,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.location_on_rounded, size: 9 * _settings.fontSizeMultiplier, color: Colors.white70),
+                      Icon(
+                        Icons.location_on_rounded,
+                        size: 9 * _settings.fontSizeMultiplier,
+                        color: Colors.white70,
+                      ),
                       const SizedBox(width: 3),
                       ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: 160 * _settings.fontSizeMultiplier),
+                        constraints: BoxConstraints(
+                          maxWidth: 160 * _settings.fontSizeMultiplier,
+                        ),
                         child: Text(
                           _settings.weatherLocationResolved,
                           style: TextStyle(
@@ -5505,7 +6194,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18 * _settings.fontSizeMultiplier, color: Colors.white),
+        Icon(
+          icon,
+          size: 18 * _settings.fontSizeMultiplier,
+          color: Colors.white,
+        ),
         const SizedBox(height: 3),
         Text(
           temp,
@@ -5539,7 +6232,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
       if (_settings.isLocked) return;
       if (_settings.autoSizing) {
         _settings.autoSizing = false;
-        unawaited(_settingsService.updateSettings((c) => c.copyWith(autoSizing: false)));
+        unawaited(
+          _settingsService.updateSettings((c) => c.copyWith(autoSizing: false)),
+        );
       }
       _startUserWindowInteraction();
       windowManager.startResizing(edge);
@@ -6757,13 +7452,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
     final isSleepWeather = _settings.widgetTemplate == 'sleep_weather';
     final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
+    final isTaskbarReplacement =
+        _settings.widgetTemplate == 'taskbar_dock' &&
+        _settings.taskbarSettings.nativeTaskbarHideEnabled;
     final defaults =
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
-    final baseWidth = _settings.widgetTemplate == 'custom' && _settings.width > 0
+    final baseWidth =
+        _settings.widgetTemplate == 'custom' && _settings.width > 0
         ? _settings.width
         : defaults['width']!;
-    final baseHeight = _settings.widgetTemplate == 'custom' && _settings.height > 0
+    final baseHeight =
+        _settings.widgetTemplate == 'custom' && _settings.height > 0
         ? _settings.height
         : defaults['height']!;
 
@@ -6786,7 +7486,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+                onSecondaryTapUp: (d) =>
+                    _showContextMenu(context, d.globalPosition),
                 onPanStart: (d) {
                   _handleInteraction();
                   if (!_settings.isLocked) {
@@ -6834,26 +7535,28 @@ class _DesktopWidgetState extends State<DesktopWidget>
         onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
         onPanStart: (d) {
           _handleInteraction();
-          if (!_settings.isLocked) {
+          if (!_settings.isLocked && !isTaskbarReplacement) {
             _startUserWindowInteraction();
             windowManager.startDragging();
           }
         },
         onPanEnd: (_) => _endUserWindowInteraction(),
         onPanCancel: () => _endUserWindowInteraction(),
-        child: Center(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: SizedBox(
-              width: effectiveWidth,
-              height: baseHeight,
-              child: Transform.scale(
-                scale: _settings.sizeFactor,
-                child: _buildLayout(),
+        child: isTaskbarReplacement
+            ? SizedBox.expand(child: _buildLayout())
+            : Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(
+                    width: effectiveWidth,
+                    height: baseHeight,
+                    child: Transform.scale(
+                      scale: _settings.sizeFactor,
+                      child: _buildLayout(),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
       );
     } else {
       mainWidget = Stack(
@@ -6862,7 +7565,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+              onSecondaryTapUp: (d) =>
+                  _showContextMenu(context, d.globalPosition),
               onPanStart: (d) {
                 _handleInteraction();
                 if (!_settings.isLocked) {
@@ -6899,89 +7603,94 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
     return RepaintBoundary(
       child: Listener(
-      onPointerDown: (_) => _handleInteraction(),
-      onPointerMove: (_) => _handleInteraction(),
-      onPointerHover: (_) => _handleInteraction(),
-      child: MouseRegion(
-        onHover: (_) => _handleInteraction(),
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
-          onTap: () {
-            if (_visualEditorModeActive) {
-              logInfo(
-                'DesktopWidget',
-                'Tap outside detected. Exiting visual editor mode.',
-              );
-              _exitVisualEditorMode();
-            }
-          },
-          child: Stack(
-            children: [
-              Positioned.fill(child: mainWidget),
-              if (_visualEditorModeActive && !_settings.isLocked) ...[
-                Positioned.fill(
-                  child: IgnorePointer(
-                    ignoring: true,
-                    child: isSleepWeather
-                        ? CustomPaint(
-                            painter: FolderTabBorderPainter(
-                              color: const Color(
-                                0xFF00E5FF,
-                              ).withValues(alpha: 0.6),
-                              strokeWidth: 2.0,
-                            ),
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
+        onPointerDown: (_) => _handleInteraction(),
+        onPointerMove: (_) => _handleInteraction(),
+        onPointerHover: (_) => _handleInteraction(),
+        child: MouseRegion(
+          onHover: (_) => _handleInteraction(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onSecondaryTapUp: (d) =>
+                _showContextMenu(context, d.globalPosition),
+            onTap: () {
+              if (_visualEditorModeActive) {
+                logInfo(
+                  'DesktopWidget',
+                  'Tap outside detected. Exiting visual editor mode.',
+                );
+                _exitVisualEditorMode();
+              }
+            },
+            child: Stack(
+              children: [
+                Positioned.fill(child: mainWidget),
+                if (_visualEditorModeActive && !_settings.isLocked) ...[
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      ignoring: true,
+                      child: isSleepWeather
+                          ? CustomPaint(
+                              painter: FolderTabBorderPainter(
                                 color: const Color(
                                   0xFF00E5FF,
                                 ).withValues(alpha: 0.6),
-                                width: isTaskbar ? 1.5 : 2.0,
-                                style: BorderStyle.solid,
+                                strokeWidth: 2.0,
                               ),
-                              borderRadius: BorderRadius.circular(isTaskbar ? 10 : 24),
+                            )
+                          : Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF00E5FF,
+                                  ).withValues(alpha: 0.6),
+                                  width: isTaskbar ? 1.5 : 2.0,
+                                  style: BorderStyle.solid,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                  isTaskbar ? 10 : 24,
+                                ),
+                              ),
                             ),
-                          ),
+                    ),
                   ),
-                ),
-                // Editor Mode drag handle label
-                Positioned(
-                  top: isSleepWeather ? 42 : (isTaskbar ? 2 : 6),
-                  left: isTaskbar ? 6 : 12,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isTaskbar ? 4 : 6,
-                      vertical: isTaskbar ? 1 : 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00E5FF),
-                      borderRadius: BorderRadius.circular(3),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 4,
+                  // Editor Mode drag handle label
+                  Positioned(
+                    top: isSleepWeather ? 42 : (isTaskbar ? 2 : 6),
+                    left: isTaskbar ? 6 : 12,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isTaskbar ? 4 : 6,
+                        vertical: isTaskbar ? 1 : 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00E5FF),
+                        borderRadius: BorderRadius.circular(3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        isTaskbar
+                            ? 'EDITOR MODE'
+                            : 'EDITOR MODE - DRAG EDGES TO RESIZE',
+                        style: TextStyle(
+                          color: const Color(0xFF060609),
+                          fontSize: isTaskbar ? 7.5 : 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      isTaskbar ? 'EDITOR MODE' : 'EDITOR MODE - DRAG EDGES TO RESIZE',
-                      style: TextStyle(
-                        color: const Color(0xFF060609),
-                        fontSize: isTaskbar ? 7.5 : 9,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
                       ),
                     ),
                   ),
-                ),
-                ..._buildResizeHandles(context),
+                  ..._buildResizeHandles(context),
+                ],
               ],
-            ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -7310,7 +8019,12 @@ class _MechanicalFlipTileState extends State<MechanicalFlipTile>
           // 1. Static bottom half with NEW text
           Positioned(
             bottom: 0,
-            child: _buildHalfCard(text: _currentText, isTop: false, width: w, height: h),
+            child: _buildHalfCard(
+              text: _currentText,
+              isTop: false,
+              width: w,
+              height: h,
+            ),
           ),
           // 2. Static top half with OLD text
           Positioned(
@@ -7330,7 +8044,12 @@ class _MechanicalFlipTileState extends State<MechanicalFlipTile>
               if (val == 0.0 || val == 1.0) {
                 return Positioned(
                   top: 0,
-                  child: _buildHalfCard(text: _currentText, isTop: true, width: w, height: h),
+                  child: _buildHalfCard(
+                    text: _currentText,
+                    isTop: true,
+                    width: w,
+                    height: h,
+                  ),
                 );
               }
 
@@ -7343,7 +8062,12 @@ class _MechanicalFlipTileState extends State<MechanicalFlipTile>
                       ..setEntry(3, 2, 0.002)
                       ..rotateX(angle),
                     alignment: Alignment.bottomCenter,
-                    child: _buildHalfCard(text: _previousText, isTop: true, width: w, height: h),
+                    child: _buildHalfCard(
+                      text: _previousText,
+                      isTop: true,
+                      width: w,
+                      height: h,
+                    ),
                   ),
                 );
               } else {
@@ -7355,7 +8079,12 @@ class _MechanicalFlipTileState extends State<MechanicalFlipTile>
                       ..setEntry(3, 2, 0.002)
                       ..rotateX(angle),
                     alignment: Alignment.topCenter,
-                    child: _buildHalfCard(text: _currentText, isTop: false, width: w, height: h),
+                    child: _buildHalfCard(
+                      text: _currentText,
+                      isTop: false,
+                      width: w,
+                      height: h,
+                    ),
                   ),
                 );
               }
@@ -7468,13 +8197,25 @@ class ArcClockDialPainter extends CustomPainter {
 
     final topCapAngle = arcStartAngle + arcSweepAngle;
     canvas.drawLine(
-      Offset(center.dx + (radius - 5) * math.cos(topCapAngle), center.dy + (radius - 5) * math.sin(topCapAngle)),
-      Offset(center.dx + (radius + 5) * math.cos(topCapAngle), center.dy + (radius + 5) * math.sin(topCapAngle)),
+      Offset(
+        center.dx + (radius - 5) * math.cos(topCapAngle),
+        center.dy + (radius - 5) * math.sin(topCapAngle),
+      ),
+      Offset(
+        center.dx + (radius + 5) * math.cos(topCapAngle),
+        center.dy + (radius + 5) * math.sin(topCapAngle),
+      ),
       capPaintMagenta,
     );
     canvas.drawLine(
-      Offset(center.dx + (radius - 5) * math.cos(arcStartAngle), center.dy + (radius - 5) * math.sin(arcStartAngle)),
-      Offset(center.dx + (radius + 5) * math.cos(arcStartAngle), center.dy + (radius + 5) * math.sin(arcStartAngle)),
+      Offset(
+        center.dx + (radius - 5) * math.cos(arcStartAngle),
+        center.dy + (radius - 5) * math.sin(arcStartAngle),
+      ),
+      Offset(
+        center.dx + (radius + 5) * math.cos(arcStartAngle),
+        center.dy + (radius + 5) * math.sin(arcStartAngle),
+      ),
       capPaintCyan,
     );
 
@@ -7494,17 +8235,28 @@ class ArcClockDialPainter extends CustomPainter {
       final isAccent = (i == 9 || i == 0 || i == 3);
       final tickLen = isAccent ? 8.0 : 5.0;
 
-      final p1 = Offset(center.dx + (radius - tickLen) * math.cos(angle), center.dy + (radius - tickLen) * math.sin(angle));
-      final p2 = Offset(center.dx + radius * math.cos(angle), center.dy + radius * math.sin(angle));
+      final p1 = Offset(
+        center.dx + (radius - tickLen) * math.cos(angle),
+        center.dy + (radius - tickLen) * math.sin(angle),
+      );
+      final p2 = Offset(
+        center.dx + radius * math.cos(angle),
+        center.dy + radius * math.sin(angle),
+      );
       canvas.drawLine(p1, p2, isAccent ? tickPaintAccent : tickPaintFaint);
     }
 
     // 3. Hour Hand
-    final hourAngle = ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) - (math.pi / 2);
+    final hourAngle =
+        ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) -
+        (math.pi / 2);
     final hourLen = radius * 0.50;
     canvas.drawLine(
       center,
-      Offset(center.dx + hourLen * math.cos(hourAngle), center.dy + hourLen * math.sin(hourAngle)),
+      Offset(
+        center.dx + hourLen * math.cos(hourAngle),
+        center.dy + hourLen * math.sin(hourAngle),
+      ),
       Paint()
         ..color = hourHandColor
         ..strokeWidth = 4.5
@@ -7512,11 +8264,16 @@ class ArcClockDialPainter extends CustomPainter {
     );
 
     // 4. Minute Hand
-    final minuteAngle = (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) - (math.pi / 2);
+    final minuteAngle =
+        (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) -
+        (math.pi / 2);
     final minuteLen = radius * 0.78;
     canvas.drawLine(
       center,
-      Offset(center.dx + minuteLen * math.cos(minuteAngle), center.dy + minuteLen * math.sin(minuteAngle)),
+      Offset(
+        center.dx + minuteLen * math.cos(minuteAngle),
+        center.dy + minuteLen * math.sin(minuteAngle),
+      ),
       Paint()
         ..color = minuteHandColor
         ..strokeWidth = 3.0
@@ -7524,8 +8281,21 @@ class ArcClockDialPainter extends CustomPainter {
     );
 
     // 5. Center Pivot Hub
-    canvas.drawCircle(center, 6.0, Paint()..color = minuteHandColor..style = PaintingStyle.stroke..strokeWidth = 2.5);
-    canvas.drawCircle(center, 2.5, Paint()..color = secondHandColor..style = PaintingStyle.fill);
+    canvas.drawCircle(
+      center,
+      6.0,
+      Paint()
+        ..color = minuteHandColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+    canvas.drawCircle(
+      center,
+      2.5,
+      Paint()
+        ..color = secondHandColor
+        ..style = PaintingStyle.fill,
+    );
   }
 
   @override
@@ -7575,8 +8345,14 @@ class StationClockDialPainter extends CustomPainter {
       final tickLen = isHour ? 9.0 : 4.0;
       final tickWidth = isHour ? 2.5 : 1.0;
 
-      final p1 = Offset(center.dx + (radius - 4 - tickLen) * math.cos(angle), center.dy + (radius - 4 - tickLen) * math.sin(angle));
-      final p2 = Offset(center.dx + (radius - 4) * math.cos(angle), center.dy + (radius - 4) * math.sin(angle));
+      final p1 = Offset(
+        center.dx + (radius - 4 - tickLen) * math.cos(angle),
+        center.dy + (radius - 4 - tickLen) * math.sin(angle),
+      );
+      final p2 = Offset(
+        center.dx + (radius - 4) * math.cos(angle),
+        center.dy + (radius - 4) * math.sin(angle),
+      );
 
       canvas.drawLine(
         p1,
@@ -7589,33 +8365,65 @@ class StationClockDialPainter extends CustomPainter {
     }
 
     // Hour Hand
-    final hourAngle = ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) - (math.pi / 2);
+    final hourAngle =
+        ((dateTime.hour % 12) + dateTime.minute / 60.0) * (math.pi / 6) -
+        (math.pi / 2);
     final hourLen = radius * 0.52;
     canvas.drawLine(
       center,
-      Offset(center.dx + hourLen * math.cos(hourAngle), center.dy + hourLen * math.sin(hourAngle)),
-      Paint()..color = handColor..strokeWidth = 4.2..strokeCap = StrokeCap.round,
+      Offset(
+        center.dx + hourLen * math.cos(hourAngle),
+        center.dy + hourLen * math.sin(hourAngle),
+      ),
+      Paint()
+        ..color = handColor
+        ..strokeWidth = 4.2
+        ..strokeCap = StrokeCap.round,
     );
 
     // Minute Hand
-    final minuteAngle = (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) - (math.pi / 2);
+    final minuteAngle =
+        (dateTime.minute + dateTime.second / 60.0) * (math.pi / 30) -
+        (math.pi / 2);
     final minuteLen = radius * 0.76;
     canvas.drawLine(
       center,
-      Offset(center.dx + minuteLen * math.cos(minuteAngle), center.dy + minuteLen * math.sin(minuteAngle)),
-      Paint()..color = minuteHandColor..strokeWidth = 3.0..strokeCap = StrokeCap.round,
+      Offset(
+        center.dx + minuteLen * math.cos(minuteAngle),
+        center.dy + minuteLen * math.sin(minuteAngle),
+      ),
+      Paint()
+        ..color = minuteHandColor
+        ..strokeWidth = 3.0
+        ..strokeCap = StrokeCap.round,
     );
 
     // Second Hand (Swiss Red with counterweight disk)
     final secAngle = dateTime.second * (math.pi / 30) - (math.pi / 2);
     final secLen = radius * 0.82;
     final secBackLen = radius * 0.22;
-    final pStart = Offset(center.dx - secBackLen * math.cos(secAngle), center.dy - secBackLen * math.sin(secAngle));
-    final pEnd = Offset(center.dx + secLen * math.cos(secAngle), center.dy + secLen * math.sin(secAngle));
-    canvas.drawLine(pStart, pEnd, Paint()..color = secondColor..strokeWidth = 1.6..strokeCap = StrokeCap.round);
+    final pStart = Offset(
+      center.dx - secBackLen * math.cos(secAngle),
+      center.dy - secBackLen * math.sin(secAngle),
+    );
+    final pEnd = Offset(
+      center.dx + secLen * math.cos(secAngle),
+      center.dy + secLen * math.sin(secAngle),
+    );
+    canvas.drawLine(
+      pStart,
+      pEnd,
+      Paint()
+        ..color = secondColor
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round,
+    );
 
     // Counterweight circular disk on second hand
-    final diskCenter = Offset(center.dx - secBackLen * 0.7 * math.cos(secAngle), center.dy - secBackLen * 0.7 * math.sin(secAngle));
+    final diskCenter = Offset(
+      center.dx - secBackLen * 0.7 * math.cos(secAngle),
+      center.dy - secBackLen * 0.7 * math.sin(secAngle),
+    );
     canvas.drawCircle(diskCenter, 3.5, Paint()..color = secondColor);
 
     // Center pivot pin

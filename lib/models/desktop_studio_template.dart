@@ -930,18 +930,24 @@ class DesktopStudioTemplate {
           type: DockElementType.pinnedApp,
           label: 'Browser',
           iconCodePoint: 0xe894, // Icons.language
+          actionType: 'app',
+          actionPayload: 'https://www.google.com',
         ),
         DockItemElement(
           id: 'dock_pinned2',
           type: DockElementType.pinnedApp,
           label: 'Code',
           iconCodePoint: 0xe86f, // Icons.code
+          actionType: 'app',
+          actionPayload: 'code',
         ),
         DockItemElement(
           id: 'dock_pinned3',
           type: DockElementType.pinnedApp,
           label: 'Terminal',
           iconCodePoint: 0xe853, // Icons.terminal
+          actionType: 'app',
+          actionPayload: 'wt',
         ),
         DockItemElement(
           id: 'dock_sep',
@@ -1414,4 +1420,3 @@ class DesktopStudioTemplate {
         customLayout(),
       ];
 }
-

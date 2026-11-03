@@ -25,6 +25,36 @@ WallSync keeps its Flutter/WebView2 renderer and moves the Flutter view HWND,
 rather than copying Lively's player application. Distributions containing this
 derived native attachment code must comply with GPL-3.0.
 
+## Windows taskbar and dock
+
+The Taskbar Studio can run the WallSync dock alongside Windows or replace the
+primary taskbar with a full-width, app-owned native window. Windows does not
+provide a supported API for skinning Explorer's taskbar in place. Replacement
+aligns the WallSync HWND to the native taskbar's measured bounds, verifies its
+PID, visibility, position and readiness handshake, and only then hides the
+native taskbar. Startup or positioning failures restore Windows. Replacement
+currently refuses to hide taskbars on secondary displays or replace a vertical
+taskbar until a corresponding replacement window is available for each display.
+
+The replacement bar includes Windows Search, Task View, File Explorer, Copilot,
+running-window activation, quick settings, Wi-Fi/audio/power settings,
+notifications, and show-desktop actions. These invoke Windows shell commands,
+settings pages, or keyboard shortcuts; they do not embed Explorer's private
+system-tray UI. Pinned apps and custom actions open the configured Windows app,
+file, or website. Configure those launch targets in Desktop Studio's Components
+pane. The running-app section uses native Win32 window enumeration and
+activation. Dock activation is acknowledged only after the child process
+confirms its instance, operation and configuration revision, publishes its own
+HWND, and signals the named readiness event; the parent then verifies the HWND
+owner PID, visibility, monitor bounds and IPC signal.
+
+The Windows runner records early native startup stages and Dart bootstrap
+stages in a separate file per process under
+`%APPDATA%\com.example\wallsync\diagnostics`. Filenames include the PID,
+startup timestamp, process mode, instance ID and operation ID. The parent
+captures child stdout/stderr and records the child log path in the per-instance
+PID record.
+
 ## Admin panel setup
 
 The admin panel uses Firebase Authentication and the `adminApi` Cloud Function.

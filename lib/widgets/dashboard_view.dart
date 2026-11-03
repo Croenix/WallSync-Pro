@@ -1648,7 +1648,10 @@ class _DashboardViewState extends State<DashboardView>
 
   // ── System Tray & Window Lifecycle ────────────────────────────────────────
 
-  static bool _isTrayCompatibilityFailure(Object error, [String? explicitText]) {
+  static bool _isTrayCompatibilityFailure(
+    Object error, [
+    String? explicitText,
+  ]) {
     final text = explicitText ?? error.toString();
     return error is MissingPluginException ||
         error is ArgumentError ||
@@ -2539,8 +2542,18 @@ class _DashboardViewState extends State<DashboardView>
         },
         inspectProcess: inspectWindowsProcess,
         expectedPid: launchedPid,
-        timeout: const Duration(seconds: 10),
+        timeout: overlayStartupReadinessTimeout,
         pollInterval: const Duration(milliseconds: 200),
+        onStatusChanged: (status, record, inspection, elapsed) {
+          logInfo(
+            'DashboardView',
+            'Widget "$widgetId" readiness status=${status.name}, '
+                'state=${record?.state.name}, stage=${record?.stage.name}, '
+                'pid=${record?.pid ?? launchedPid}, '
+                'processRunning=${inspection?.isRunning}, '
+                'ready=${record?.ready}, elapsed=${elapsed.inMilliseconds}ms.',
+          );
+        },
       );
       final readinessWaitMs = stageReadinessStopwatch.elapsedMilliseconds;
 
@@ -2909,7 +2922,9 @@ class _DashboardViewState extends State<DashboardView>
       if (WindowsTaskbarService.instance.isCustomTaskbarActive ||
           _activeRunningWidgetIds.contains('taskbar_dock') ||
           settings.widgetTemplate.startsWith('taskbar_')) {
-        unawaited(WindowsTaskbarService.instance.syncDockSettings(settings));
+        await WindowsTaskbarService.instance.syncDockSettings(
+          settings: settings,
+        );
       }
     } catch (error, stackTrace) {
       logError(
@@ -19710,7 +19725,8 @@ class _DashboardViewState extends State<DashboardView>
                     final isSelected =
                         (effectiveMode == mode) ||
                         (mode == DesktopTaskbarMode.customTaskbar &&
-                            effectiveMode == DesktopTaskbarMode.dockWithNativeHidden);
+                            effectiveMode ==
+                                DesktopTaskbarMode.dockWithNativeHidden);
                     final cardWidget = InkWell(
                       onTap: onTap,
                       borderRadius: BorderRadius.circular(12),
@@ -19842,7 +19858,10 @@ class _DashboardViewState extends State<DashboardView>
                       mode: DesktopTaskbarMode.customTaskbar,
                       title: 'Full Replacement',
                       description:
-                          'Native taskbar hidden. Dock acts as primary taskbar.',
+                          'Custom taskbar fills the primary Windows taskbar bounds. '
+                          'Windows taskbar is hidden only after exact bounds and '
+                          'readiness are verified; secondary displays stay visible '
+                          'until they have their own replacement.',
                       icon: Icons.space_dashboard_rounded,
                       accentColor: const Color(0xFFA855F7),
                       onTap: taskbarService.operationInProgress
@@ -19932,7 +19951,8 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   ),
                   subtitle: Text(
-                    'Transactionally positions and activates WallSync dock on desktop as a taskbar replacement.',
+                    'Replaces the primary Windows taskbar with a full-width custom taskbar. '
+                    'Native taskbar visibility is restored if replacement readiness fails.',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.white.withValues(alpha: 0.65),
@@ -19960,16 +19980,21 @@ class _DashboardViewState extends State<DashboardView>
                             taskbarSettings: updatedTaskbar,
                           );
                           await _settingsService.save(updatedSettings);
-                          await taskbarService.syncDockSettings(
-                            updatedSettings,
-                          );
-                          setState(() => _settings = updatedSettings);
-
                           if (isCustomActive) {
-                            await taskbarService.setWindowsTaskbarVisibility(
-                              !hide,
+                            await taskbarService.enableCustomTaskbar(
+                              hideNativeTaskbar: hide,
+                            );
+                          } else {
+                            await taskbarService.syncDockSettings(
+                              settings: updatedSettings,
+                              replacementMode: hide,
                             );
                           }
+                          setState(
+                            () => _settings = isCustomActive
+                                ? _settingsService.settings
+                                : updatedSettings,
+                          );
                         },
                   title: const Text(
                     'Hide Native Windows Taskbar',

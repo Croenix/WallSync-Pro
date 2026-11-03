@@ -10,6 +10,7 @@ add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "live_wallpaper_plugin.cpp"
   "main.cpp"
+  "process_diagnostics.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
@@ -38,6 +39,7 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "windowsapp.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "psapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "dxgi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "winmm.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")

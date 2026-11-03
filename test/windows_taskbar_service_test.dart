@@ -40,7 +40,10 @@ void main() {
       final json = original.toJson();
       final restored = TaskbarSettings.fromJson(json);
 
-      expect(restored.desktopTaskbarMode, DesktopTaskbarMode.dockWithNativeHidden);
+      expect(
+        restored.desktopTaskbarMode,
+        DesktopTaskbarMode.dockWithNativeHidden,
+      );
       expect(restored.customTaskbarEnabled, true);
       expect(restored.nativeTaskbarHideEnabled, true);
       expect(restored.activeTemplateId, 'minimal_floating');
@@ -48,8 +51,14 @@ void main() {
       expect(restored.taskbarPosition, 'bottom');
       expect(restored.autoHideEnabled, true);
       expect(restored.recoveryEnabled, true);
-      expect(restored.lastSuccessfulActivation, DateTime(2026, 11, 1, 12, 0, 0));
-      expect(restored.lastSuccessfulRestoration, DateTime(2026, 11, 1, 12, 5, 0));
+      expect(
+        restored.lastSuccessfulActivation,
+        DateTime(2026, 11, 1, 12, 0, 0),
+      );
+      expect(
+        restored.lastSuccessfulRestoration,
+        DateTime(2026, 11, 1, 12, 5, 0),
+      );
       expect(restored.recoveryPending, false);
       expect(restored.configurationVersion, 2);
     });
@@ -64,7 +73,10 @@ void main() {
 
       expect(updated.customTaskbarEnabled, true);
       expect(updated.nativeTaskbarHideEnabled, true);
-      expect(updated.desktopTaskbarMode, DesktopTaskbarMode.dockWithNativeHidden);
+      expect(
+        updated.desktopTaskbarMode,
+        DesktopTaskbarMode.dockWithNativeHidden,
+      );
       expect(updated.activeTemplateId, original.activeTemplateId);
       expect(updated.configurationVersion, original.configurationVersion);
     });
@@ -170,7 +182,10 @@ void main() {
       expect(TaskbarReplacementState.starting.isProcessing, true);
       expect(TaskbarReplacementState.nativeTaskbarDetected.isProcessing, true);
       expect(TaskbarReplacementState.customTaskbarCreating.isProcessing, true);
-      expect(TaskbarReplacementState.nativeTaskbarHidePending.isProcessing, true);
+      expect(
+        TaskbarReplacementState.nativeTaskbarHidePending.isProcessing,
+        true,
+      );
       expect(TaskbarReplacementState.restoring.isProcessing, true);
 
       expect(TaskbarReplacementState.failedToActivate.isError, true);
@@ -184,38 +199,76 @@ void main() {
     final List<MethodCall> methodCalls = [];
     bool mockTaskbarVisible = true;
     bool shouldFailHide = false;
+    bool shouldFailPositionDock = false;
+    int secondaryVisibleCount = 0;
 
     setUp(() {
       methodCalls.clear();
       mockTaskbarVisible = true;
       shouldFailHide = false;
+      shouldFailPositionDock = false;
+      secondaryVisibleCount = 0;
       WindowsTaskbarService.instance.setDependencies(isTest: true);
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(const MethodChannel(channelName), (call) async {
-        methodCalls.add(call);
-        switch (call.method) {
-          case 'getWindowsTaskbarInfo':
-            return {
-              'primaryPresent': true,
-              'primaryVisible': mockTaskbarVisible,
-              'secondaryCount': 0,
-              'secondaryVisibleCount': 0,
-              'allVisible': mockTaskbarVisible,
-              'anyVisible': mockTaskbarVisible,
-            };
-          case 'setWindowsTaskbarVisibility':
-            if (shouldFailHide) return false;
-            final visible = (call.arguments as Map)['visible'] as bool;
-            mockTaskbarVisible = visible;
-            return true;
-          case 'restoreWindowsTaskbar':
-            mockTaskbarVisible = true;
-            return true;
-          default:
-            return null;
-        }
-      });
+          .setMockMethodCallHandler(const MethodChannel(channelName), (
+            call,
+          ) async {
+            methodCalls.add(call);
+            switch (call.method) {
+              case 'getWindowsTaskbarInfo':
+                return {
+                  'primaryPresent': true,
+                  'primaryVisible': mockTaskbarVisible,
+                  'secondaryCount': 0,
+                  'secondaryVisibleCount': secondaryVisibleCount,
+                  'allVisible': mockTaskbarVisible,
+                  'anyVisible': mockTaskbarVisible,
+                };
+              case 'positionDockForReplacement':
+                if (shouldFailPositionDock) {
+                  return {'success': false, 'error': 'position failed'};
+                }
+                return {
+                  'success': true,
+                  'hwnd': (call.arguments as Map)['hwnd'],
+                  'ownerPid': (call.arguments as Map)['pid'],
+                  'targetRect': {
+                    'left': 0,
+                    'top': 1030,
+                    'right': 1920,
+                    'bottom': 1080,
+                    'width': 1920,
+                    'height': 50,
+                  },
+                };
+              case 'runTaskbarCommand':
+                return true;
+              case 'setWindowsTaskbarVisibility':
+                if (shouldFailHide) return false;
+                final visible = (call.arguments as Map)['visible'] as bool;
+                mockTaskbarVisible = visible;
+                return true;
+              case 'restoreWindowsTaskbar':
+                mockTaskbarVisible = true;
+                return true;
+              case 'getDesktopWindows':
+                return [
+                  {
+                    'hwnd': 1234,
+                    'pid': 5678,
+                    'title': 'Editor',
+                    'executable': r'C:\Program Files\Editor\editor.exe',
+                    'isForeground': true,
+                  },
+                ];
+              case 'activateDesktopWindow':
+              case 'launchDockItem':
+                return true;
+              default:
+                return null;
+            }
+          });
     });
 
     tearDown(() {
@@ -223,60 +276,137 @@ void main() {
           .setMockMethodCallHandler(const MethodChannel(channelName), null);
     });
 
-    test('Service initializes cleanly with standard Windows taskbar active', () async {
-      final service = WindowsTaskbarService();
-      await service.init();
-      expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
-      expect(service.isCustomTaskbarActive, false);
-      expect(service.isWindowsTaskbarHidden, false);
-    });
+    test(
+      'Service initializes cleanly with standard Windows taskbar active',
+      () async {
+        final service = WindowsTaskbarService();
+        await service.init();
+        expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
+        expect(service.isCustomTaskbarActive, false);
+        expect(service.isWindowsTaskbarHidden, false);
+      },
+    );
 
-    test('Transactional custom taskbar activation without hiding native taskbar', () async {
-      final service = WindowsTaskbarService();
-      await service.init();
+    test(
+      'Transactional custom taskbar activation without hiding native taskbar',
+      () async {
+        final service = WindowsTaskbarService();
+        await service.init();
 
-      final success = await service.enableCustomTaskbar(hideNativeTaskbar: false);
-      expect(success, true);
-      expect(service.state, TaskbarReplacementState.wallSyncTaskbarActive);
-      expect(service.isCustomTaskbarActive, true);
-      expect(service.isWindowsTaskbarHidden, false);
-      expect(mockTaskbarVisible, true);
-    });
+        final success = await service.enableCustomTaskbar(
+          hideNativeTaskbar: false,
+        );
+        expect(success, true);
+        expect(service.state, TaskbarReplacementState.wallSyncTaskbarActive);
+        expect(service.isCustomTaskbarActive, true);
+        expect(service.isWindowsTaskbarHidden, false);
+        expect(mockTaskbarVisible, true);
+      },
+    );
 
-    test('Transactional custom taskbar activation WITH hiding native taskbar', () async {
-      final service = WindowsTaskbarService();
-      await service.init();
+    test(
+      'Transactional custom taskbar activation WITH hiding native taskbar',
+      () async {
+        final service = WindowsTaskbarService();
+        await service.init();
 
-      final success = await service.enableCustomTaskbar(hideNativeTaskbar: true);
-      expect(success, true);
-      expect(service.state, TaskbarReplacementState.windowsTaskbarHidden);
-      expect(service.isCustomTaskbarActive, true);
-      expect(service.isWindowsTaskbarHidden, true);
-      expect(mockTaskbarVisible, false);
-    });
+        final success = await service.enableCustomTaskbar(
+          hideNativeTaskbar: true,
+        );
+        expect(success, true);
+        expect(service.state, TaskbarReplacementState.windowsTaskbarHidden);
+        expect(service.isCustomTaskbarActive, true);
+        expect(service.isWindowsTaskbarHidden, true);
+        expect(mockTaskbarVisible, false);
+        final positionIndex = methodCalls.indexWhere(
+          (call) => call.method == 'positionDockForReplacement',
+        );
+        final hideIndex = methodCalls.indexWhere(
+          (call) =>
+              call.method == 'setWindowsTaskbarVisibility' &&
+              (call.arguments as Map)['visible'] == false,
+        );
+        expect(positionIndex, greaterThanOrEqualTo(0));
+        expect(hideIndex, greaterThan(positionIndex));
+        final dockSettings = await SettingsService(
+          instanceId: 'taskbar_dock',
+        ).loadSettings();
+        expect(dockSettings.taskbarSettings.customTaskbarEnabled, true);
+        expect(dockSettings.taskbarSettings.nativeTaskbarHideEnabled, true);
+      },
+    );
 
-    test('Restoration restores native Windows taskbar and updates state', () async {
-      final service = WindowsTaskbarService();
-      await service.init();
-      await service.enableCustomTaskbar(hideNativeTaskbar: true);
+    test(
+      'Restoration restores native Windows taskbar and updates state',
+      () async {
+        final service = WindowsTaskbarService();
+        await service.init();
+        await service.enableCustomTaskbar(hideNativeTaskbar: true);
 
-      final restored = await service.restoreWindowsTaskbar();
-      expect(restored, true);
-      expect(mockTaskbarVisible, true);
-      expect(service.isWindowsTaskbarHidden, false);
-      expect(service.state == TaskbarReplacementState.restoredSuccessfully ||
-          service.state == TaskbarReplacementState.windowsTaskbarActive, true);
-    });
+        final restored = await service.restoreWindowsTaskbar();
+        expect(restored, true);
+        expect(mockTaskbarVisible, true);
+        expect(service.isWindowsTaskbarHidden, false);
+        expect(
+          service.state == TaskbarReplacementState.restoredSuccessfully ||
+              service.state == TaskbarReplacementState.windowsTaskbarActive,
+          true,
+        );
+      },
+    );
 
     test('Safe rollback when hiding native taskbar fails', () async {
       shouldFailHide = true;
       final service = WindowsTaskbarService();
       await service.init();
 
-      final success = await service.enableCustomTaskbar(hideNativeTaskbar: true);
+      final success = await service.enableCustomTaskbar(
+        hideNativeTaskbar: true,
+      );
       expect(success, false);
       expect(service.state, TaskbarReplacementState.failedToActivate);
       expect(mockTaskbarVisible, true);
+    });
+
+    test(
+      'Replacement alignment failure leaves native taskbar visible',
+      () async {
+        shouldFailPositionDock = true;
+        final service = WindowsTaskbarService();
+        await service.init();
+
+        final success = await service.enableCustomTaskbar(
+          hideNativeTaskbar: true,
+        );
+
+        expect(success, false);
+        expect(mockTaskbarVisible, true);
+        expect(
+          methodCalls.any(
+            (call) =>
+                call.method == 'setWindowsTaskbarVisibility' &&
+                (call.arguments as Map)['visible'] == false,
+          ),
+          false,
+        );
+      },
+    );
+
+    test('Replacement refuses to hide additional monitor taskbars', () async {
+      secondaryVisibleCount = 1;
+      final service = WindowsTaskbarService();
+      await service.init();
+
+      final success = await service.enableCustomTaskbar(
+        hideNativeTaskbar: true,
+      );
+
+      expect(success, false);
+      expect(mockTaskbarVisible, true);
+      expect(
+        methodCalls.any((call) => call.method == 'positionDockForReplacement'),
+        false,
+      );
     });
 
     test('Option A: Reset Appearance resets colors to safe defaults', () async {
@@ -302,43 +432,51 @@ void main() {
       expect(settings.height, 48.0);
     });
 
-    test('Option C: Full Taskbar Reset restores taskbar and resets defaults', () async {
-      final service = WindowsTaskbarService();
-      await service.init();
-      await service.enableCustomTaskbar(hideNativeTaskbar: true);
+    test(
+      'Option C: Full Taskbar Reset restores taskbar and resets defaults',
+      () async {
+        final service = WindowsTaskbarService();
+        await service.init();
+        await service.enableCustomTaskbar(hideNativeTaskbar: true);
 
-      await service.resetFullTaskbar();
-      expect(mockTaskbarVisible, true);
-      expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
-      expect(service.isCustomTaskbarActive, false);
-    });
+        await service.resetFullTaskbar();
+        expect(mockTaskbarVisible, true);
+        expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
+        expect(service.isCustomTaskbarActive, false);
+      },
+    );
 
-    test('Custom taskbar dock spawner and closer lifecycle verification', () async {
-      final service = WindowsTaskbarService();
-      bool spawnerCalled = false;
-      bool closerCalled = false;
+    test(
+      'Custom taskbar dock spawner and closer lifecycle verification',
+      () async {
+        final service = WindowsTaskbarService();
+        bool spawnerCalled = false;
+        bool closerCalled = false;
 
-      service.setDependencies(
-        taskbarSpawner: () async {
-          spawnerCalled = true;
-          return true;
-        },
-        taskbarCloser: () async {
-          closerCalled = true;
-        },
-      );
+        service.setDependencies(
+          taskbarSpawner: () async {
+            spawnerCalled = true;
+            return true;
+          },
+          taskbarCloser: () async {
+            closerCalled = true;
+          },
+        );
 
-      await service.init();
-      final activated = await service.enableCustomTaskbar(hideNativeTaskbar: true);
-      expect(activated, true);
-      expect(spawnerCalled, true);
-      expect(service.isCustomTaskbarActive, true);
+        await service.init();
+        final activated = await service.enableCustomTaskbar(
+          hideNativeTaskbar: true,
+        );
+        expect(activated, true);
+        expect(spawnerCalled, true);
+        expect(service.isCustomTaskbarActive, true);
 
-      final restored = await service.restoreWindowsTaskbar();
-      expect(restored, true);
-      expect(closerCalled, true);
-      expect(service.isCustomTaskbarActive, false);
-    });
+        final restored = await service.restoreWindowsTaskbar();
+        expect(restored, true);
+        expect(closerCalled, true);
+        expect(service.isCustomTaskbarActive, false);
+      },
+    );
 
     test('syncDockSettings updates dock instance settings file', () async {
       final service = WindowsTaskbarService();
@@ -351,29 +489,38 @@ void main() {
         taskbarShowWeather: true,
       );
 
-      await service.syncDockSettings(currentSettings);
-      final dockSettings = await SettingsService(instanceId: 'taskbar_dock').loadSettings();
+      await service.syncDockSettings(settings: currentSettings);
+      final dockSettings = await SettingsService(
+        instanceId: 'taskbar_dock',
+      ).loadSettings();
 
       expect(dockSettings.taskbarAccentColor, 0xFFFF5722);
       expect(dockSettings.taskbarBgColor, 0xEE101015);
       expect(dockSettings.taskbarShowCpu, false);
       expect(dockSettings.taskbarShowWeather, true);
       expect(dockSettings.widgetTemplate, 'taskbar_dock');
+      expect(dockSettings.taskbarSettings.customTaskbarEnabled, false);
+      expect(dockSettings.taskbarSettings.nativeTaskbarHideEnabled, false);
     });
 
-    test('Dock spawner failure triggers rollback and does NOT report success', () async {
-      final service = WindowsTaskbarService();
-      service.setDependencies(
-        taskbarSpawner: () async => false, // simulates dock spawn failure
-      );
-      await service.init();
+    test(
+      'Dock spawner failure triggers rollback and does NOT report success',
+      () async {
+        final service = WindowsTaskbarService();
+        service.setDependencies(
+          taskbarSpawner: () async => false, // simulates dock spawn failure
+        );
+        await service.init();
 
-      final success = await service.enableCustomTaskbar(hideNativeTaskbar: true);
-      expect(success, false);
-      expect(service.state, TaskbarReplacementState.failedToActivate);
-      expect(service.isCustomTaskbarActive, false);
-      expect(mockTaskbarVisible, true);
-    });
+        final success = await service.enableCustomTaskbar(
+          hideNativeTaskbar: true,
+        );
+        expect(success, false);
+        expect(service.state, TaskbarReplacementState.failedToActivate);
+        expect(service.isCustomTaskbarActive, false);
+        expect(mockTaskbarVisible, true);
+      },
+    );
 
     test('Operation ID cancellation supersedes stale activation', () async {
       final service = WindowsTaskbarService();
@@ -393,9 +540,18 @@ void main() {
       await service.restoreWindowsTaskbar();
 
       final result1 = await future1;
-      expect(result1, false); // Must return false, cannot report false activation success!
-      expect(service.state, isNot(TaskbarReplacementState.wallSyncTaskbarActive));
-      expect(service.state, isNot(TaskbarReplacementState.windowsTaskbarHidden));
+      expect(
+        result1,
+        false,
+      ); // Must return false, cannot report false activation success!
+      expect(
+        service.state,
+        isNot(TaskbarReplacementState.wallSyncTaskbarActive),
+      );
+      expect(
+        service.state,
+        isNot(TaskbarReplacementState.windowsTaskbarHidden),
+      );
       expect(mockTaskbarVisible, true);
     });
 
@@ -411,19 +567,71 @@ void main() {
       expect(verification['onMonitor'], true);
       expect(verification['rect']['width'], 1920);
     });
+
+    test('dock lists and activates native Windows app windows', () async {
+      final service = WindowsTaskbarService();
+      await service.init();
+
+      final windows = await service.getDesktopWindows();
+      expect(windows, hasLength(1));
+      expect(windows.single.handle, 1234);
+      expect(windows.single.processId, 5678);
+      expect(windows.single.title, 'Editor');
+      expect(windows.single.executable, r'C:\Program Files\Editor\editor.exe');
+      expect(windows.single.isForeground, true);
+
+      expect(await service.activateDesktopWindow(1234), true);
+      expect(methodCalls.last.method, 'activateDesktopWindow');
+      expect((methodCalls.last.arguments as Map)['hwnd'], 1234);
+    });
+
+    test(
+      'dock launches configured app, file, and URL targets natively',
+      () async {
+        final service = WindowsTaskbarService();
+        await service.init();
+
+        expect(await service.launchDockItem('wt'), true);
+        expect(methodCalls.last.method, 'launchDockItem');
+        expect((methodCalls.last.arguments as Map)['target'], 'wt');
+
+        expect(await service.launchDockItem('  '), false);
+      },
+    );
+
+    test('replacement taskbar actions route to the native runner', () async {
+      final service = WindowsTaskbarService();
+      await service.init();
+
+      expect(await service.runTaskbarCommand('search'), true);
+      expect(methodCalls.last.method, 'runTaskbarCommand');
+      expect((methodCalls.last.arguments as Map)['command'], 'search');
+    });
   });
 
   group('DockReadinessStage & OverlayProcessRecord Tests', () {
     test('12 DockReadinessStages have valid display names and predicates', () {
       expect(DockReadinessStage.values.length, 12);
-      expect(DockReadinessStage.processNotStarted.displayName, 'Process Not Started');
-      expect(DockReadinessStage.processStarting.displayName, 'Process Starting');
+      expect(
+        DockReadinessStage.processNotStarted.displayName,
+        'Process Not Started',
+      );
+      expect(
+        DockReadinessStage.processStarting.displayName,
+        'Process Starting',
+      );
       expect(DockReadinessStage.processRunning.displayName, 'Process Running');
-      expect(DockReadinessStage.windowNotCreated.displayName, 'Window Not Created');
+      expect(
+        DockReadinessStage.windowNotCreated.displayName,
+        'Window Not Created',
+      );
       expect(DockReadinessStage.windowFound.displayName, 'Window Found');
       expect(DockReadinessStage.windowVerified.displayName, 'Window Verified');
       expect(DockReadinessStage.windowVisible.displayName, 'Window Visible');
-      expect(DockReadinessStage.windowInteractive.displayName, 'Window Interactive');
+      expect(
+        DockReadinessStage.windowInteractive.displayName,
+        'Window Interactive',
+      );
       expect(DockReadinessStage.dockReady.displayName, 'Dock Ready');
       expect(DockReadinessStage.failed.displayName, 'Failed');
       expect(DockReadinessStage.stopping.displayName, 'Stopping');

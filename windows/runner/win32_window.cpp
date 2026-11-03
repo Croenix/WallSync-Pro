@@ -3,6 +3,7 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
+#include "process_diagnostics.h"
 #include "resource.h"
 
 namespace {
@@ -100,14 +101,33 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     window_class.hbrBackground = 0;
     window_class.lpszMenuName = nullptr;
     window_class.lpfnWndProc = Win32Window::WndProc;
-    RegisterClass(&window_class);
+    SetLastError(ERROR_SUCCESS);
+    const ATOM registered = RegisterClassW(&window_class);
+    const DWORD error = registered == 0 ? GetLastError() : ERROR_SUCCESS;
+    if (registered == 0 && error != ERROR_CLASS_ALREADY_EXISTS) {
+      LogProcessDiagnostic(
+          "window_class_registration",
+          "result=failed class=FLUTTER_RUNNER_WIN32_WINDOW error=" +
+              std::to_string(error));
+      return nullptr;
+    }
     class_registered_ = true;
+    LogProcessDiagnostic(
+        "window_class_registration",
+        std::string("result=") +
+            (registered == 0 ? "already_registered" : "success") +
+            " class=FLUTTER_RUNNER_WIN32_WINDOW");
   }
   return kWindowClassName;
 }
 
 void WindowClassRegistrar::UnregisterWindowClass() {
-  UnregisterClass(kWindowClassName, nullptr);
+  const BOOL unregistered = UnregisterClassW(kWindowClassName, nullptr);
+  LogProcessDiagnostic(
+      "window_class_unregistration",
+      std::string("result=") + (unregistered ? "success" : "failed") +
+          " error=" + std::to_string(unregistered ? ERROR_SUCCESS
+                                                   : GetLastError()));
   class_registered_ = false;
 }
 
@@ -127,12 +147,18 @@ bool Win32Window::Create(const std::wstring& title,
 
   const wchar_t* window_class =
       WindowClassRegistrar::GetInstance()->GetWindowClass();
+  if (window_class == nullptr) return false;
 
   const POINT target_point = {static_cast<LONG>(origin.x),
                               static_cast<LONG>(origin.y)};
   HMONITOR monitor = MonitorFromPoint(target_point, MONITOR_DEFAULTTONEAREST);
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
+  LogProcessDiagnostic(
+      "window_display_initialization",
+      "monitor=" + std::to_string(reinterpret_cast<intptr_t>(monitor)) +
+          " dpi=" + std::to_string(dpi) +
+          " scale=" + std::to_string(scale_factor));
 
   DWORD dwStyle = WS_OVERLAPPEDWINDOW;
   DWORD dwExStyle = 0;
@@ -141,22 +167,57 @@ bool Win32Window::Create(const std::wstring& title,
     dwExStyle = WS_EX_TOOLWINDOW;
   }
 
-  HWND window = CreateWindowEx(
+  SetLastError(ERROR_SUCCESS);
+  HWND window = CreateWindowExW(
       dwExStyle, window_class, title.c_str(), dwStyle,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
 
   if (!window) {
+    LogProcessDiagnostic(
+        "create_window_ex",
+        "result=failed error=" + std::to_string(GetLastError()));
     return false;
   }
+  DWORD owner_pid = 0;
+  const DWORD window_thread =
+      GetWindowThreadProcessId(window, &owner_pid);
+  LogProcessDiagnostic(
+      "create_window_ex",
+      "result=success hwnd=" +
+          std::to_string(reinterpret_cast<intptr_t>(window)) +
+          " ownerPid=" + std::to_string(owner_pid) +
+          " currentPid=" + std::to_string(GetCurrentProcessId()) +
+          " windowThread=" + std::to_string(window_thread) +
+          " creatingThread=" + std::to_string(GetCurrentThreadId()) +
+          " visible=" + (IsWindowVisible(window) ? "true" : "false"));
+  if (owner_pid != GetCurrentProcessId() || window_thread == 0) {
+    LogProcessDiagnostic("hwnd_ownership_verification",
+                         "result=failed ownerPid=" +
+                             std::to_string(owner_pid) +
+                             " windowThread=" +
+                             std::to_string(window_thread));
+    DestroyWindow(window);
+    window_handle_ = nullptr;
+    return false;
+  }
+  LogProcessDiagnostic("hwnd_ownership_verification",
+                       "result=verified ownerPid=" +
+                           std::to_string(owner_pid) +
+                           " windowThread=" + std::to_string(window_thread));
 
   UpdateTheme(window);
 
   if (!OnCreate()) {
+    LogProcessDiagnostic("flutter_window_initialization",
+                         "result=failed error=OnCreate returned false");
     Destroy();
     return false;
   }
+  LogProcessDiagnostic("flutter_window_initialization",
+                       "result=success hwnd=" +
+                           std::to_string(reinterpret_cast<intptr_t>(window)));
   return true;
 }
 
@@ -165,7 +226,13 @@ bool Win32Window::Show() {
     return false;
   }
   ShowWindow(window_handle_, SW_SHOWNORMAL);
-  return IsWindowVisible(window_handle_) != FALSE;
+  const bool visible = IsWindowVisible(window_handle_) != FALSE;
+  LogProcessDiagnostic(
+      "window_visibility",
+      std::string("result=") + (visible ? "visible" : "hidden") +
+          " hwnd=" +
+          std::to_string(reinterpret_cast<intptr_t>(window_handle_)));
+  return visible;
 }
 
 // static
@@ -253,15 +320,46 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
       GetWindowLongPtr(window, GWLP_USERDATA));
 }
 
-void Win32Window::SetChildContent(HWND content) {
+bool Win32Window::SetChildContent(HWND content) {
+  if (content == nullptr || window_handle_ == nullptr || !IsWindow(content) ||
+      !IsWindow(window_handle_)) {
+    LogProcessDiagnostic(
+        "flutter_native_view_initialization",
+        "result=failed error=Invalid host or Flutter view HWND");
+    return false;
+  }
+  SetLastError(ERROR_SUCCESS);
+  const HWND previous_parent = SetParent(content, window_handle_);
+  const DWORD parent_error = previous_parent == nullptr ? GetLastError()
+                                                         : ERROR_SUCCESS;
+  if (previous_parent == nullptr && parent_error != ERROR_SUCCESS) {
+    LogProcessDiagnostic(
+        "flutter_native_view_initialization",
+        "result=failed step=SetParent error=" +
+            std::to_string(parent_error));
+    return false;
+  }
   child_content_ = content;
-  SetParent(content, window_handle_);
   RECT frame = GetClientArea();
 
-  MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
-             frame.bottom - frame.top, true);
+  const BOOL moved =
+      MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
+                 frame.bottom - frame.top, true);
+  if (!moved) {
+    LogProcessDiagnostic(
+        "flutter_native_view_initialization",
+        "result=failed step=MoveWindow error=" +
+            std::to_string(GetLastError()));
+    return false;
+  }
 
   SetFocus(child_content_);
+  LogProcessDiagnostic(
+      "flutter_native_view_initialization",
+      "result=success parentHwnd=" +
+          std::to_string(reinterpret_cast<intptr_t>(window_handle_)) +
+          " childHwnd=" + std::to_string(reinterpret_cast<intptr_t>(content)));
+  return true;
 }
 
 RECT Win32Window::GetClientArea() {

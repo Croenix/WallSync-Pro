@@ -27,6 +27,9 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _jsonController = TextEditingController();
+  final TextEditingController _elementLabelController = TextEditingController();
+  final TextEditingController _elementTargetController = TextEditingController();
+  String? _editingElementId;
   String? _jsonValidationError;
   bool _isJsonValid = true;
 
@@ -35,6 +38,7 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
     _jsonController.text = widget.template.toFormattedJson();
+    _syncElementControllers();
   }
 
   @override
@@ -46,13 +50,59 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
         _jsonController.text = widget.template.toFormattedJson();
       }
     }
+    _syncElementControllers();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _jsonController.dispose();
+    _elementLabelController.dispose();
+    _elementTargetController.dispose();
     super.dispose();
+  }
+
+  DockItemElement? _selectedElement() {
+    for (final element in widget.template.elements) {
+      if (element.id == widget.selectedElementId) return element;
+    }
+    return null;
+  }
+
+  void _syncElementControllers() {
+    final element = _selectedElement();
+    if (element?.id != _editingElementId) {
+      _editingElementId = element?.id;
+      _elementLabelController.text = element?.label ?? '';
+      _elementTargetController.text = element?.actionPayload ?? '';
+      return;
+    }
+    if (element != null) {
+      if (_elementLabelController.text != element.label) {
+        _elementLabelController.text = element.label;
+      }
+      if (_elementTargetController.text != element.actionPayload) {
+        _elementTargetController.text = element.actionPayload;
+      }
+    }
+  }
+
+  void _updateSelectedElement({
+    String? label,
+    String? actionType,
+    String? actionPayload,
+  }) {
+    final elements = List<DockItemElement>.from(widget.template.elements);
+    final index = elements.indexWhere(
+      (element) => element.id == widget.selectedElementId,
+    );
+    if (index < 0) return;
+    elements[index] = elements[index].copyWith(
+      label: label,
+      actionType: actionType,
+      actionPayload: actionPayload,
+    );
+    _update(widget.template.copyWith(elements: elements));
   }
 
   void _update(DesktopStudioTemplate newTemplate) {
@@ -484,6 +534,83 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
           },
         ),
 
+        if (_selectedElement() case final selected?) ...[
+          const SizedBox(height: 18),
+          _buildSectionHeader('Selected Element'),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _elementLabelController,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+            decoration: _textFieldDecoration('Display name'),
+            onChanged: (value) => _updateSelectedElement(label: value),
+          ),
+          if (selected.type == DockElementType.pinnedApp ||
+              selected.type == DockElementType.customAction) ...[
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: [
+                'app',
+                'url',
+                'dashboard',
+                'default',
+              ].contains(selected.actionType)
+                  ? selected.actionType
+                  : 'default',
+              decoration: _textFieldDecoration('Click action'),
+              dropdownColor: const Color(0xFF161C28),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+              items: const [
+                DropdownMenuItem(value: 'app', child: Text('Open app or file')),
+                DropdownMenuItem(value: 'url', child: Text('Open website')),
+                DropdownMenuItem(value: 'dashboard', child: Text('Open WallSync')),
+                DropdownMenuItem(value: 'default', child: Text('No action')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  _updateSelectedElement(actionType: value);
+                }
+              },
+            ),
+            if (selected.actionType == 'app' ||
+                selected.actionType == 'url') ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _elementTargetController,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: _textFieldDecoration(
+                  selected.actionType == 'url'
+                      ? 'Website URL'
+                      : 'App command, path, or file',
+                ),
+                onChanged: (value) =>
+                    _updateSelectedElement(actionPayload: value),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                selected.actionType == 'url'
+                    ? 'The website opens in your default Windows browser.'
+                    : 'Examples: wt, code, C:\\Apps\\MyApp.exe',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+            if (selected.actionType == 'dashboard') ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _elementTargetController,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: _textFieldDecoration(
+                  'Dashboard tab (e.g. desktop_studio)',
+                ),
+                onChanged: (value) =>
+                    _updateSelectedElement(actionPayload: value),
+              ),
+            ],
+          ],
+        ],
+
         const SizedBox(height: 20),
         _buildSectionHeader('Add New Element'),
         const SizedBox(height: 8),
@@ -505,6 +632,12 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
                   id: '${type}_${DateTime.now().millisecondsSinceEpoch}',
                   type: type,
                   label: DockElementType.getDisplayName(type),
+                  actionType: type == DockElementType.appLauncher
+                      ? 'dashboard'
+                      : type == DockElementType.pinnedApp ||
+                            type == DockElementType.customAction
+                      ? 'app'
+                      : 'default',
                 );
                 final list = List<DockItemElement>.from(elements)..add(newElem);
                 _update(widget.template.copyWith(elements: list));
@@ -513,6 +646,24 @@ class _DesktopStudioSidebarState extends State<DesktopStudioSidebar>
           }).toList(),
         ),
       ],
+    );
+  }
+
+  InputDecoration _textFieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
+      filled: true,
+      fillColor: const Color(0xFF161C28),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+      ),
     );
   }
 

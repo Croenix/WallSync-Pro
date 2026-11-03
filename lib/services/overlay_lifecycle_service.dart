@@ -11,6 +11,8 @@ import 'package:win32/win32.dart';
 import '../models/taskbar_settings.dart';
 import 'settings_service.dart';
 
+const overlayStartupReadinessTimeout = Duration(seconds: 30);
+
 enum OverlayLifecycleState {
   stopped,
   preparing,
@@ -34,6 +36,8 @@ class OverlayProcessRecord {
     this.ready = true,
     this.state = OverlayLifecycleState.ready,
     this.instanceId,
+    this.processMode,
+    this.diagnosticLogPath,
     this.hwnd,
     this.configurationRevision = 1,
     this.stage = DockReadinessStage.dockReady,
@@ -55,6 +59,8 @@ class OverlayProcessRecord {
   final bool ready;
   final OverlayLifecycleState state;
   final String? instanceId;
+  final String? processMode;
+  final String? diagnosticLogPath;
   final int? hwnd;
   final int configurationRevision;
   final DockReadinessStage stage;
@@ -76,6 +82,8 @@ class OverlayProcessRecord {
     bool? ready,
     OverlayLifecycleState? state,
     String? instanceId,
+    String? processMode,
+    String? diagnosticLogPath,
     int? hwnd,
     int? configurationRevision,
     DockReadinessStage? stage,
@@ -96,6 +104,8 @@ class OverlayProcessRecord {
     ready: ready ?? this.ready,
     state: state ?? this.state,
     instanceId: instanceId ?? this.instanceId,
+    processMode: processMode ?? this.processMode,
+    diagnosticLogPath: diagnosticLogPath ?? this.diagnosticLogPath,
     hwnd: hwnd ?? this.hwnd,
     configurationRevision: configurationRevision ?? this.configurationRevision,
     stage: stage ?? this.stage,
@@ -118,6 +128,8 @@ class OverlayProcessRecord {
     'ready': ready,
     'state': state.name,
     if (instanceId != null) 'instanceId': instanceId,
+    if (processMode != null) 'processMode': processMode,
+    if (diagnosticLogPath != null) 'diagnosticLogPath': diagnosticLogPath,
     if (hwnd != null) 'hwnd': hwnd,
     'configurationRevision': configurationRevision,
     'stage': stage.name,
@@ -158,6 +170,8 @@ class OverlayProcessRecord {
           ? int.tryParse(rawCreationTime)
           : null;
       final executablePath = decoded['executablePath'];
+      final processMode = decoded['processMode'];
+      final diagnosticLogPath = decoded['diagnosticLogPath'];
       final rawReady = decoded['ready'];
       if (pid is! int ||
           pid <= 0 ||
@@ -165,6 +179,9 @@ class OverlayProcessRecord {
           creationTime <= 0 ||
           (executablePath != null &&
               (executablePath is! String || executablePath.isEmpty)) ||
+          (processMode != null && processMode is! String) ||
+          (diagnosticLogPath != null &&
+              (diagnosticLogPath is! String || diagnosticLogPath.isEmpty)) ||
           (rawReady != null && rawReady is! bool)) {
         return null;
       }
@@ -174,10 +191,14 @@ class OverlayProcessRecord {
       if (rawState is String) {
         state = OverlayLifecycleState.values.firstWhere(
           (s) => s.name == rawState,
-          orElse: () => ready ? OverlayLifecycleState.ready : OverlayLifecycleState.processStarted,
+          orElse: () => ready
+              ? OverlayLifecycleState.ready
+              : OverlayLifecycleState.processStarted,
         );
       } else {
-        state = ready ? OverlayLifecycleState.ready : OverlayLifecycleState.processStarted;
+        state = ready
+            ? OverlayLifecycleState.ready
+            : OverlayLifecycleState.processStarted;
       }
 
       final rawStage = decoded['stage'];
@@ -193,7 +214,8 @@ class OverlayProcessRecord {
         );
       }
 
-      int? parseMs(dynamic val) => val is int ? val : (val is String ? int.tryParse(val) : null);
+      int? parseMs(dynamic val) =>
+          val is int ? val : (val is String ? int.tryParse(val) : null);
 
       return OverlayProcessRecord(
         pid: pid,
@@ -202,6 +224,8 @@ class OverlayProcessRecord {
         ready: ready,
         state: state,
         instanceId: decoded['instanceId'] as String?,
+        processMode: processMode as String?,
+        diagnosticLogPath: diagnosticLogPath as String?,
         hwnd: parseMs(decoded['hwnd']),
         configurationRevision: (decoded['configurationRevision'] as int?) ?? 1,
         stage: stage,
@@ -419,6 +443,11 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   required Future<OverlayProcessRecord?> Function() readRecord,
   required OverlayProcessInspector inspectProcess,
   int? expectedPid,
+  String? expectedInstanceId,
+  String? expectedProcessMode,
+  int? expectedOperationId,
+  int? expectedConfigurationRevision,
+  bool requireWindowHandle = false,
   Duration timeout = const Duration(seconds: 30),
   Duration pollInterval = const Duration(milliseconds: 250),
   void Function(
@@ -435,6 +464,17 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   int? previousPid;
   OverlayProcessRecord? latestRecord;
   OverlayProcessInspection? latestInspection;
+
+  bool matchesExpectedIdentity(OverlayProcessRecord record) =>
+      (expectedPid == null || record.pid == expectedPid) &&
+      (expectedInstanceId == null || record.instanceId == expectedInstanceId) &&
+      (expectedProcessMode == null ||
+          record.processMode == expectedProcessMode) &&
+      (expectedOperationId == null ||
+          record.operationId == expectedOperationId) &&
+      (expectedConfigurationRevision == null ||
+          record.configurationRevision == expectedConfigurationRevision) &&
+      (!requireWindowHandle || (record.hwnd != null && record.hwnd! > 0));
 
   // Immediate liveness check if an expected PID was provided
   if (expectedPid != null) {
@@ -472,8 +512,15 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
           status = OverlayReadinessStatus.missing;
         }
       } else {
-        latestInspection = await inspectProcess(latestRecord.pid);
-        if (latestInspection == null) {
+        status = OverlayReadinessStatus.starting;
+        if (!matchesExpectedIdentity(latestRecord)) {
+          status = OverlayReadinessStatus.identityMismatch;
+        } else {
+          latestInspection = await inspectProcess(latestRecord.pid);
+        }
+        if (status == OverlayReadinessStatus.identityMismatch) {
+          // A stale or unrelated PID record is never an acknowledgement.
+        } else if (latestInspection == null) {
           status = OverlayReadinessStatus.unverifiable;
         } else if (!latestInspection.matches(latestRecord)) {
           status = OverlayReadinessStatus.identityMismatch;
@@ -539,7 +586,9 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   if (!status.isReady) {
     try {
       final finalRecord = await readRecord();
-      if (finalRecord != null && finalRecord.ready) {
+      if (finalRecord != null &&
+          finalRecord.ready &&
+          matchesExpectedIdentity(finalRecord)) {
         final finalInspection = await inspectProcess(finalRecord.pid);
         if (finalInspection != null &&
             finalInspection.matches(finalRecord) &&
@@ -739,6 +788,8 @@ class OverlayLifecycleService {
     int? hwnd,
     int? configurationRevision,
     int? operationId,
+    String? processMode,
+    String? diagnosticLogPath,
     int? startupTimestamp,
     bool healthCheck = true,
     int? entryPointMs,
@@ -765,7 +816,9 @@ class OverlayLifecycleService {
       OverlayProcessRecord? existingRecord;
       if (await pidFile.exists()) {
         try {
-          existingRecord = OverlayProcessRecord.tryParse(await pidFile.readAsString());
+          existingRecord = OverlayProcessRecord.tryParse(
+            await pidFile.readAsString(),
+          );
         } catch (_) {}
       }
 
@@ -784,6 +837,9 @@ class OverlayLifecycleService {
         ready: ready,
         state: state,
         instanceId: instanceId ?? existingRecord?.instanceId,
+        processMode: processMode ?? existingRecord?.processMode,
+        diagnosticLogPath:
+            diagnosticLogPath ?? existingRecord?.diagnosticLogPath,
         hwnd: hwnd ?? existingRecord?.hwnd,
         configurationRevision:
             configurationRevision ?? existingRecord?.configurationRevision ?? 1,
@@ -795,7 +851,11 @@ class OverlayLifecycleService {
         settingsLoadedMs: settingsLoadedMs ?? existingRecord?.settingsLoadedMs,
         windowInitMs: windowInitMs ?? existingRecord?.windowInitMs,
         firstFrameMs: firstFrameMs ?? existingRecord?.firstFrameMs,
-        readyPublishedMs: readyPublishedMs ?? (ready ? DateTime.now().millisecondsSinceEpoch : existingRecord?.readyPublishedMs),
+        readyPublishedMs:
+            readyPublishedMs ??
+            (ready
+                ? DateTime.now().millisecondsSinceEpoch
+                : existingRecord?.readyPublishedMs),
         acknowledgedMs: acknowledgedMs ?? existingRecord?.acknowledgedMs,
         failureReason: failureReason ?? existingRecord?.failureReason,
       );
@@ -810,11 +870,6 @@ class OverlayLifecycleService {
         var replaced = false;
         for (var attempt = 0; attempt < 3; attempt++) {
           try {
-            if (await pidFile.exists()) {
-              try {
-                await pidFile.delete();
-              } catch (_) {}
-            }
             await temporaryFile.rename(pidFile.path);
             replaced = true;
             break;
@@ -825,9 +880,9 @@ class OverlayLifecycleService {
           }
         }
         if (!replaced) {
-          await pidFile.writeAsString(
-            jsonEncode(registered.toJson()),
-            flush: true,
+          throw FileSystemException(
+            'Could not atomically replace the overlay PID record',
+            pidFile.path,
           );
         }
       } finally {
@@ -866,6 +921,8 @@ class OverlayLifecycleService {
     DockReadinessStage? stage,
     bool? ready,
     String? instanceId,
+    String? processMode,
+    String? diagnosticLogPath,
     int? hwnd,
     int? configurationRevision,
     int? operationId,
@@ -888,6 +945,8 @@ class OverlayLifecycleService {
             : DockReadinessStage.processRunning),
     ready: ready ?? (state == OverlayLifecycleState.ready),
     instanceId: instanceId,
+    processMode: processMode,
+    diagnosticLogPath: diagnosticLogPath,
     hwnd: hwnd,
     configurationRevision: configurationRevision,
     operationId: operationId,
@@ -907,6 +966,8 @@ class OverlayLifecycleService {
     int? readyPublishedMs,
     int? hwnd,
     String? instanceId,
+    String? processMode,
+    String? diagnosticLogPath,
     int? configurationRevision,
     int? operationId,
   }) => updateCurrentProcessState(
@@ -916,9 +977,12 @@ class OverlayLifecycleService {
     ready: true,
     hwnd: hwnd,
     instanceId: instanceId,
+    processMode: processMode,
+    diagnosticLogPath: diagnosticLogPath,
     configurationRevision: configurationRevision,
     operationId: operationId,
     readyPublishedMs: readyPublishedMs ?? DateTime.now().millisecondsSinceEpoch,
+    acknowledgedMs: DateTime.now().millisecondsSinceEpoch,
   );
 
   static Future<void> markCurrentProcessFailed(

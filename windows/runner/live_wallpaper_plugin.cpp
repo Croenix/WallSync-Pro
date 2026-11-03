@@ -3,12 +3,14 @@
 // Wallpaper's WinDesktopCore.cs and DesktopUtil.cs (GPL-3.0).
 
 #include "live_wallpaper_plugin.h"
+#include "process_diagnostics.h"
 
 #include <windows.h>
 #include <dwmapi.h>
 #include <powrprof.h>
 #include <psapi.h>
 #include <processthreadsapi.h>
+#include <shellapi.h>
 #include <dxgi.h>
 #include <shobjidl_core.h>
 #include <shobjidl.h>
@@ -270,8 +272,18 @@ class LiveWallpaperPlugin::Impl {
   flutter::EncodableMap GetWindowsTaskbarInfo();
   bool SetWindowsTaskbarVisibility(bool visible);
   bool RestoreWindowsTaskbar();
+  flutter::EncodableMap PositionDockForReplacement(DWORD pid,
+                                                   int64_t expected_hwnd);
+  bool RunTaskbarCommand(const std::string& command);
   int64_t GetNativeWindowHandle();
-  flutter::EncodableMap VerifyDockWindow(DWORD pid, const std::string& instance_id);
+  flutter::EncodableMap GetNativeWindowInfo();
+  flutter::EncodableMap VerifyDockWindow(DWORD pid,
+                                         const std::string& instance_id,
+                                         int64_t operation_id = -1);
+  bool ActivateDockWindow(DWORD pid, const std::string& instance_id);
+  flutter::EncodableList GetDesktopWindows();
+  bool ActivateDesktopWindow(int64_t hwnd);
+  bool LaunchDockItem(const std::string& target);
   flutter::EncodableMap FindWindowByTitleOrPid(const std::string& title_query, DWORD pid_query);
   bool IsOtherAudioPlaying();
   flutter::EncodableMap GetWindowsAccentColor();
@@ -556,11 +568,67 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
     result->Success(flutter::EncodableValue(RestoreWindowsTaskbar()));
     return;
   }
+  if (call.method_name() == "positionDockForReplacement") {
+    DWORD pid = 0;
+    int64_t expected_hwnd = 0;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_pid = args->find(flutter::EncodableValue("pid"));
+      if (it_pid != args->end()) pid = GetIntFromEncodable(it_pid->second, 0);
+      auto it_hwnd = args->find(flutter::EncodableValue("hwnd"));
+      if (it_hwnd != args->end()) {
+        expected_hwnd = GetIntFromEncodable(it_hwnd->second, 0);
+      }
+    }
+    result->Success(flutter::EncodableValue(
+        PositionDockForReplacement(pid, expected_hwnd)));
+    return;
+  }
+  if (call.method_name() == "runTaskbarCommand") {
+    std::string command;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_command = args->find(flutter::EncodableValue("command"));
+      if (it_command != args->end()) {
+        command = GetStringFromEncodable(it_command->second, "");
+      }
+    }
+    result->Success(flutter::EncodableValue(RunTaskbarCommand(command)));
+    return;
+  }
   if (call.method_name() == "getNativeWindowHandle") {
     result->Success(flutter::EncodableValue(GetNativeWindowHandle()));
     return;
   }
+  if (call.method_name() == "getNativeWindowInfo") {
+    result->Success(flutter::EncodableValue(GetNativeWindowInfo()));
+    return;
+  }
+  if (call.method_name() == "acknowledgeDockReadiness") {
+    const bool acknowledged = SignalProcessReadinessEvent();
+    result->Success(flutter::EncodableValue(acknowledged));
+    return;
+  }
   if (call.method_name() == "verifyDockWindow") {
+    int pid_query = 0;
+    int64_t operation_id = -1;
+    std::string instance_id = "";
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it_pid = args->find(flutter::EncodableValue("pid"));
+      if (it_pid != args->end()) pid_query = GetIntFromEncodable(it_pid->second, 0);
+      auto it_inst = args->find(flutter::EncodableValue("instanceId"));
+      if (it_inst != args->end()) instance_id = GetStringFromEncodable(it_inst->second, "");
+      auto it_operation = args->find(flutter::EncodableValue("operationId"));
+      if (it_operation != args->end()) {
+        operation_id = GetIntFromEncodable(it_operation->second, -1);
+      }
+    }
+    result->Success(flutter::EncodableValue(VerifyDockWindow(
+        static_cast<DWORD>(pid_query), instance_id, operation_id)));
+    return;
+  }
+  if (call.method_name() == "activateDockWindow") {
     int pid_query = 0;
     std::string instance_id = "";
     const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
@@ -570,7 +638,33 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
       auto it_inst = args->find(flutter::EncodableValue("instanceId"));
       if (it_inst != args->end()) instance_id = GetStringFromEncodable(it_inst->second, "");
     }
-    result->Success(flutter::EncodableValue(VerifyDockWindow(static_cast<DWORD>(pid_query), instance_id)));
+    result->Success(flutter::EncodableValue(ActivateDockWindow(static_cast<DWORD>(pid_query), instance_id)));
+    return;
+  }
+  if (call.method_name() == "getDesktopWindows") {
+    result->Success(flutter::EncodableValue(GetDesktopWindows()));
+    return;
+  }
+  if (call.method_name() == "activateDesktopWindow") {
+    int64_t hwnd = 0;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("hwnd"));
+      if (it != args->end() && std::holds_alternative<int64_t>(it->second)) {
+        hwnd = std::get<int64_t>(it->second);
+      }
+    }
+    result->Success(flutter::EncodableValue(ActivateDesktopWindow(hwnd)));
+    return;
+  }
+  if (call.method_name() == "launchDockItem") {
+    std::string target;
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (args) {
+      auto it = args->find(flutter::EncodableValue("target"));
+      if (it != args->end()) target = GetStringFromEncodable(it->second);
+    }
+    result->Success(flutter::EncodableValue(LaunchDockItem(target)));
     return;
   }
   if (call.method_name() == "findWindowByTitleOrPid") {
@@ -2409,8 +2503,53 @@ int64_t LiveWallpaperPlugin::Impl::GetNativeWindowHandle() {
   return reinterpret_cast<int64_t>(target);
 }
 
+flutter::EncodableMap LiveWallpaperPlugin::Impl::GetNativeWindowInfo() {
+  flutter::EncodableMap result;
+  HWND target = root_window_ ? root_window_ : window_;
+  DWORD owner_pid = 0;
+  const DWORD thread_id =
+      target != nullptr && IsWindow(target)
+          ? GetWindowThreadProcessId(target, &owner_pid)
+          : 0;
+  RECT bounds{};
+  const bool valid = target != nullptr && IsWindow(target) &&
+                     owner_pid == GetCurrentProcessId() && thread_id != 0;
+  if (valid) GetWindowRect(target, &bounds);
+  result[flutter::EncodableValue("hwnd")] =
+      flutter::EncodableValue(reinterpret_cast<int64_t>(target));
+  result[flutter::EncodableValue("ownerPid")] =
+      flutter::EncodableValue(static_cast<int64_t>(owner_pid));
+  result[flutter::EncodableValue("threadId")] =
+      flutter::EncodableValue(static_cast<int64_t>(thread_id));
+  result[flutter::EncodableValue("isValid")] =
+      flutter::EncodableValue(valid);
+  result[flutter::EncodableValue("isVisible")] =
+      flutter::EncodableValue(valid && IsWindowVisible(target));
+  result[flutter::EncodableValue("onMonitor")] =
+      flutter::EncodableValue(valid &&
+                              MonitorFromWindow(target, MONITOR_DEFAULTTONULL) !=
+                                  nullptr);
+  result[flutter::EncodableValue("left")] =
+      flutter::EncodableValue(static_cast<int64_t>(bounds.left));
+  result[flutter::EncodableValue("top")] =
+      flutter::EncodableValue(static_cast<int64_t>(bounds.top));
+  result[flutter::EncodableValue("right")] =
+      flutter::EncodableValue(static_cast<int64_t>(bounds.right));
+  result[flutter::EncodableValue("bottom")] =
+      flutter::EncodableValue(static_cast<int64_t>(bounds.bottom));
+  LogProcessDiagnostic(
+      "hwnd_ownership_verification",
+      std::string("result=") + (valid ? "verified" : "failed") +
+          " hwnd=" +
+          std::to_string(reinterpret_cast<intptr_t>(target)) +
+          " ownerPid=" + std::to_string(owner_pid) +
+          " currentPid=" + std::to_string(GetCurrentProcessId()) +
+          " threadId=" + std::to_string(thread_id));
+  return result;
+}
+
 flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyDockWindow(
-    DWORD pid, const std::string& instance_id) {
+    DWORD pid, const std::string& instance_id, int64_t operation_id) {
   flutter::EncodableMap res;
   res[flutter::EncodableValue("found")] = flutter::EncodableValue(false);
   res[flutter::EncodableValue("hwnd")] = flutter::EncodableValue(static_cast<int64_t>(0));
@@ -2419,6 +2558,9 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyDockWindow(
   res[flutter::EncodableValue("isIconic")] = flutter::EncodableValue(false);
   res[flutter::EncodableValue("isEnabled")] = flutter::EncodableValue(false);
   res[flutter::EncodableValue("onMonitor")] = flutter::EncodableValue(false);
+  res[flutter::EncodableValue("ipcReady")] =
+      flutter::EncodableValue(IsProcessReadinessEventSignaled(
+          pid, instance_id, operation_id));
 
   flutter::EncodableMap empty_rect;
   empty_rect[flutter::EncodableValue("left")] = flutter::EncodableValue(static_cast<int64_t>(0));
@@ -2501,6 +2643,11 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyDockWindow(
     res[flutter::EncodableValue("isIconic")] = flutter::EncodableValue(iconic);
     res[flutter::EncodableValue("isEnabled")] = flutter::EncodableValue(enabled);
     res[flutter::EncodableValue("onMonitor")] = flutter::EncodableValue(mon != nullptr);
+    res[flutter::EncodableValue("windowThreadId")] =
+        flutter::EncodableValue(static_cast<int64_t>(
+            GetWindowThreadProcessId(h, nullptr)));
+    res[flutter::EncodableValue("ownerPid")] =
+        flutter::EncodableValue(static_cast<int64_t>(found_pid));
 
     flutter::EncodableMap rect_map;
     rect_map[flutter::EncodableValue("left")] = flutter::EncodableValue(static_cast<int64_t>(ctx.best_rect.left));
@@ -2513,6 +2660,309 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyDockWindow(
   }
 
   return res;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::PositionDockForReplacement(
+    DWORD pid, int64_t expected_hwnd) {
+  flutter::EncodableMap result;
+  result[flutter::EncodableValue("success")] = flutter::EncodableValue(false);
+
+  if (pid == 0 || expected_hwnd == 0) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Missing dock PID or HWND.");
+    return result;
+  }
+
+  const auto found = FindWindowByTitleOrPid("", pid);
+  const auto hwnd_it = found.find(flutter::EncodableValue("hwnd"));
+  if (found.find(flutter::EncodableValue("found")) == found.end() ||
+      !std::get<bool>(found.at(flutter::EncodableValue("found"))) ||
+      hwnd_it == found.end()) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("No top-level window found for the dock PID.");
+    return result;
+  }
+
+  const auto* hwnd_value = std::get_if<int64_t>(&hwnd_it->second);
+  if (hwnd_value == nullptr || *hwnd_value != expected_hwnd) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Dock HWND does not match the ready record.");
+    return result;
+  }
+
+  HWND dock = reinterpret_cast<HWND>(*hwnd_value);
+  DWORD owner_pid = 0;
+  GetWindowThreadProcessId(dock, &owner_pid);
+  if (!IsWindow(dock) || owner_pid != pid) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Dock HWND is invalid or owned by another PID.");
+    return result;
+  }
+
+  HWND shell_taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+  RECT target{};
+  if (shell_taskbar == nullptr || !IsWindow(shell_taskbar) ||
+      !GetWindowRect(shell_taskbar, &target)) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Could not read the native taskbar bounds.");
+    return result;
+  }
+
+  const int width = target.right - target.left;
+  const int height = target.bottom - target.top;
+  if (width <= 0 || height <= 0) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Native taskbar bounds are unusable.");
+    return result;
+  }
+  if (height > width) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue(
+            "Full Replacement currently supports horizontal taskbars only.");
+    return result;
+  }
+
+  if (!SetWindowPos(dock, HWND_TOP, target.left, target.top, width, height,
+                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW |
+                        SWP_FRAMECHANGED)) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("SetWindowPos failed with Win32 error " +
+                                std::to_string(GetLastError()) + ".");
+    return result;
+  }
+
+  RECT actual{};
+  DWORD actual_owner_pid = 0;
+  GetWindowThreadProcessId(dock, &actual_owner_pid);
+  if (!GetWindowRect(dock, &actual) || actual_owner_pid != pid ||
+      actual.left != target.left || actual.top != target.top ||
+      actual.right != target.right || actual.bottom != target.bottom ||
+      !IsWindowVisible(dock)) {
+    result[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Dock window did not match native taskbar bounds.");
+    return result;
+  }
+
+  flutter::EncodableMap target_rect;
+  target_rect[flutter::EncodableValue("left")] =
+      flutter::EncodableValue(static_cast<int64_t>(target.left));
+  target_rect[flutter::EncodableValue("top")] =
+      flutter::EncodableValue(static_cast<int64_t>(target.top));
+  target_rect[flutter::EncodableValue("right")] =
+      flutter::EncodableValue(static_cast<int64_t>(target.right));
+  target_rect[flutter::EncodableValue("bottom")] =
+      flutter::EncodableValue(static_cast<int64_t>(target.bottom));
+  target_rect[flutter::EncodableValue("width")] =
+      flutter::EncodableValue(static_cast<int64_t>(width));
+  target_rect[flutter::EncodableValue("height")] =
+      flutter::EncodableValue(static_cast<int64_t>(height));
+
+  result[flutter::EncodableValue("success")] = flutter::EncodableValue(true);
+  result[flutter::EncodableValue("hwnd")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          reinterpret_cast<intptr_t>(dock)));
+  result[flutter::EncodableValue("ownerPid")] =
+      flutter::EncodableValue(static_cast<int64_t>(actual_owner_pid));
+  result[flutter::EncodableValue("targetRect")] =
+      flutter::EncodableValue(target_rect);
+  LogProcessDiagnostic(
+      "dock_replacement_position",
+      "result=verified pid=" + std::to_string(pid) +
+          " hwnd=" + std::to_string(reinterpret_cast<intptr_t>(dock)) +
+          " bounds=" + std::to_string(target.left) + "," +
+          std::to_string(target.top) + "," + std::to_string(target.right) +
+          "," + std::to_string(target.bottom));
+  return result;
+}
+
+bool LiveWallpaperPlugin::Impl::RunTaskbarCommand(
+    const std::string& command) {
+  WORD key = 0;
+  if (command == "search") {
+    key = 'S';
+  } else if (command == "task-view") {
+    key = VK_TAB;
+  } else if (command == "show-desktop") {
+    key = 'D';
+  } else if (command == "quick-settings") {
+    key = 'A';
+  } else if (command == "notifications") {
+    OSVERSIONINFOEXW version{};
+    version.dwOSVersionInfoSize = sizeof(version);
+    version.dwBuildNumber = 22000;
+    DWORDLONG version_mask = 0;
+    VER_SET_CONDITION(version_mask, VER_BUILDNUMBER, VER_GREATER_EQUAL);
+    const bool is_windows_11 =
+        VerifyVersionInfoW(&version, VER_BUILDNUMBER, version_mask) != FALSE;
+    key = is_windows_11 ? 'N' : 'A';
+  } else if (command == "copilot") {
+    const auto result =
+        reinterpret_cast<intptr_t>(ShellExecuteW(nullptr, L"open",
+                                                 L"ms-copilot:", nullptr,
+                                                 nullptr, SW_SHOWNORMAL));
+    if (result > 32) return true;
+    return reinterpret_cast<intptr_t>(ShellExecuteW(
+               nullptr, L"open", L"https://copilot.microsoft.com/", nullptr,
+               nullptr, SW_SHOWNORMAL)) > 32;
+  } else if (command == "file-explorer") {
+    return reinterpret_cast<intptr_t>(ShellExecuteW(
+               nullptr, L"open", L"explorer.exe", nullptr, nullptr,
+               SW_SHOWNORMAL)) > 32;
+  } else if (command == "wifi-settings") {
+    return reinterpret_cast<intptr_t>(ShellExecuteW(
+               nullptr, L"open", L"ms-settings:network-wifi", nullptr, nullptr,
+               SW_SHOWNORMAL)) > 32;
+  } else if (command == "sound-settings") {
+    return reinterpret_cast<intptr_t>(ShellExecuteW(
+               nullptr, L"open", L"ms-settings:sound", nullptr, nullptr,
+               SW_SHOWNORMAL)) > 32;
+  } else if (command == "battery-settings") {
+    return reinterpret_cast<intptr_t>(ShellExecuteW(
+               nullptr, L"open", L"ms-settings:powersleep", nullptr, nullptr,
+               SW_SHOWNORMAL)) > 32;
+  } else {
+    return false;
+  }
+
+  INPUT events[4]{};
+  events[0].type = INPUT_KEYBOARD;
+  events[0].ki.wVk = VK_LWIN;
+  events[1].type = INPUT_KEYBOARD;
+  events[1].ki.wVk = key;
+  events[2].type = INPUT_KEYBOARD;
+  events[2].ki.wVk = key;
+  events[2].ki.dwFlags = KEYEVENTF_KEYUP;
+  events[3].type = INPUT_KEYBOARD;
+  events[3].ki.wVk = VK_LWIN;
+  events[3].ki.dwFlags = KEYEVENTF_KEYUP;
+  return SendInput(4, events, sizeof(INPUT)) == 4;
+}
+
+bool LiveWallpaperPlugin::Impl::ActivateDockWindow(
+    DWORD pid, const std::string& instance_id) {
+  const auto verification = VerifyDockWindow(pid, instance_id);
+  const auto hwnd_it = verification.find(flutter::EncodableValue("hwnd"));
+  if (hwnd_it == verification.end()) return false;
+  const auto* hwnd_value = std::get_if<int64_t>(&hwnd_it->second);
+  if (hwnd_value == nullptr) return false;
+
+  HWND hwnd = reinterpret_cast<HWND>(*hwnd_value);
+  if (!IsWindow(hwnd)) return false;
+
+  ShowWindow(hwnd, SW_RESTORE);
+  SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  return IsWindowVisible(hwnd) != FALSE && IsWindowEnabled(hwnd) != FALSE;
+}
+
+flutter::EncodableList LiveWallpaperPlugin::Impl::GetDesktopWindows() {
+  flutter::EncodableList windows;
+  struct WindowSearchContext {
+    DWORD own_pid;
+    HWND foreground;
+    flutter::EncodableList* windows;
+  } context{GetCurrentProcessId(), GetForegroundWindow(), &windows};
+
+  EnumWindows(
+      [](HWND hwnd, LPARAM parameter) -> BOOL {
+        auto* ctx = reinterpret_cast<WindowSearchContext*>(parameter);
+        if (!IsWindowVisible(hwnd) || GetAncestor(hwnd, GA_ROOT) != hwnd) {
+          return TRUE;
+        }
+
+        const LONG_PTR extended_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if ((extended_style & WS_EX_TOOLWINDOW) != 0 ||
+            (GetWindow(hwnd, GW_OWNER) != nullptr &&
+             (extended_style & WS_EX_APPWINDOW) == 0)) {
+          return TRUE;
+        }
+
+        DWORD process_id = 0;
+        GetWindowThreadProcessId(hwnd, &process_id);
+        if (process_id == 0 || process_id == ctx->own_pid) return TRUE;
+
+        DWORD cloaked = 0;
+        if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked,
+                                            sizeof(cloaked))) &&
+            cloaked != 0) {
+          return TRUE;
+        }
+
+        const int title_length = GetWindowTextLengthW(hwnd);
+        if (title_length <= 0) return TRUE;
+        std::wstring title(static_cast<size_t>(title_length) + 1, L'\0');
+        const int copied =
+            GetWindowTextW(hwnd, title.data(), title_length + 1);
+        if (copied <= 0) return TRUE;
+        title.resize(static_cast<size_t>(copied));
+
+        RECT bounds{};
+        if (!GetWindowRect(hwnd, &bounds) ||
+            bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+          return TRUE;
+        }
+
+        std::wstring executable;
+        HANDLE process =
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+        if (process) {
+          std::vector<wchar_t> path(32768, L'\0');
+          DWORD path_length = static_cast<DWORD>(path.size());
+          if (QueryFullProcessImageNameW(process, 0, path.data(),
+                                         &path_length)) {
+            executable.assign(path.data(), path_length);
+          }
+          CloseHandle(process);
+        }
+
+        flutter::EncodableMap item;
+        item[flutter::EncodableValue("hwnd")] =
+            flutter::EncodableValue(reinterpret_cast<int64_t>(hwnd));
+        item[flutter::EncodableValue("pid")] =
+            flutter::EncodableValue(static_cast<int64_t>(process_id));
+        item[flutter::EncodableValue("title")] =
+            flutter::EncodableValue(WideToUtf8(title));
+        item[flutter::EncodableValue("executable")] =
+            flutter::EncodableValue(WideToUtf8(executable));
+        item[flutter::EncodableValue("isForeground")] =
+            flutter::EncodableValue(hwnd == ctx->foreground);
+        ctx->windows->emplace_back(std::move(item));
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&context));
+
+  return windows;
+}
+
+bool LiveWallpaperPlugin::Impl::ActivateDesktopWindow(int64_t hwnd_value) {
+  HWND hwnd = reinterpret_cast<HWND>(hwnd_value);
+  if (hwnd_value == 0 || !IsWindow(hwnd) ||
+      GetAncestor(hwnd, GA_ROOT) != hwnd || !IsWindowEnabled(hwnd)) {
+    return false;
+  }
+
+  DWORD process_id = 0;
+  GetWindowThreadProcessId(hwnd, &process_id);
+  if (process_id == 0 || process_id == GetCurrentProcessId()) return false;
+
+  if (GetForegroundWindow() == hwnd) {
+    ShowWindow(hwnd, SW_MINIMIZE);
+    return true;
+  }
+
+  ShowWindow(hwnd, SW_RESTORE);
+  SetForegroundWindow(hwnd);
+  return GetForegroundWindow() == hwnd;
+}
+
+bool LiveWallpaperPlugin::Impl::LaunchDockItem(const std::string& target) {
+  const std::wstring wide_target = Utf8ToWide(target);
+  if (wide_target.empty()) return false;
+  const auto result =
+      reinterpret_cast<INT_PTR>(ShellExecuteW(window_, L"open",
+                                              wide_target.c_str(), nullptr,
+                                              nullptr, SW_SHOWNORMAL));
+  return result > 32;
 }
 
 bool LiveWallpaperPlugin::Impl::RestoreWindowsTaskbar() {

@@ -3,6 +3,7 @@
 #include <appmodel.h>
 
 #include <optional>
+#include <exception>
 #include <thread>
 
 #include <flutter/plugin_registrar_windows.h>
@@ -11,6 +12,7 @@
 #include <winrt/base.h>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "process_diagnostics.h"
 
 namespace {
 
@@ -80,7 +82,11 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
 FlutterWindow::~FlutterWindow() {}
 
 bool FlutterWindow::OnCreate() {
+  LogProcessDiagnostic("flutter_engine_initialization",
+                       "result=started phase=FlutterViewController");
   if (!Win32Window::OnCreate()) {
+    LogProcessDiagnostic("flutter_engine_initialization",
+                         "result=failed error=Win32Window::OnCreate");
     return false;
   }
 
@@ -88,14 +94,42 @@ bool FlutterWindow::OnCreate() {
 
   // The size here must match the window dimensions to avoid unnecessary surface
   // creation / destruction in the startup path.
-  flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
-      frame.right - frame.left, frame.bottom - frame.top, project_);
-  // Ensure that basic setup of the controller was successful.
-  if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+  try {
+    flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
+        frame.right - frame.left, frame.bottom - frame.top, project_);
+  } catch (const std::exception& error) {
+    LogProcessDiagnostic(
+        "flutter_engine_initialization",
+        "result=failed exception=\"" + std::string(error.what()) + "\"");
+    return false;
+  } catch (...) {
+    LogProcessDiagnostic(
+        "flutter_engine_initialization",
+        "result=failed exception=unknown");
     return false;
   }
+  // Ensure that basic setup of the controller was successful.
+  if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+    LogProcessDiagnostic(
+        "flutter_engine_initialization",
+        "result=failed engine=" +
+            std::string(flutter_controller_->engine() ? "valid" : "null") +
+            " view=" +
+            std::string(flutter_controller_->view() ? "valid" : "null"));
+    return false;
+  }
+  LogProcessDiagnostic("flutter_engine_initialization",
+                       "result=success engine=valid view=valid");
   RegisterPlugins(flutter_controller_->engine());
-  SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  LogProcessDiagnostic("plugin_registration", "result=success");
+  if (!SetChildContent(flutter_controller_->view()->GetNativeWindow())) {
+    return false;
+  }
+  LogProcessDiagnostic(
+      "flutter_native_view_initialization",
+      "result=attached childHwnd=" +
+          std::to_string(reinterpret_cast<intptr_t>(
+              flutter_controller_->view()->GetNativeWindow())));
   live_wallpaper_plugin_ = std::make_unique<LiveWallpaperPlugin>(
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(
@@ -144,10 +178,13 @@ bool FlutterWindow::OnCreate() {
         SyncPackageStartupTask(*enabled, std::move(result));
       });
 
+  LogProcessDiagnostic("ipc_channel_initialization",
+                       "result=ready channel=com.wallsync/startup");
   return true;
 }
 
 void FlutterWindow::OnDestroy() {
+  LogProcessDiagnostic("flutter_window_shutdown", "result=started");
   if (startup_task_channel_) {
     startup_task_channel_->SetMethodCallHandler(nullptr);
     startup_task_channel_.reset();

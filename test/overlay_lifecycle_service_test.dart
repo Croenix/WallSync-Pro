@@ -403,6 +403,53 @@ void main() {
     },
   );
 
+  test(
+    'readiness requires matching child mode, operation, revision and HWND',
+    () async {
+      final dockRecord = OverlayProcessRecord(
+        pid: record.pid,
+        creationTime: record.creationTime,
+        executablePath: record.executablePath,
+        ready: true,
+        instanceId: 'taskbar_dock',
+        processMode: 'taskbar_dock',
+        operationId: 7,
+        configurationRevision: 3,
+        hwnd: 12345,
+      );
+
+      final rejected = await waitForOverlayReadiness(
+        readRecord: () async => dockRecord,
+        inspectProcess: (_) async => _inspection(true),
+        expectedPid: record.pid,
+        expectedInstanceId: 'taskbar_dock',
+        expectedProcessMode: 'taskbar_dock',
+        expectedOperationId: 8,
+        expectedConfigurationRevision: 3,
+        requireWindowHandle: true,
+        timeout: Duration.zero,
+        pollInterval: Duration.zero,
+      );
+      expect(rejected.status, OverlayReadinessStatus.identityMismatch);
+      expect(rejected.isReady, isFalse);
+
+      final accepted = await waitForOverlayReadiness(
+        readRecord: () async => dockRecord,
+        inspectProcess: (_) async => _inspection(true),
+        expectedPid: record.pid,
+        expectedInstanceId: 'taskbar_dock',
+        expectedProcessMode: 'taskbar_dock',
+        expectedOperationId: 7,
+        expectedConfigurationRevision: 3,
+        requireWindowHandle: true,
+        timeout: Duration.zero,
+        pollInterval: Duration.zero,
+      );
+      expect(accepted.status, OverlayReadinessStatus.dockReady);
+      expect(accepted.record?.hwnd, 12345);
+    },
+  );
+
   test('rejects a live PID with a different executable identity', () async {
     final result = await waitForOverlayReadiness(
       readRecord: () async => record,
@@ -670,7 +717,8 @@ void main() {
   );
 
   test('parses records with lifecycle states and precise timestamps', () {
-    const json = '{"pid":1234,"creationTime":987654,'
+    const json =
+        '{"pid":1234,"creationTime":987654,'
         '"executablePath":"C:\\\\WallSync\\\\wallsync.exe","ready":true,'
         '"state":"ready","entryPointMs":1000,"settingsLoadedMs":1050,'
         '"windowInitMs":1200,"firstFrameMs":1300,"readyPublishedMs":1350,'
@@ -695,70 +743,82 @@ void main() {
     expect(updated.entryPointMs, 1000);
   });
 
-  test('waitForOverlayReadiness reports failed status when overlay initialization fails', () async {
-    final failedRecord = OverlayProcessRecord(
-      pid: record.pid,
-      creationTime: record.creationTime,
-      executablePath: record.executablePath,
-      ready: false,
-      state: OverlayLifecycleState.failedOrTimedOut,
-      failureReason: 'Window setup failed',
-    );
+  test(
+    'waitForOverlayReadiness reports failed status when overlay initialization fails',
+    () async {
+      final failedRecord = OverlayProcessRecord(
+        pid: record.pid,
+        creationTime: record.creationTime,
+        executablePath: record.executablePath,
+        ready: false,
+        state: OverlayLifecycleState.failedOrTimedOut,
+        failureReason: 'Window setup failed',
+      );
 
-    final result = await waitForOverlayReadiness(
-      readRecord: () async => failedRecord,
-      inspectProcess: (_) async => _inspection(true),
-      timeout: const Duration(seconds: 1),
-      pollInterval: Duration.zero,
-    );
+      final result = await waitForOverlayReadiness(
+        readRecord: () async => failedRecord,
+        inspectProcess: (_) async => _inspection(true),
+        timeout: const Duration(seconds: 1),
+        pollInterval: Duration.zero,
+      );
 
-    expect(result.status, OverlayReadinessStatus.failed);
-    expect(result.isReady, isFalse);
-    expect(result.record?.failureReason, 'Window setup failed');
-  });
+      expect(result.status, OverlayReadinessStatus.failed);
+      expect(result.isReady, isFalse);
+      expect(result.record?.failureReason, 'Window setup failed');
+    },
+  );
 
-  test('waitForOverlayReadiness succeeds via final reconciliation check at timeout boundary', () async {
-    var checkCount = 0;
-    final result = await waitForOverlayReadiness(
-      readRecord: () async {
-        checkCount++;
-        // First check returns starting, final boundary check returns ready
-        return OverlayProcessRecord(
-          pid: record.pid,
-          creationTime: record.creationTime,
-          executablePath: record.executablePath,
-          ready: checkCount > 1,
-          state: checkCount > 1 ? OverlayLifecycleState.ready : OverlayLifecycleState.processStarted,
-        );
-      },
-      inspectProcess: (_) async => _inspection(true),
-      timeout: Duration.zero, // Forces immediate timeout to test boundary check
-      pollInterval: const Duration(milliseconds: 10),
-    );
+  test(
+    'waitForOverlayReadiness succeeds via final reconciliation check at timeout boundary',
+    () async {
+      var checkCount = 0;
+      final result = await waitForOverlayReadiness(
+        readRecord: () async {
+          checkCount++;
+          // First check returns starting, final boundary check returns ready
+          return OverlayProcessRecord(
+            pid: record.pid,
+            creationTime: record.creationTime,
+            executablePath: record.executablePath,
+            ready: checkCount > 1,
+            state: checkCount > 1
+                ? OverlayLifecycleState.ready
+                : OverlayLifecycleState.processStarted,
+          );
+        },
+        inspectProcess: (_) async => _inspection(true),
+        timeout:
+            Duration.zero, // Forces immediate timeout to test boundary check
+        pollInterval: const Duration(milliseconds: 10),
+      );
 
-    expect(result.status, OverlayReadinessStatus.ready);
-    expect(result.isReady, isTrue);
-  });
+      expect(result.status, OverlayReadinessStatus.ready);
+      expect(result.isReady, isTrue);
+    },
+  );
 
-  test('per-widget recovery policies operate independently without cross-exhaustion', () {
-    final policyA = OverlayRecoveryPolicy();
-    final policyB = OverlayRecoveryPolicy();
+  test(
+    'per-widget recovery policies operate independently without cross-exhaustion',
+    () {
+      final policyA = OverlayRecoveryPolicy();
+      final policyB = OverlayRecoveryPolicy();
 
-    // Policy A attempts fail and increment
-    expect(policyA.nextDelay(), const Duration(seconds: 1));
-    expect(policyA.nextDelay(), const Duration(seconds: 3));
-    expect(policyA.attempts, 2);
+      // Policy A attempts fail and increment
+      expect(policyA.nextDelay(), const Duration(seconds: 1));
+      expect(policyA.nextDelay(), const Duration(seconds: 3));
+      expect(policyA.attempts, 2);
 
-    // Policy B should be completely fresh and unaffected by Policy A
-    expect(policyB.attempts, 0);
-    expect(policyB.nextDelay(), const Duration(seconds: 1));
-    expect(policyB.attempts, 1);
+      // Policy B should be completely fresh and unaffected by Policy A
+      expect(policyB.attempts, 0);
+      expect(policyB.nextDelay(), const Duration(seconds: 1));
+      expect(policyB.attempts, 1);
 
-    // Resetting Policy A does not change Policy B
-    policyA.reset();
-    expect(policyA.attempts, 0);
-    expect(policyB.attempts, 1);
-  });
+      // Resetting Policy A does not change Policy B
+      policyA.reset();
+      expect(policyA.attempts, 0);
+      expect(policyB.attempts, 1);
+    },
+  );
 }
 
 OverlayProcessInspection _inspection(bool running) => OverlayProcessInspection(
