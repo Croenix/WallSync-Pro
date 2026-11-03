@@ -23,6 +23,7 @@ import '../services/steam_monitor_service.dart';
 import '../services/device_optimization_service.dart';
 import '../services/live_wallpaper_manager.dart';
 import '../services/windows_taskbar_service.dart';
+import '../services/taskbar_configuration_service.dart';
 import 'custom_widget_renderer.dart';
 import '../models/desktop_studio_template.dart';
 
@@ -75,6 +76,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
   bool _isSavingBoundsLocally = false;
   bool _isApplyingExternalResize = false;
   bool _isUserInteractingWithWindow = false;
+  final TaskbarConfigurationService _taskbarConfigurationService =
+      TaskbarConfigurationService();
 
   void _startUserWindowInteraction() {
     _isUserInteractingWithWindow = true;
@@ -99,6 +102,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
       _settings.widgetTemplate == 'taskbar_dock' &&
       WindowsTaskbarService.supportsFullReplacement &&
       _settings.taskbarSettings.nativeTaskbarHideEnabled;
+  bool get _usesNativeTaskbarAppBar =>
+      Platform.isWindows && _settings.widgetTemplate == 'taskbar_dock';
 
   // Media session state
   StreamSubscription<MediaInfo>? _mediaSubscription;
@@ -572,16 +577,21 @@ class _DesktopWidgetState extends State<DesktopWidget>
         final prevEditorMode = _settings.editorMode;
         try {
           final isTaskbar = updated.widgetTemplate.startsWith('taskbar_');
+          final usesNativeTaskbarAppBar =
+              Platform.isWindows && updated.widgetTemplate == 'taskbar_dock';
           final isReplacementTaskbar =
               updated.widgetTemplate == 'taskbar_dock' &&
               updated.taskbarSettings.nativeTaskbarHideEnabled;
-          await windowManager.setMinimumSize(
-            isTaskbar ? const Size(120, 36) : const Size(180, 60),
-          );
+          if (!usesNativeTaskbarAppBar) {
+            await windowManager.setMinimumSize(
+              isTaskbar ? const Size(120, 36) : const Size(180, 60),
+            );
+          }
           final currentSize = await windowManager.getSize();
           final widthDelta = (updated.width - currentSize.width).abs();
           final heightDelta = (updated.height - currentSize.height).abs();
-          if (!isReplacementTaskbar &&
+          if (!usesNativeTaskbarAppBar &&
+              !isReplacementTaskbar &&
               (widthDelta >= 3.0 || heightDelta >= 3.0)) {
             logInfo(
               'DesktopWidget',
@@ -599,8 +609,38 @@ class _DesktopWidgetState extends State<DesktopWidget>
             }
           }
 
-          if (isTaskbar &&
+          if (usesNativeTaskbarAppBar &&
+              (updated.taskbarSettings.taskbarPosition !=
+                      _settings.taskbarSettings.taskbarPosition ||
+                  widthDelta >= 3.0 ||
+                  heightDelta >= 3.0)) {
+            try {
+              final configuration = await _taskbarConfigurationService
+                  .applyNativeDock(
+                    edge: updated.taskbarSettings.taskbarPosition,
+                    thickness: updated.height.round().clamp(24, 256).toInt(),
+                    length: updated.width.round(),
+                    autoHide: updated.taskbarSettings.autoHideEnabled,
+                    revision: updated.taskbarSettings.configurationVersion,
+                  );
+              logInfo(
+                'DesktopWidget',
+                'Native AppBar configuration applied at revision '
+                    '${configuration.revision}; bounds='
+                    '${configuration.left},${configuration.top},'
+                    '${configuration.right},${configuration.bottom}.',
+              );
+            } catch (error, stackTrace) {
+              logError(
+                'DesktopWidget',
+                'Could not apply the updated native AppBar configuration.',
+                error,
+                stackTrace,
+              );
+            }
+          } else if (isTaskbar &&
               !isReplacementTaskbar &&
+              !usesNativeTaskbarAppBar &&
               (updated.taskbarSettings.taskbarPosition !=
                       _settings.taskbarSettings.taskbarPosition ||
                   widthDelta >= 3.0 ||
@@ -631,7 +671,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
           }
         } catch (_) {}
 
-        if (updated.alwaysOnTop != _settings.alwaysOnTop) {
+        if (!_usesNativeTaskbarAppBar &&
+            updated.alwaysOnTop != _settings.alwaysOnTop) {
           logInfo(
             'DesktopWidget',
             'Updating alwaysOnTop constraint to: ${updated.alwaysOnTop}',
@@ -923,7 +964,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   @override
   void onWindowResized() {
-    if (_isApplyingExternalResize || _isTaskbarReplacement) return;
+    if (_isApplyingExternalResize ||
+        _isTaskbarReplacement ||
+        _usesNativeTaskbarAppBar) {
+      return;
+    }
     _handleInteraction();
     if (_isUserInteractingWithWindow) return;
     _scheduleWindowBoundsSave();
@@ -931,7 +976,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   @override
   void onWindowMoved() {
-    if (_isApplyingExternalResize || _isTaskbarReplacement) return;
+    if (_isApplyingExternalResize ||
+        _isTaskbarReplacement ||
+        _usesNativeTaskbarAppBar) {
+      return;
+    }
     _handleInteraction();
     if (_isUserInteractingWithWindow) return;
     _scheduleWindowBoundsSave();
@@ -940,7 +989,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
   void _scheduleWindowBoundsSave({bool immediate = false}) {
     if (_isApplyingExternalResize ||
         _isUserInteractingWithWindow ||
-        _isTaskbarReplacement) {
+        _isTaskbarReplacement ||
+        _usesNativeTaskbarAppBar) {
       return;
     }
     _boundsSaveDebounce?.cancel();
@@ -1012,6 +1062,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   Future<void> _applyAutoSizing() async {
     final isTaskbar = _settings.widgetTemplate.startsWith('taskbar_');
+    if (_usesNativeTaskbarAppBar) return;
     if (_settings.widgetTemplate == 'taskbar_dock' &&
         _settings.taskbarSettings.nativeTaskbarHideEnabled) {
       return;
@@ -7536,7 +7587,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
         onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
         onPanStart: (d) {
           _handleInteraction();
-          if (!_settings.isLocked && !isTaskbarReplacement) {
+          if (!_settings.isLocked &&
+              !isTaskbarReplacement &&
+              !_usesNativeTaskbarAppBar) {
             _startUserWindowInteraction();
             windowManager.startDragging();
           }

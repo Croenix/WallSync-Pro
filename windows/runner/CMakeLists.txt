@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME} WIN32
   "live_wallpaper_plugin.cpp"
   "main.cpp"
   "process_diagnostics.cpp"
+  "taskbar_appbar.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"

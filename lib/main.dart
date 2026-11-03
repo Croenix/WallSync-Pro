@@ -18,6 +18,7 @@ import 'services/wallpaper_engine.dart';
 import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
 import 'services/windows_taskbar_service.dart';
+import 'services/taskbar_configuration_service.dart';
 import 'models/taskbar_settings.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
@@ -301,6 +302,7 @@ void main(List<String> args) async {
   );
   final startupStopwatch = Stopwatch()..start();
   final isOverlayMode = processArguments.mode.isOverlay;
+  final isTaskbarDock = processArguments.mode == ProcessMode.taskbarDock;
   final isWallpaperMode = processArguments.mode == ProcessMode.wallpaper;
   final isStartupRegistration = processArguments.startupRegistration;
   final startupTrigger = processArguments.startupTrigger;
@@ -784,7 +786,7 @@ void main(List<String> args) async {
       backgroundColor: Colors.transparent,
       skipTaskbar: true, // Hidden from taskbar — behaves like a desktop widget
       titleBarStyle: TitleBarStyle.hidden, // Hides native title bar
-      alwaysOnTop: cleanSettings.alwaysOnTop,
+      alwaysOnTop: !isTaskbarDock && cleanSettings.alwaysOnTop,
     );
 
     logInfo(
@@ -817,7 +819,9 @@ void main(List<String> args) async {
         }
 
         Offset? requestedPosition;
-        if (cleanSettings.posX != null && cleanSettings.posY != null) {
+        if (!isTaskbarDock &&
+            cleanSettings.posX != null &&
+            cleanSettings.posY != null) {
           requestedPosition = Offset(cleanSettings.posX!, cleanSettings.posY!);
           try {
             final results = await Future.wait([
@@ -871,7 +875,31 @@ void main(List<String> args) async {
           }
         }
 
-        if (isTaskbar) {
+        if (isTaskbarDock) {
+          final configuration = await TaskbarConfigurationService()
+              .applyNativeDock(
+                edge: cleanSettings.taskbarSettings.taskbarPosition,
+                thickness: cleanSettings.height.round().clamp(24, 256).toInt(),
+                length: cleanSettings.width.round(),
+                autoHide: cleanSettings.taskbarSettings.autoHideEnabled,
+                revision: overlayConfigRevision,
+              );
+          if (configuration.hwnd != overlayHwnd ||
+              configuration.ownerPid != pid) {
+            throw StateError(
+              'Native AppBar configuration acknowledged the wrong host '
+              '(configuredHwnd=${configuration.hwnd}, expectedHwnd=$overlayHwnd, '
+              'ownerPid=${configuration.ownerPid}, expectedPid=$pid).',
+            );
+          }
+          await processDiagnostics.record(
+            'taskbar_appbar_configuration',
+            'result=applied revision=${configuration.revision} '
+                'hwnd=${configuration.hwnd} '
+                'bounds=${configuration.left},${configuration.top},'
+                '${configuration.right},${configuration.bottom}',
+          );
+        } else if (isTaskbar) {
           try {
             final primaryDisplay = await ScreenRetriever.instance
                 .getPrimaryDisplay()
@@ -944,22 +972,24 @@ void main(List<String> args) async {
           );
         }
 
-        await timeWindowOperation(
-          'setTitle',
-          () => windowManager.setTitle(
-            'WallSync Overlay ${overlayInstanceId.isNotEmpty ? overlayInstanceId : "Default"}',
-          ),
-        );
-        await timeWindowOperation(
-          'setAsFrameless',
-          windowManager.setAsFrameless,
-        );
-        await timeWindowOperation(
-          'setHasShadow',
-          () => windowManager.setHasShadow(false),
-        );
-        await timeWindowOperation('show', windowManager.show);
-        await timeWindowOperation('focus', windowManager.focus);
+        if (!isTaskbarDock) {
+          await timeWindowOperation(
+            'setTitle',
+            () => windowManager.setTitle(
+              'WallSync Overlay ${overlayInstanceId.isNotEmpty ? overlayInstanceId : "Default"}',
+            ),
+          );
+          await timeWindowOperation(
+            'setAsFrameless',
+            windowManager.setAsFrameless,
+          );
+          await timeWindowOperation(
+            'setHasShadow',
+            () => windowManager.setHasShadow(false),
+          );
+          await timeWindowOperation('show', windowManager.show);
+          await timeWindowOperation('focus', windowManager.focus);
+        }
 
         final visible = await waitForOverlayWindowVisibility(
           isVisible: windowManager.isVisible,

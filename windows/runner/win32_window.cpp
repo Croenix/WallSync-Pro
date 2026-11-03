@@ -18,6 +18,8 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+constexpr const wchar_t kTaskbarWindowClassName[] =
+    L"WALLSYNC_NATIVE_TASKBAR_WINDOW";
 
 /// Registry key for app theme preference.
 ///
@@ -71,7 +73,7 @@ class WindowClassRegistrar {
 
   // Returns the name of the window class, registering the class if it hasn't
   // previously been registered.
-  const wchar_t* GetWindowClass();
+  const wchar_t* GetWindowClass(bool is_taskbar_window);
 
   // Unregisters the window class. Should only be called if there are no
   // instances of the window.
@@ -82,16 +84,25 @@ class WindowClassRegistrar {
 
   static WindowClassRegistrar* instance_;
 
-  bool class_registered_ = false;
+  std::wstring registered_class_name_;
 };
 
 WindowClassRegistrar* WindowClassRegistrar::instance_ = nullptr;
 
-const wchar_t* WindowClassRegistrar::GetWindowClass() {
-  if (!class_registered_) {
+const wchar_t* WindowClassRegistrar::GetWindowClass(bool is_taskbar_window) {
+  const wchar_t* class_name =
+      is_taskbar_window ? kTaskbarWindowClassName : kWindowClassName;
+  if (!registered_class_name_.empty() &&
+      registered_class_name_ != class_name) {
+    LogProcessDiagnostic(
+        "window_class_registration",
+        "result=failed error=Cannot register two runner window classes in one process");
+    return nullptr;
+  }
+  if (registered_class_name_.empty()) {
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    window_class.lpszClassName = kWindowClassName;
+    window_class.lpszClassName = class_name;
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
@@ -107,28 +118,35 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     if (registered == 0 && error != ERROR_CLASS_ALREADY_EXISTS) {
       LogProcessDiagnostic(
           "window_class_registration",
-          "result=failed class=FLUTTER_RUNNER_WIN32_WINDOW error=" +
+          "result=failed class=" +
+              std::string(is_taskbar_window ? "WALLSYNC_NATIVE_TASKBAR_WINDOW"
+                                            : "FLUTTER_RUNNER_WIN32_WINDOW") +
+              " error=" +
               std::to_string(error));
       return nullptr;
     }
-    class_registered_ = true;
+    registered_class_name_ = class_name;
     LogProcessDiagnostic(
         "window_class_registration",
         std::string("result=") +
             (registered == 0 ? "already_registered" : "success") +
-            " class=FLUTTER_RUNNER_WIN32_WINDOW");
+            " class=" +
+            (is_taskbar_window ? "WALLSYNC_NATIVE_TASKBAR_WINDOW"
+                               : "FLUTTER_RUNNER_WIN32_WINDOW"));
   }
-  return kWindowClassName;
+  return class_name;
 }
 
 void WindowClassRegistrar::UnregisterWindowClass() {
-  const BOOL unregistered = UnregisterClassW(kWindowClassName, nullptr);
+  if (registered_class_name_.empty()) return;
+  const BOOL unregistered =
+      UnregisterClassW(registered_class_name_.c_str(), nullptr);
   LogProcessDiagnostic(
       "window_class_unregistration",
       std::string("result=") + (unregistered ? "success" : "failed") +
           " error=" + std::to_string(unregistered ? ERROR_SUCCESS
                                                    : GetLastError()));
-  class_registered_ = false;
+  registered_class_name_.clear();
 }
 
 Win32Window::Win32Window() {
@@ -144,9 +162,10 @@ bool Win32Window::Create(const std::wstring& title,
                          const Point& origin,
                          const Size& size) {
   Destroy();
+  is_taskbar_window_ = title == L"WallSyncTaskbar";
 
   const wchar_t* window_class =
-      WindowClassRegistrar::GetInstance()->GetWindowClass();
+      WindowClassRegistrar::GetInstance()->GetWindowClass(is_taskbar_window_);
   if (window_class == nullptr) return false;
 
   const POINT target_point = {static_cast<LONG>(origin.x),
@@ -162,7 +181,10 @@ bool Win32Window::Create(const std::wstring& title,
 
   DWORD dwStyle = WS_OVERLAPPEDWINDOW;
   DWORD dwExStyle = 0;
-  if (title == L"WallSyncOverlay" || title == L"WallSyncWallpaper") {
+  if (is_taskbar_window_) {
+    dwStyle = WS_POPUP;
+    dwExStyle = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+  } else if (title == L"WallSyncOverlay" || title == L"WallSyncWallpaper") {
     dwStyle = WS_POPUP;
     dwExStyle = WS_EX_TOOLWINDOW;
   }
@@ -225,7 +247,8 @@ bool Win32Window::Show() {
   if (window_handle_ == nullptr) {
     return false;
   }
-  ShowWindow(window_handle_, SW_SHOWNORMAL);
+  ShowWindow(window_handle_,
+             is_taskbar_window_ ? SW_SHOWNOACTIVATE : SW_SHOWNORMAL);
   const bool visible = IsWindowVisible(window_handle_) != FALSE;
   LogProcessDiagnostic(
       "window_visibility",
@@ -261,6 +284,12 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_MOUSEACTIVATE:
+      if (is_taskbar_window_) {
+        return MA_NOACTIVATE;
+      }
+      break;
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -290,7 +319,7 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      if (!is_taskbar_window_ && child_content_ != nullptr) {
         SetFocus(child_content_);
       }
       return 0;
@@ -353,7 +382,9 @@ bool Win32Window::SetChildContent(HWND content) {
     return false;
   }
 
-  SetFocus(child_content_);
+  if (!is_taskbar_window_) {
+    SetFocus(child_content_);
+  }
   LogProcessDiagnostic(
       "flutter_native_view_initialization",
       "result=success parentHwnd=" +

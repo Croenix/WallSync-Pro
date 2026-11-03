@@ -51,6 +51,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   bool is_overlay = false;
   bool is_wallpaper = false;
+  const bool is_taskbar_dock = GetProcessModeName() == "taskbar_dock";
   bool is_startup_bootstrap = false;
   bool is_startup_registration = false;
   for (const auto& arg : command_line_arguments) {
@@ -122,15 +123,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   int exit_code = EXIT_SUCCESS;
   {
     FlutterWindow window(project);
-    Win32Window::Point origin(10, 10);
-    Win32Window::Size size(1280, 720);
+    Win32Window::Point origin(is_taskbar_dock ? 0 : 10,
+                              is_taskbar_dock ? 0 : 10);
+    Win32Window::Size size(is_taskbar_dock ? 1 : 1280,
+                           is_taskbar_dock ? 1 : 720);
     const wchar_t* title =
-        is_overlay ? L"WallSyncOverlay"
+        is_taskbar_dock ? L"WallSyncTaskbar"
+                   : is_overlay ? L"WallSyncOverlay"
                    : (is_wallpaper ? L"WallSyncWallpaper"
                                    : L"WallSync Pro");
     LogProcessDiagnostic("native_window_initialization",
                          std::string("result=started title=") +
-                             (is_overlay
+                             (is_taskbar_dock
+                                  ? "WallSyncTaskbar"
+                                  : is_overlay
                                   ? "WallSyncOverlay"
                                   : (is_wallpaper ? "WallSyncWallpaper"
                                                   : "WallSync Pro")));
@@ -147,7 +153,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       if (is_startup_bootstrap) {
         ::ShowWindow(window.GetHandle(), SW_HIDE);
       }
-      if (is_overlay || is_wallpaper) {
+      if ((is_overlay && !is_taskbar_dock) || is_wallpaper) {
         HWND hwnd = window.GetHandle();
         LONG_PTR exStyle = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         exStyle |= WS_EX_TOOLWINDOW;

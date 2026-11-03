@@ -4,6 +4,7 @@
 
 #include "live_wallpaper_plugin.h"
 #include "process_diagnostics.h"
+#include "taskbar_appbar.h"
 
 #include <windows.h>
 #include <dwmapi.h>
@@ -269,6 +270,8 @@ class LiveWallpaperPlugin::Impl {
   bool SetDesktopIconsVisible(bool visible);
   bool GetDesktopIconsVisible();
   bool SetTaskbarBlur(int mode);
+  flutter::EncodableMap ConfigureTaskbarAppBar(
+      const flutter::EncodableMap* args);
   flutter::EncodableMap GetWindowsTaskbarInfo();
   bool SetWindowsTaskbarVisibility(bool visible);
   bool RestoreWindowsTaskbar();
@@ -354,6 +357,7 @@ class LiveWallpaperPlugin::Impl {
   std::atomic<bool> low_mem_running_{false};
   std::thread low_mem_thread_;
   UINT taskbar_created_msg_ = 0;
+  std::unique_ptr<TaskbarAppBar> taskbar_appbar_;
 };
 
 LiveWallpaperPlugin::Impl::Impl(
@@ -387,6 +391,7 @@ LiveWallpaperPlugin::Impl::Impl(
 
 LiveWallpaperPlugin::Impl::~Impl() {
   channel_->SetMethodCallHandler(nullptr);
+  taskbar_appbar_.reset();
   if (window_proc_delegate_id_ != 0) {
     registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_delegate_id_);
   }
@@ -550,6 +555,21 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
   }
   if (call.method_name() == "getWindowsTaskbarInfo") {
     result->Success(flutter::EncodableValue(GetWindowsTaskbarInfo()));
+    return;
+  }
+  if (call.method_name() == "configureTaskbarAppBar") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (GetProcessModeName() != "taskbar_dock") {
+      result->Error("TASKBAR_MODE_REQUIRED",
+                    "AppBar configuration is only available to taskbar_dock.");
+      return;
+    }
+    if (args == nullptr) {
+      result->Error("INVALID_ARGUMENT",
+                    "Expected a taskbar AppBar configuration map.");
+      return;
+    }
+    result->Success(flutter::EncodableValue(ConfigureTaskbarAppBar(args)));
     return;
   }
   if (call.method_name() == "setWindowsTaskbarVisibility") {
@@ -1927,6 +1947,13 @@ std::optional<LRESULT> LiveWallpaperPlugin::Impl::HandleWindowMessage(
     UINT message,
     WPARAM wparam,
     LPARAM lparam) {
+  if (taskbar_appbar_) {
+    const auto appbar_result =
+        taskbar_appbar_->HandleWindowMessage(message, wparam);
+    if (appbar_result) {
+      return appbar_result;
+    }
+  }
   if (message == WM_POWERBROADCAST && wparam == PBT_POWERSETTINGCHANGE &&
       lparam != 0) {
     const auto* setting =
@@ -2362,6 +2389,81 @@ bool LiveWallpaperPlugin::Impl::SetTaskbarBlur(int mode) {
   } while (sec_tray);
 
   return true;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::ConfigureTaskbarAppBar(
+    const flutter::EncodableMap* args) {
+  flutter::EncodableMap response;
+  const auto edge_entry = args->find(flutter::EncodableValue("edge"));
+  const auto thickness_entry =
+      args->find(flutter::EncodableValue("thickness"));
+  const auto length_entry = args->find(flutter::EncodableValue("length"));
+  const auto auto_hide_entry =
+      args->find(flutter::EncodableValue("autoHide"));
+  const auto revision_entry = args->find(flutter::EncodableValue("revision"));
+  if (edge_entry == args->end() || thickness_entry == args->end() ||
+      length_entry == args->end() || auto_hide_entry == args->end() ||
+      revision_entry == args->end()) {
+    response[flutter::EncodableValue("success")] =
+        flutter::EncodableValue(false);
+    response[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Configuration is missing required fields.");
+    return response;
+  }
+
+  const std::string edge = GetStringFromEncodable(edge_entry->second);
+  const int thickness = GetIntFromEncodable(thickness_entry->second, -1);
+  const int length = GetIntFromEncodable(length_entry->second, -1);
+  const bool auto_hide =
+      GetBoolFromEncodable(auto_hide_entry->second, false);
+  const int revision = GetIntFromEncodable(revision_entry->second, -1);
+  DWORD owner_pid = 0;
+  if (!root_window_ || !IsWindow(root_window_) ||
+      GetWindowThreadProcessId(root_window_, &owner_pid) == 0 ||
+      owner_pid != GetCurrentProcessId()) {
+    response[flutter::EncodableValue("success")] =
+        flutter::EncodableValue(false);
+    response[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Taskbar host HWND ownership is invalid.");
+    return response;
+  }
+
+  if (!taskbar_appbar_) {
+    taskbar_appbar_ = std::make_unique<TaskbarAppBar>(root_window_);
+  }
+  std::string error;
+  const bool applied = taskbar_appbar_->Apply(
+      {edge, thickness, length, auto_hide, revision}, &error);
+  response[flutter::EncodableValue("success")] =
+      flutter::EncodableValue(applied);
+  response[flutter::EncodableValue("revision")] =
+      flutter::EncodableValue(revision);
+  response[flutter::EncodableValue("appliedRevision")] =
+      flutter::EncodableValue(taskbar_appbar_->applied_revision());
+  response[flutter::EncodableValue("hwnd")] = flutter::EncodableValue(
+      static_cast<int64_t>(reinterpret_cast<intptr_t>(root_window_)));
+  response[flutter::EncodableValue("ownerPid")] =
+      flutter::EncodableValue(static_cast<int64_t>(owner_pid));
+  response[flutter::EncodableValue("left")] =
+      flutter::EncodableValue(
+          static_cast<int32_t>(taskbar_appbar_->bounds().left));
+  response[flutter::EncodableValue("top")] =
+      flutter::EncodableValue(
+          static_cast<int32_t>(taskbar_appbar_->bounds().top));
+  response[flutter::EncodableValue("right")] =
+      flutter::EncodableValue(
+          static_cast<int32_t>(taskbar_appbar_->bounds().right));
+  response[flutter::EncodableValue("bottom")] =
+      flutter::EncodableValue(
+          static_cast<int32_t>(taskbar_appbar_->bounds().bottom));
+  if (!applied) {
+    response[flutter::EncodableValue("error")] =
+        flutter::EncodableValue(error);
+    LogProcessDiagnostic("taskbar_appbar_configuration",
+                         "result=failed revision=" +
+                             std::to_string(revision) + " error=" + error);
+  }
+  return response;
 }
 
 flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsTaskbarInfo() {
