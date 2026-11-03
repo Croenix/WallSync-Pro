@@ -91,10 +91,10 @@ void main() {
 
         // Status should be timeout, but stage must NEVER be processNotStarted!
         expect(result.status, equals(OverlayReadinessStatus.timeout));
-        expect(result.stage, equals(DockReadinessStage.processRunning));
+        expect(result.stage, equals(OverlayReadinessStage.processRunning));
         expect(
           result.stage,
-          isNot(equals(DockReadinessStage.processNotStarted)),
+          isNot(equals(OverlayReadinessStage.processNotStarted)),
         );
       },
     );
@@ -120,7 +120,7 @@ void main() {
 
         expect(sw.elapsedMilliseconds, lessThan(1000));
         expect(result.status, equals(OverlayReadinessStatus.processExited));
-        expect(result.stage, equals(DockReadinessStage.failed));
+        expect(result.stage, equals(OverlayReadinessStage.failed));
       },
     );
   });

@@ -2402,42 +2402,30 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsTaskbarInfo() {
 }
 
 bool LiveWallpaperPlugin::Impl::SetWindowsTaskbarVisibility(bool visible) {
+  if (!visible) {
+    return false;
+  }
+
   HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
   if (tray) {
-    if (!visible) {
-      LONG_PTR style = GetWindowLongPtrW(tray, GWL_STYLE);
-      SetWindowLongPtrW(tray, GWL_STYLE, style & ~WS_VISIBLE);
-      ShowWindow(tray, SW_HIDE);
-      SetWindowPos(tray, nullptr, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED);
-    } else {
-      LONG_PTR style = GetWindowLongPtrW(tray, GWL_STYLE);
-      SetWindowLongPtrW(tray, GWL_STYLE, style | WS_VISIBLE);
-      ShowWindow(tray, SW_SHOW);
-      SetWindowPos(tray, HWND_TOPMOST, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
-      SetWindowPos(tray, HWND_NOTOPMOST, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    }
+    LONG_PTR style = GetWindowLongPtrW(tray, GWL_STYLE);
+    SetWindowLongPtrW(tray, GWL_STYLE, style | WS_VISIBLE);
+    ShowWindow(tray, SW_SHOW);
+    SetWindowPos(tray, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    SetWindowPos(tray, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   }
 
   HWND sec_tray = nullptr;
   while ((sec_tray = FindWindowExW(nullptr, sec_tray, L"Shell_SecondaryTrayWnd", nullptr)) != nullptr) {
-    if (!visible) {
-      LONG_PTR style = GetWindowLongPtrW(sec_tray, GWL_STYLE);
-      SetWindowLongPtrW(sec_tray, GWL_STYLE, style & ~WS_VISIBLE);
-      ShowWindow(sec_tray, SW_HIDE);
-      SetWindowPos(sec_tray, nullptr, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED);
-    } else {
-      LONG_PTR style = GetWindowLongPtrW(sec_tray, GWL_STYLE);
-      SetWindowLongPtrW(sec_tray, GWL_STYLE, style | WS_VISIBLE);
-      ShowWindow(sec_tray, SW_SHOW);
-      SetWindowPos(sec_tray, HWND_TOPMOST, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
-      SetWindowPos(sec_tray, HWND_NOTOPMOST, 0, 0, 0, 0,
-                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    }
+    LONG_PTR style = GetWindowLongPtrW(sec_tray, GWL_STYLE);
+    SetWindowLongPtrW(sec_tray, GWL_STYLE, style | WS_VISIBLE);
+    ShowWindow(sec_tray, SW_SHOW);
+    SetWindowPos(sec_tray, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    SetWindowPos(sec_tray, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   }
 
   SystemParametersInfoW(SPI_SETWORKAREA, 0, nullptr, SPIF_SENDCHANGE);

@@ -97,6 +97,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   final Set<String> _hoveredTaskbarActions = {};
   bool get _isTaskbarReplacement =>
       _settings.widgetTemplate == 'taskbar_dock' &&
+      WindowsTaskbarService.supportsFullReplacement &&
       _settings.taskbarSettings.nativeTaskbarHideEnabled;
 
   // Media session state

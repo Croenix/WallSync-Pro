@@ -305,7 +305,7 @@ void main() {
     );
 
     test(
-      'Transactional custom taskbar activation WITH hiding native taskbar',
+      'Full Replacement is rejected without hiding the native taskbar',
       () async {
         final service = WindowsTaskbarService();
         await service.init();
@@ -313,28 +313,41 @@ void main() {
         final success = await service.enableCustomTaskbar(
           hideNativeTaskbar: true,
         );
-        expect(success, true);
-        expect(service.state, TaskbarReplacementState.windowsTaskbarHidden);
-        expect(service.isCustomTaskbarActive, true);
-        expect(service.isWindowsTaskbarHidden, true);
-        expect(mockTaskbarVisible, false);
-        final positionIndex = methodCalls.indexWhere(
-          (call) => call.method == 'positionDockForReplacement',
+        expect(success, false);
+        expect(service.state, TaskbarReplacementState.failedToActivate);
+        expect(service.isCustomTaskbarActive, false);
+        expect(service.isWindowsTaskbarHidden, false);
+        expect(mockTaskbarVisible, true);
+        expect(
+          methodCalls.any(
+            (call) =>
+                call.method == 'setWindowsTaskbarVisibility' &&
+                (call.arguments as Map)['visible'] == false,
+          ),
+          false,
         );
-        final hideIndex = methodCalls.indexWhere(
+        expect(
+          methodCalls.any(
+            (call) => call.method == 'positionDockForReplacement',
+          ),
+          false,
+        );
+      },
+    );
+
+    test('Native taskbar visibility API refuses hide requests', () async {
+      final service = WindowsTaskbarService();
+
+      expect(await service.setWindowsTaskbarVisibility(false), false);
+      expect(
+        methodCalls.any(
           (call) =>
               call.method == 'setWindowsTaskbarVisibility' &&
               (call.arguments as Map)['visible'] == false,
-        );
-        expect(positionIndex, greaterThanOrEqualTo(0));
-        expect(hideIndex, greaterThan(positionIndex));
-        final dockSettings = await SettingsService(
-          instanceId: 'taskbar_dock',
-        ).loadSettings();
-        expect(dockSettings.taskbarSettings.customTaskbarEnabled, true);
-        expect(dockSettings.taskbarSettings.nativeTaskbarHideEnabled, true);
-      },
-    );
+        ),
+        false,
+      );
+    });
 
     test(
       'Restoration restores native Windows taskbar and updates state',
@@ -609,39 +622,39 @@ void main() {
     });
   });
 
-  group('DockReadinessStage & OverlayProcessRecord Tests', () {
-    test('12 DockReadinessStages have valid display names and predicates', () {
-      expect(DockReadinessStage.values.length, 12);
+  group('OverlayReadinessStage & OverlayProcessRecord Tests', () {
+    test('12 OverlayReadinessStages have valid display names and predicates', () {
+      expect(OverlayReadinessStage.values.length, 12);
       expect(
-        DockReadinessStage.processNotStarted.displayName,
+        OverlayReadinessStage.processNotStarted.displayName,
         'Process Not Started',
       );
       expect(
-        DockReadinessStage.processStarting.displayName,
+        OverlayReadinessStage.processStarting.displayName,
         'Process Starting',
       );
-      expect(DockReadinessStage.processRunning.displayName, 'Process Running');
+      expect(OverlayReadinessStage.processRunning.displayName, 'Process Running');
       expect(
-        DockReadinessStage.windowNotCreated.displayName,
+        OverlayReadinessStage.windowNotCreated.displayName,
         'Window Not Created',
       );
-      expect(DockReadinessStage.windowFound.displayName, 'Window Found');
-      expect(DockReadinessStage.windowVerified.displayName, 'Window Verified');
-      expect(DockReadinessStage.windowVisible.displayName, 'Window Visible');
+      expect(OverlayReadinessStage.windowFound.displayName, 'Window Found');
+      expect(OverlayReadinessStage.windowVerified.displayName, 'Window Verified');
+      expect(OverlayReadinessStage.windowVisible.displayName, 'Window Visible');
       expect(
-        DockReadinessStage.windowInteractive.displayName,
+        OverlayReadinessStage.windowInteractive.displayName,
         'Window Interactive',
       );
-      expect(DockReadinessStage.dockReady.displayName, 'Dock Ready');
-      expect(DockReadinessStage.failed.displayName, 'Failed');
-      expect(DockReadinessStage.stopping.displayName, 'Stopping');
-      expect(DockReadinessStage.stopped.displayName, 'Stopped');
+      expect(OverlayReadinessStage.overlayReady.displayName, 'Overlay Ready');
+      expect(OverlayReadinessStage.failed.displayName, 'Failed');
+      expect(OverlayReadinessStage.stopping.displayName, 'Stopping');
+      expect(OverlayReadinessStage.stopped.displayName, 'Stopped');
 
-      expect(DockReadinessStage.dockReady.isReady, true);
-      expect(DockReadinessStage.processRunning.isReady, false);
-      expect(DockReadinessStage.failed.isTerminal, true);
-      expect(DockReadinessStage.stopped.isTerminal, true);
-      expect(DockReadinessStage.dockReady.isTerminal, false);
+      expect(OverlayReadinessStage.overlayReady.isReady, true);
+      expect(OverlayReadinessStage.processRunning.isReady, false);
+      expect(OverlayReadinessStage.failed.isTerminal, true);
+      expect(OverlayReadinessStage.stopped.isTerminal, true);
+      expect(OverlayReadinessStage.overlayReady.isTerminal, false);
     });
 
     test('OverlayProcessRecord roundtrip with 12-stage handshake fields', () {
@@ -653,7 +666,7 @@ void main() {
         instanceId: 'taskbar_dock',
         hwnd: 78910,
         configurationRevision: 5,
-        stage: DockReadinessStage.dockReady,
+        stage: OverlayReadinessStage.overlayReady,
         operationId: 42,
         startupTimestamp: 1730460000000,
         healthCheck: true,
@@ -675,7 +688,7 @@ void main() {
       expect(parsed.instanceId, 'taskbar_dock');
       expect(parsed.hwnd, 78910);
       expect(parsed.configurationRevision, 5);
-      expect(parsed.stage, DockReadinessStage.dockReady);
+      expect(parsed.stage, OverlayReadinessStage.overlayReady);
       expect(parsed.operationId, 42);
       expect(parsed.startupTimestamp, 1730460000000);
       expect(parsed.healthCheck, true);

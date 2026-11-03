@@ -48,9 +48,14 @@ class DockWindowInfo {
       Object.hash(handle, processId, title, executable, isForeground);
 }
 
-/// Service responsible for managing Windows desktop taskbar replacement,
-/// custom dock integration, visibility control, crash recovery, and 3-tier resets.
+/// Manages the WallSync dock alongside Windows, taskbar recovery, and resets.
 class WindowsTaskbarService extends ChangeNotifier {
+  static const bool supportsFullReplacement = false;
+  static const String fullReplacementUnavailableReason =
+      'Windows does not provide a supported, reversible API for hiding the '
+      'Explorer taskbar. Full Replacement is disabled; the native taskbar '
+      'will remain visible.';
+
   static final WindowsTaskbarService instance =
       WindowsTaskbarService._internal();
 
@@ -381,21 +386,28 @@ class WindowsTaskbarService extends ChangeNotifier {
 
     _initialized = true;
 
-    // Startup Watchdog & Recovery Check
-    if (_settings.recoveryPending) {
+    // Recover legacy replacement settings before starting any dock process.
+    if (_settings.recoveryPending ||
+        (!supportsFullReplacement && _settings.nativeTaskbarHideEnabled)) {
       logWarning(
         'WindowsTaskbarService',
-        'Startup detected recoveryPending=true. Performing guaranteed emergency taskbar restoration.',
+        'Startup detected an unrecoverable or unsupported hidden-taskbar '
+            'configuration. Restoring the standard Windows taskbar.',
       );
       _updateState(TaskbarReplacementState.recoveryRequired);
       await restoreWindowsTaskbar();
     } else if (_settings.customTaskbarEnabled) {
       final info = await getWindowsTaskbarInfo();
       final allVisible = info['allVisible'] as bool? ?? true;
-      if (!allVisible || _settings.nativeTaskbarHideEnabled) {
-        _updateState(TaskbarReplacementState.windowsTaskbarHidden);
-      } else {
+      if (info['primaryPresent'] == true && allVisible) {
         _updateState(TaskbarReplacementState.wallSyncTaskbarActive);
+      } else {
+        logWarning(
+          'WindowsTaskbarService',
+          'Could not verify the native taskbar as visible during startup; '
+              'restoring the standard taskbar and stopping the custom dock.',
+        );
+        await restoreWindowsTaskbar();
       }
     } else {
       // Normal state: Windows taskbar active
@@ -415,15 +427,19 @@ class WindowsTaskbarService extends ChangeNotifier {
   }
 
   Future<void> _handleExplorerRestart() async {
-    if (_settings.customTaskbarEnabled && _settings.nativeTaskbarHideEnabled) {
+    if (_settings.nativeTaskbarHideEnabled && !supportsFullReplacement) {
       logInfo(
         'WindowsTaskbarService',
-        'Re-applying native taskbar hiding after Explorer restart.',
+        'Explorer restarted while legacy replacement settings were present; '
+            'restoring the standard taskbar instead of hiding it.',
       );
-      await setWindowsTaskbarVisibility(false);
-      _updateState(TaskbarReplacementState.windowsTaskbarHidden);
+      await restoreWindowsTaskbar();
     } else {
-      _updateState(TaskbarReplacementState.windowsTaskbarActive);
+      _updateState(
+        _settings.customTaskbarEnabled
+            ? TaskbarReplacementState.wallSyncTaskbarActive
+            : TaskbarReplacementState.windowsTaskbarActive,
+      );
     }
     notifyListeners();
   }
@@ -449,17 +465,21 @@ class WindowsTaskbarService extends ChangeNotifier {
       );
     }
     return {
-      'primaryPresent': true,
-      'primaryVisible': true,
+      'primaryPresent': false,
+      'primaryVisible': false,
       'secondaryCount': 0,
       'secondaryVisibleCount': 0,
-      'allVisible': true,
-      'anyVisible': true,
+      'allVisible': false,
+      'anyVisible': false,
     };
   }
 
   /// Sets visibility of the primary and secondary Windows taskbars safely.
   Future<bool> setWindowsTaskbarVisibility(bool visible) async {
+    if (!visible && !supportsFullReplacement) {
+      logWarning('WindowsTaskbarService', fullReplacementUnavailableReason);
+      return false;
+    }
     try {
       final result = await _channel.invokeMethod<bool>(
         'setWindowsTaskbarVisibility',
@@ -476,14 +496,26 @@ class WindowsTaskbarService extends ChangeNotifier {
     }
   }
 
-  /// Transactionally enable WallSync custom taskbar / dock, optionally hiding
-  /// the native Windows taskbar.
+  /// Starts the WallSync dock. Full Replacement is rejected until native taskbar
+  /// hiding has a supported, reversible Windows integration.
   Future<bool> enableCustomTaskbar({bool hideNativeTaskbar = false}) async {
     if (_operationInProgress) {
       logWarning(
         'WindowsTaskbarService',
         'Skipping duplicate custom taskbar activation while a transaction is already running.',
       );
+      return false;
+    }
+    if (hideNativeTaskbar && !supportsFullReplacement) {
+      logWarning('WindowsTaskbarService', fullReplacementUnavailableReason);
+      if (_settings.nativeTaskbarHideEnabled ||
+          _state == TaskbarReplacementState.windowsTaskbarHidden) {
+        await restoreWindowsTaskbar();
+      } else if (_settings.customTaskbarEnabled) {
+        _updateState(TaskbarReplacementState.wallSyncTaskbarActive);
+      } else {
+        _updateState(TaskbarReplacementState.failedToActivate);
+      }
       return false;
     }
     if (_lastFailureAt != null &&
@@ -783,10 +815,25 @@ class WindowsTaskbarService extends ChangeNotifier {
 
     try {
       // Step 1: Native call to restore HWNDs and topmost position
-      await _channel.invokeMethod<bool>('restoreWindowsTaskbar');
+      final restored = await _channel.invokeMethod<bool>(
+        'restoreWindowsTaskbar',
+      );
+      if (restored != true) {
+        throw StateError('The native taskbar restoration command failed.');
+      }
 
       // Step 2: Also explicitly call setWindowsTaskbarVisibility(true)
-      await setWindowsTaskbarVisibility(true);
+      if (!await setWindowsTaskbarVisibility(true)) {
+        throw StateError('Could not restore native taskbar visibility.');
+      }
+
+      final visibility = await getWindowsTaskbarInfo();
+      if (visibility['primaryPresent'] != true ||
+          visibility['allVisible'] != true) {
+        throw StateError(
+          'Native taskbar visibility could not be verified after restoration.',
+        );
+      }
 
       // Step 3: Close or terminate custom taskbar dock window
       if (_taskbarCloser != null) {
@@ -846,6 +893,9 @@ class WindowsTaskbarService extends ChangeNotifier {
       final current = settings ?? _settingsService.settings;
       final isReplacementMode =
           replacementMode ?? current.taskbarSettings.nativeTaskbarHideEnabled;
+      if (isReplacementMode && !supportsFullReplacement) {
+        throw UnsupportedError(fullReplacementUnavailableReason);
+      }
       final isActivationSync = replacementMode != null;
       final dockService = SettingsService(instanceId: 'taskbar_dock');
       WidgetSettings dockCurrent;
@@ -1083,6 +1133,7 @@ class WindowsTaskbarService extends ChangeNotifier {
         appPath,
         launchArgs,
         workingDirectory: workingDir,
+        environment: const {'FLUTTER_ENGINE_SWITCHES': '0'},
         mode: ProcessStartMode.normal,
       );
       final launchedPid = process.pid;

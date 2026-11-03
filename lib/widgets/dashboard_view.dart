@@ -19528,7 +19528,9 @@ class _DashboardViewState extends State<DashboardView>
       builder: (builderCtx, _) {
         final state = taskbarService.state;
         final isCustomActive = taskbarService.isCustomTaskbarActive;
-        final hideNative = _settings.taskbarSettings.nativeTaskbarHideEnabled;
+        final hideNative =
+            WindowsTaskbarService.supportsFullReplacement &&
+            _settings.taskbarSettings.nativeTaskbarHideEnabled;
 
         Color stateColor;
         IconData stateIcon;
@@ -19619,7 +19621,7 @@ class _DashboardViewState extends State<DashboardView>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Windows Taskbar Replacement & Dock Control',
+                                'Windows Taskbar & Dock Control',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
@@ -19629,7 +19631,7 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'Explicitly activate WallSync dock as desktop taskbar or run alongside Windows',
+                                'Run the WallSync dock alongside the standard Windows taskbar.',
                                 style: TextStyle(
                                   fontSize: 11.5,
                                   color: Colors.white.withValues(alpha: 0.6),
@@ -19720,6 +19722,7 @@ class _DashboardViewState extends State<DashboardView>
                     required String description,
                     required IconData icon,
                     required Color accentColor,
+                    required bool enabled,
                     required VoidCallback onTap,
                   }) {
                     final isSelected =
@@ -19728,7 +19731,7 @@ class _DashboardViewState extends State<DashboardView>
                             effectiveMode ==
                                 DesktopTaskbarMode.dockWithNativeHidden);
                     final cardWidget = InkWell(
-                      onTap: onTap,
+                      onTap: enabled ? onTap : null,
                       borderRadius: BorderRadius.circular(12),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
@@ -19804,6 +19807,7 @@ class _DashboardViewState extends State<DashboardView>
                           'Native taskbar visible. WallSync dock disabled.',
                       icon: Icons.desktop_windows_rounded,
                       accentColor: const Color(0xFF38BDF8),
+                      enabled: true,
                       onTap: taskbarService.operationInProgress
                           ? () {}
                           : () {
@@ -19829,6 +19833,7 @@ class _DashboardViewState extends State<DashboardView>
                           'Custom dock active alongside standard Windows taskbar.',
                       icon: Icons.dock_rounded,
                       accentColor: const Color(0xFF34D399),
+                      enabled: true,
                       onTap: taskbarService.operationInProgress
                           ? () {}
                           : () {
@@ -19856,37 +19861,13 @@ class _DashboardViewState extends State<DashboardView>
                     const SizedBox(width: 12),
                     buildModeCard(
                       mode: DesktopTaskbarMode.customTaskbar,
-                      title: 'Full Replacement',
-                      description:
-                          'Custom taskbar fills the primary Windows taskbar bounds. '
-                          'Windows taskbar is hidden only after exact bounds and '
-                          'readiness are verified; secondary displays stay visible '
-                          'until they have their own replacement.',
+                      title: 'Full Replacement (Unavailable)',
+                      description: WindowsTaskbarService
+                          .fullReplacementUnavailableReason,
                       icon: Icons.space_dashboard_rounded,
                       accentColor: const Color(0xFFA855F7),
-                      onTap: taskbarService.operationInProgress
-                          ? () {}
-                          : () {
-                              if (taskbarService.operationInProgress) return;
-                              unawaited(() async {
-                                final success = await taskbarService
-                                    .enableCustomTaskbar(
-                                      hideNativeTaskbar: true,
-                                    );
-                                if (success) {
-                                  if (!_activeRunningWidgetIds.contains(
-                                    'taskbar_dock',
-                                  )) {
-                                    _activeRunningWidgetIds.add('taskbar_dock');
-                                  }
-                                  _isOverlayRunning = true;
-                                  _updateTrayMenu();
-                                }
-                                setState(
-                                  () => _settings = _settingsService.settings,
-                                );
-                              }());
-                            },
+                      enabled: WindowsTaskbarService.supportsFullReplacement,
+                      onTap: () {},
                     ),
                   ];
 
@@ -19943,7 +19924,7 @@ class _DashboardViewState extends State<DashboardView>
                           });
                         },
                   title: const Text(
-                    'Enable WallSync Custom Taskbar',
+                    'Enable WallSync Dock Alongside Taskbar',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -19951,8 +19932,8 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   ),
                   subtitle: Text(
-                    'Replaces the primary Windows taskbar with a full-width custom taskbar. '
-                    'Native taskbar visibility is restored if replacement readiness fails.',
+                    'Runs the WallSync dock as a separate desktop experience. '
+                    'The native Windows taskbar remains visible.',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.white.withValues(alpha: 0.65),
@@ -19970,34 +19951,9 @@ class _DashboardViewState extends State<DashboardView>
                   contentPadding: EdgeInsets.zero,
                   activeColor: const Color(0xFFA855F7),
                   value: hideNative,
-                  onChanged: taskbarService.operationInProgress
-                      ? null
-                      : (hide) async {
-                          if (taskbarService.operationInProgress) return;
-                          final updatedTaskbar = _settings.taskbarSettings
-                              .copyWith(nativeTaskbarHideEnabled: hide);
-                          final updatedSettings = _settings.copyWith(
-                            taskbarSettings: updatedTaskbar,
-                          );
-                          await _settingsService.save(updatedSettings);
-                          if (isCustomActive) {
-                            await taskbarService.enableCustomTaskbar(
-                              hideNativeTaskbar: hide,
-                            );
-                          } else {
-                            await taskbarService.syncDockSettings(
-                              settings: updatedSettings,
-                              replacementMode: hide,
-                            );
-                          }
-                          setState(
-                            () => _settings = isCustomActive
-                                ? _settingsService.settings
-                                : updatedSettings,
-                          );
-                        },
+                  onChanged: null,
                   title: const Text(
-                    'Hide Native Windows Taskbar',
+                    'Hide Native Windows Taskbar (Unavailable)',
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w600,
@@ -20005,7 +19961,7 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   ),
                   subtitle: Text(
-                    'Safely hides Shell_TrayWnd across primary & secondary displays and refreshes work area.',
+                    WindowsTaskbarService.fullReplacementUnavailableReason,
                     style: TextStyle(
                       fontSize: 11.5,
                       color: Colors.white.withValues(alpha: 0.55),

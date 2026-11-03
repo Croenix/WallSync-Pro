@@ -445,7 +445,7 @@ void main() {
         timeout: Duration.zero,
         pollInterval: Duration.zero,
       );
-      expect(accepted.status, OverlayReadinessStatus.dockReady);
+      expect(accepted.status, OverlayReadinessStatus.overlayReady);
       expect(accepted.record?.hwnd, 12345);
     },
   );

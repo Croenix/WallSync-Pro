@@ -879,6 +879,7 @@ void main(List<String> args) async {
             final screenSize = primaryDisplay.size;
             final isTaskbarReplacement =
                 cleanSettings.widgetTemplate == 'taskbar_dock' &&
+                WindowsTaskbarService.supportsFullReplacement &&
                 cleanSettings.taskbarSettings.nativeTaskbarHideEnabled;
             final posType = cleanSettings.taskbarSettings.taskbarPosition;
             if (isTaskbarReplacement) {
