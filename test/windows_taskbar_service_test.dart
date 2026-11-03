@@ -260,6 +260,7 @@ void main() {
                     'title': 'Editor',
                     'executable': r'C:\Program Files\Editor\editor.exe',
                     'isForeground': true,
+                    'iconPng': Uint8List.fromList([137, 80, 78, 71]),
                   },
                 ];
               case 'activateDesktopWindow':
@@ -592,6 +593,7 @@ void main() {
       expect(windows.single.title, 'Editor');
       expect(windows.single.executable, r'C:\Program Files\Editor\editor.exe');
       expect(windows.single.isForeground, true);
+      expect(windows.single.iconPng, [137, 80, 78, 71]);
 
       expect(await service.activateDesktopWindow(1234), true);
       expect(methodCalls.last.method, 'activateDesktopWindow');
@@ -622,39 +624,39 @@ void main() {
     });
   });
 
-  group('OverlayReadinessStage & OverlayProcessRecord Tests', () {
-    test('12 OverlayReadinessStages have valid display names and predicates', () {
-      expect(OverlayReadinessStage.values.length, 12);
+  group('DockReadinessStage & OverlayProcessRecord Tests', () {
+    test('12 DockReadinessStages have valid display names and predicates', () {
+      expect(DockReadinessStage.values.length, 12);
       expect(
-        OverlayReadinessStage.processNotStarted.displayName,
+        DockReadinessStage.processNotStarted.displayName,
         'Process Not Started',
       );
       expect(
-        OverlayReadinessStage.processStarting.displayName,
+        DockReadinessStage.processStarting.displayName,
         'Process Starting',
       );
-      expect(OverlayReadinessStage.processRunning.displayName, 'Process Running');
+      expect(DockReadinessStage.processRunning.displayName, 'Process Running');
       expect(
-        OverlayReadinessStage.windowNotCreated.displayName,
+        DockReadinessStage.windowNotCreated.displayName,
         'Window Not Created',
       );
-      expect(OverlayReadinessStage.windowFound.displayName, 'Window Found');
-      expect(OverlayReadinessStage.windowVerified.displayName, 'Window Verified');
-      expect(OverlayReadinessStage.windowVisible.displayName, 'Window Visible');
+      expect(DockReadinessStage.windowFound.displayName, 'Window Found');
+      expect(DockReadinessStage.windowVerified.displayName, 'Window Verified');
+      expect(DockReadinessStage.windowVisible.displayName, 'Window Visible');
       expect(
-        OverlayReadinessStage.windowInteractive.displayName,
+        DockReadinessStage.windowInteractive.displayName,
         'Window Interactive',
       );
-      expect(OverlayReadinessStage.overlayReady.displayName, 'Overlay Ready');
-      expect(OverlayReadinessStage.failed.displayName, 'Failed');
-      expect(OverlayReadinessStage.stopping.displayName, 'Stopping');
-      expect(OverlayReadinessStage.stopped.displayName, 'Stopped');
+      expect(DockReadinessStage.dockReady.displayName, 'Dock Ready');
+      expect(DockReadinessStage.failed.displayName, 'Failed');
+      expect(DockReadinessStage.stopping.displayName, 'Stopping');
+      expect(DockReadinessStage.stopped.displayName, 'Stopped');
 
-      expect(OverlayReadinessStage.overlayReady.isReady, true);
-      expect(OverlayReadinessStage.processRunning.isReady, false);
-      expect(OverlayReadinessStage.failed.isTerminal, true);
-      expect(OverlayReadinessStage.stopped.isTerminal, true);
-      expect(OverlayReadinessStage.overlayReady.isTerminal, false);
+      expect(DockReadinessStage.dockReady.isReady, true);
+      expect(DockReadinessStage.processRunning.isReady, false);
+      expect(DockReadinessStage.failed.isTerminal, true);
+      expect(DockReadinessStage.stopped.isTerminal, true);
+      expect(DockReadinessStage.dockReady.isTerminal, false);
     });
 
     test('OverlayProcessRecord roundtrip with 12-stage handshake fields', () {
@@ -666,7 +668,7 @@ void main() {
         instanceId: 'taskbar_dock',
         hwnd: 78910,
         configurationRevision: 5,
-        stage: OverlayReadinessStage.overlayReady,
+        stage: DockReadinessStage.dockReady,
         operationId: 42,
         startupTimestamp: 1730460000000,
         healthCheck: true,
@@ -688,7 +690,7 @@ void main() {
       expect(parsed.instanceId, 'taskbar_dock');
       expect(parsed.hwnd, 78910);
       expect(parsed.configurationRevision, 5);
-      expect(parsed.stage, OverlayReadinessStage.overlayReady);
+      expect(parsed.stage, DockReadinessStage.dockReady);
       expect(parsed.operationId, 42);
       expect(parsed.startupTimestamp, 1730460000000);
       expect(parsed.healthCheck, true);

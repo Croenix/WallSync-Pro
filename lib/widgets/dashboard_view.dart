@@ -14178,6 +14178,7 @@ class _DashboardViewState extends State<DashboardView>
                     _settings.copyWith(
                       taskbarIconSize: 16.0,
                       taskbarFontSize: 11.0,
+                      height: 48.0,
                       taskbarBgColor: 0xE6080A12,
                       taskbarBorderColor: 0x3338BDF8,
                       taskbarAccentColor: 0xFF38BDF8,
@@ -14264,6 +14265,75 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   );
                 }).toList(),
+          ),
+          const SizedBox(height: 24),
+        ],
+
+        if (_settings.widgetTemplate == 'taskbar_dock') ...[
+          _sectionLabel('TASKBAR BEHAVIOR'),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F111A),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              children: [
+                _buildTaskbarSwitchTile(
+                  'Auto-hide taskbar',
+                  'Hide at the selected screen edge and reveal it when the pointer reaches that edge.',
+                  _settings.taskbarSettings.autoHideEnabled,
+                  (enabled) => _updateSettings(
+                    _settings.copyWith(
+                      taskbarSettings: _settings.taskbarSettings.copyWith(
+                        autoHideEnabled: enabled,
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 24),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.straighten_rounded,
+                      color: Color(0xFF38BDF8),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Taskbar thickness',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_settings.height.round()} px',
+                      style: const TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _settings.height.clamp(32.0, 96.0),
+                  min: 32,
+                  max: 96,
+                  divisions: 64,
+                  activeColor: const Color(0xFF38BDF8),
+                  onChanged: (height) {
+                    _updateSettings(_settings.copyWith(height: height));
+                  },
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
         ],

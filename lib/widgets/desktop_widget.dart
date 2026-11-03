@@ -643,6 +643,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
           if (usesNativeTaskbarAppBar &&
               (updated.taskbarSettings.taskbarPosition !=
                       _settings.taskbarSettings.taskbarPosition ||
+                  updated.taskbarSettings.autoHideEnabled !=
+                      _settings.taskbarSettings.autoHideEnabled ||
                   widthDelta >= 3.0 ||
                   heightDelta >= 3.0)) {
             try {
@@ -835,13 +837,29 @@ class _DesktopWidgetState extends State<DesktopWidget>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Icon(
-                    _dockWindowIcon(window),
-                    size: 20,
-                    color: window.isForeground
-                        ? Color(_settings.taskbarAccentColor)
-                        : Color(_settings.taskbarIconColor),
-                  ),
+                  if (window.iconPng case final iconPng?
+                      when iconPng.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: Image.memory(
+                        iconPng,
+                        width: 23,
+                        height: 23,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          _dockWindowIcon(window),
+                          size: 20,
+                          color: Color(_settings.taskbarIconColor),
+                        ),
+                      ),
+                    )
+                  else
+                    Icon(
+                      _dockWindowIcon(window),
+                      size: 20,
+                      color: Color(_settings.taskbarIconColor),
+                    ),
                   if (window.isForeground)
                     Positioned(
                       bottom: 1,

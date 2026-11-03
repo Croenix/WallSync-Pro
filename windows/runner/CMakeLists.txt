@@ -43,6 +43,8 @@ target_link_libraries(${BINARY_NAME} PRIVATE "psapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "dxgi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "winmm.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "ole32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

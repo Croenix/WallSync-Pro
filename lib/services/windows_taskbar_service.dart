@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -17,6 +18,7 @@ class DockWindowInfo {
     required this.title,
     required this.executable,
     required this.isForeground,
+    this.iconPng,
   });
 
   final int handle;
@@ -24,14 +26,21 @@ class DockWindowInfo {
   final String title;
   final String executable;
   final bool isForeground;
+  final Uint8List? iconPng;
 
   factory DockWindowInfo.fromMap(Map<dynamic, dynamic> map) {
+    final icon = map['iconPng'];
     return DockWindowInfo(
       handle: (map['hwnd'] as num?)?.toInt() ?? 0,
       processId: (map['pid'] as num?)?.toInt() ?? 0,
       title: map['title'] as String? ?? '',
       executable: map['executable'] as String? ?? '',
       isForeground: map['isForeground'] as bool? ?? false,
+      iconPng: switch (icon) {
+        Uint8List bytes => bytes,
+        List<int> bytes => Uint8List.fromList(bytes),
+        _ => null,
+      },
     );
   }
 
@@ -42,7 +51,8 @@ class DockWindowInfo {
       other.processId == processId &&
       other.title == title &&
       other.executable == executable &&
-      other.isForeground == isForeground;
+      other.isForeground == isForeground &&
+      listEquals(other.iconPng, iconPng);
 
   @override
   int get hashCode =>

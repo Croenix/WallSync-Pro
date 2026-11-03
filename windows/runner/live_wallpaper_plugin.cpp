@@ -16,8 +16,10 @@
 #include <shobjidl_core.h>
 #include <shobjidl.h>
 #include <tlhelp32.h>
+#include <wincodec.h>
 #include <atomic>
 #include <winrt/base.h>
+#include <wrl/client.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Control.h>
@@ -35,10 +37,12 @@
 #include <cstring>
 #include <cwchar>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -233,6 +237,115 @@ std::string WideToUtf8(const std::wstring& wide_str) {
                       static_cast<int>(wide_str.size()),
                       &result[0], size_needed, nullptr, nullptr);
   return result;
+}
+
+std::vector<uint8_t> GetExecutableIconPng(const std::wstring& executable) {
+  if (executable.empty()) return {};
+
+  static std::mutex cache_mutex;
+  static std::unordered_map<std::wstring, std::vector<uint8_t>> icon_cache;
+  {
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    const auto cached = icon_cache.find(executable);
+    if (cached != icon_cache.end()) return cached->second;
+  }
+
+  SHFILEINFOW file_info{};
+  if (SHGetFileInfoW(executable.c_str(), 0, &file_info, sizeof(file_info),
+                     SHGFI_ICON | SHGFI_SMALLICON) == 0 ||
+      file_info.hIcon == nullptr) {
+    return {};
+  }
+
+  constexpr int kIconSize = 32;
+  BITMAPINFO bitmap_info{};
+  bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bitmap_info.bmiHeader.biWidth = kIconSize;
+  bitmap_info.bmiHeader.biHeight = -kIconSize;
+  bitmap_info.bmiHeader.biPlanes = 1;
+  bitmap_info.bmiHeader.biBitCount = 32;
+  bitmap_info.bmiHeader.biCompression = BI_RGB;
+
+  void* pixels = nullptr;
+  HBITMAP bitmap = CreateDIBSection(nullptr, &bitmap_info, DIB_RGB_COLORS,
+                                    &pixels, nullptr, 0);
+  std::vector<uint8_t> png;
+  if (bitmap != nullptr && pixels != nullptr) {
+    std::memset(pixels, 0, kIconSize * kIconSize * 4);
+    HDC device_context = CreateCompatibleDC(nullptr);
+    if (device_context != nullptr) {
+      HGDIOBJ previous_bitmap = SelectObject(device_context, bitmap);
+      if (previous_bitmap != nullptr && previous_bitmap != HGDI_ERROR &&
+          DrawIconEx(device_context, 0, 0, file_info.hIcon, kIconSize,
+                     kIconSize, 0, nullptr, DI_NORMAL)) {
+        ApartmentScope apartment;
+        using Microsoft::WRL::ComPtr;
+        ComPtr<IWICImagingFactory> factory;
+        ComPtr<IWICBitmap> source;
+        ComPtr<IWICFormatConverter> converter;
+        ComPtr<IWICStream> wic_stream;
+        ComPtr<IWICBitmapEncoder> encoder;
+        ComPtr<IWICBitmapFrameEncode> frame;
+        ComPtr<IPropertyBag2> properties;
+        ComPtr<IStream> memory_stream;
+        if (SUCCEEDED(CoCreateInstance(
+                CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(factory.GetAddressOf()))) &&
+            SUCCEEDED(factory->CreateBitmapFromHBITMAP(
+                bitmap, nullptr, WICBitmapUseAlpha, source.GetAddressOf())) &&
+            SUCCEEDED(factory->CreateFormatConverter(
+                converter.GetAddressOf())) &&
+            SUCCEEDED(converter->Initialize(
+                source.Get(), GUID_WICPixelFormat32bppBGRA,
+                WICBitmapDitherTypeNone, nullptr, 0.0,
+                WICBitmapPaletteTypeCustom)) &&
+            SUCCEEDED(CreateStreamOnHGlobal(nullptr, TRUE,
+                                            memory_stream.GetAddressOf())) &&
+            SUCCEEDED(factory->CreateStream(wic_stream.GetAddressOf())) &&
+            SUCCEEDED(wic_stream->InitializeFromIStream(memory_stream.Get())) &&
+            SUCCEEDED(factory->CreateEncoder(
+                GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) &&
+            SUCCEEDED(encoder->Initialize(wic_stream.Get(),
+                                          WICBitmapEncoderNoCache)) &&
+            SUCCEEDED(encoder->CreateNewFrame(
+                frame.GetAddressOf(), properties.GetAddressOf())) &&
+            SUCCEEDED(frame->Initialize(properties.Get())) &&
+            SUCCEEDED(frame->SetSize(kIconSize, kIconSize))) {
+          WICPixelFormatGUID pixel_format = GUID_WICPixelFormat32bppBGRA;
+          if (SUCCEEDED(frame->SetPixelFormat(&pixel_format)) &&
+              pixel_format == GUID_WICPixelFormat32bppBGRA &&
+              SUCCEEDED(frame->WriteSource(converter.Get(), nullptr)) &&
+              SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit())) {
+            HGLOBAL encoded_png = nullptr;
+            if (SUCCEEDED(GetHGlobalFromStream(memory_stream.Get(),
+                                               &encoded_png)) &&
+                encoded_png != nullptr) {
+              const SIZE_T png_size = GlobalSize(encoded_png);
+              const auto* png_data =
+                  static_cast<const uint8_t*>(GlobalLock(encoded_png));
+              if (png_data != nullptr && png_size > 0) {
+                png.assign(png_data, png_data + png_size);
+                GlobalUnlock(encoded_png);
+              }
+            }
+          }
+        }
+      }
+      if (previous_bitmap != nullptr && previous_bitmap != HGDI_ERROR) {
+        SelectObject(device_context, previous_bitmap);
+      }
+      DeleteDC(device_context);
+    }
+    DeleteObject(bitmap);
+  }
+  DestroyIcon(file_info.hIcon);
+
+  if (!png.empty()) {
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    if (icon_cache.size() >= 256) icon_cache.clear();
+    icon_cache.emplace(executable, png);
+  }
+  return png;
 }
 
 }  // namespace
@@ -3139,6 +3252,8 @@ flutter::EncodableList LiveWallpaperPlugin::Impl::GetDesktopWindows() {
             flutter::EncodableValue(WideToUtf8(executable));
         item[flutter::EncodableValue("isForeground")] =
             flutter::EncodableValue(hwnd == ctx->foreground);
+        item[flutter::EncodableValue("iconPng")] =
+            flutter::EncodableValue(GetExecutableIconPng(executable));
         ctx->windows->emplace_back(std::move(item));
         return TRUE;
       },
