@@ -2285,6 +2285,10 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _launchWidgetOverlay(String widgetId) async {
+    if (widgetId == 'taskbar_dock' && Platform.isWindows) {
+      await _startCustomTaskbarDock();
+      return;
+    }
     if (_launchingWidgetIds.contains(widgetId)) {
       logInfo(
         'DashboardView',
@@ -2679,7 +2683,61 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
+  Future<void> _startCustomTaskbarDock() async {
+    final taskbarService = WindowsTaskbarService.instance;
+    if (taskbarService.isCustomTaskbarActive) {
+      setState(() {
+        _settings = _settingsService.settings;
+        _activeRunningWidgetIds.add('taskbar_dock');
+        _isOverlayRunning = true;
+      });
+      _updateTrayMenu();
+      return;
+    }
+
+    final started = await taskbarService.enableCustomTaskbar(
+      hideNativeTaskbar: false,
+    );
+    if (!mounted) return;
+    if (started) {
+      setState(() {
+        _settings = _settingsService.settings;
+        _activeRunningWidgetIds.add('taskbar_dock');
+        _isOverlayRunning = true;
+      });
+      _updateTrayMenu();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('WallSync could not start the custom taskbar.'),
+          backgroundColor: Color(0xFF1E293B),
+        ),
+      );
+    }
+  }
+
   Future<void> _closeWidgetOverlay(String widgetId) async {
+    if (widgetId == 'taskbar_dock' && Platform.isWindows) {
+      final restored = await WindowsTaskbarService.instance
+          .restoreWindowsTaskbar();
+      if (!mounted) return;
+      if (restored) {
+        setState(() {
+          _settings = _settingsService.settings;
+          _activeRunningWidgetIds.remove('taskbar_dock');
+          _isOverlayRunning = _activeRunningWidgetIds.isNotEmpty;
+        });
+        _updateTrayMenu();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('WallSync could not stop the custom taskbar.'),
+            backgroundColor: Color(0xFF1E293B),
+          ),
+        );
+      }
+      return;
+    }
     try {
       final generation = (_widgetGenerations[widgetId] ?? 0) + 1;
       _widgetGenerations[widgetId] = generation;
@@ -14150,6 +14208,66 @@ class _DashboardViewState extends State<DashboardView>
         ),
         const SizedBox(height: 24),
 
+        if (_settings.widgetTemplate == 'taskbar_dock') ...[
+          _sectionLabel('TASKBAR EDGE'),
+          const SizedBox(height: 6),
+          Text(
+            'Anchor the custom taskbar to a fixed screen edge. It cannot be dragged or resized.',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                const {
+                  'bottom': ('Bottom', Icons.south_rounded),
+                  'top': ('Top', Icons.north_rounded),
+                  'left': ('Left', Icons.west_rounded),
+                  'right': ('Right', Icons.east_rounded),
+                }.entries.map((entry) {
+                  final position = entry.key;
+                  final label = entry.value.$1;
+                  final icon = entry.value.$2;
+                  final selected =
+                      _settings.taskbarSettings.taskbarPosition == position;
+                  return ChoiceChip(
+                    avatar: Icon(icon, size: 15),
+                    label: Text(label),
+                    selected: selected,
+                    onSelected: selected
+                        ? null
+                        : (_) => _updateSettings(
+                            _settings.copyWith(
+                              taskbarSettings: _settings.taskbarSettings
+                                  .copyWith(taskbarPosition: position),
+                            ),
+                          ),
+                    selectedColor: const Color(
+                      0xFF38BDF8,
+                    ).withValues(alpha: 0.22),
+                    backgroundColor: const Color(0xFF0F111A),
+                    labelStyle: TextStyle(
+                      color: selected
+                          ? const Color(0xFF38BDF8)
+                          : Colors.white70,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                    side: BorderSide(
+                      color: selected
+                          ? const Color(0xFF38BDF8).withValues(alpha: 0.55)
+                          : Colors.white.withValues(alpha: 0.12),
+                    ),
+                  );
+                }).toList(),
+          ),
+          const SizedBox(height: 24),
+        ],
+
         // 2. Windows Core Storage & Drive Selector
         _sectionLabel('WINDOWS CORE STORAGE & DRIVE SELECTOR'),
         const SizedBox(height: 6),
@@ -24420,9 +24538,10 @@ class _DashboardViewState extends State<DashboardView>
               final desc = item['desc'] as String;
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
-              final isRunning =
-                  _activeRunningWidgetIds.contains(key) ||
-                  (_isOverlayRunning && _settings.widgetTemplate == key);
+              final isRunning = key == 'taskbar_dock' && Platform.isWindows
+                  ? WindowsTaskbarService.instance.isCustomTaskbarActive
+                  : _activeRunningWidgetIds.contains(key) ||
+                        (_isOverlayRunning && _settings.widgetTemplate == key);
 
               return SizedBox(
                 width: 320,

@@ -25,6 +25,15 @@ void main() {
     expect(dock.mode.value, 'taskbar_dock');
     expect(dock.operationId, 7);
     expect(dock.configurationRevision, 3);
+
+    final monitorDock = parseProcessArguments([
+      '--overlay',
+      '--overlay-type=taskbar_dock',
+      '--instance-id=taskbar_dock_Display1',
+      '--operation-id=8',
+    ]);
+    expect(monitorDock.mode, ProcessMode.taskbarDock);
+    expect(monitorDock.instanceId, 'taskbar_dock_Display1');
   });
 
   test('wallpaper mode remains independent from overlay mode', () {

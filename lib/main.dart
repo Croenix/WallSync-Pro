@@ -876,11 +876,43 @@ void main(List<String> args) async {
         }
 
         if (isTaskbarDock) {
+          final displays = await ScreenRetriever.instance
+              .getAllDisplays()
+              .timeout(const Duration(milliseconds: 500));
+          if (displays.isEmpty) {
+            throw StateError(
+              'Windows did not report a display for the taskbar AppBar.',
+            );
+          }
+          Display? targetDisplay;
+          final targetMonitorId =
+              cleanSettings.taskbarSettings.activeMonitorId;
+          if (targetMonitorId != null) {
+            for (final display in displays) {
+              if (display.id == targetMonitorId) {
+                targetDisplay = display;
+                break;
+              }
+            }
+          }
+          targetDisplay ??= await ScreenRetriever.instance
+              .getPrimaryDisplay()
+              .timeout(const Duration(milliseconds: 300));
+          final monitorOrigin = targetDisplay.visiblePosition ?? Offset.zero;
+          final monitorSize = targetDisplay.visibleSize ?? targetDisplay.size;
+          final appBarHostPosition = Offset(
+            monitorOrigin.dx + monitorSize.width / 2,
+            monitorOrigin.dy + monitorSize.height / 2,
+          );
+          await timeWindowOperation(
+            'positionTaskbarHostOnMonitor',
+            () => windowManager.setPosition(appBarHostPosition),
+          );
           final configuration = await TaskbarConfigurationService()
               .applyNativeDock(
                 edge: cleanSettings.taskbarSettings.taskbarPosition,
                 thickness: cleanSettings.height.round().clamp(24, 256).toInt(),
-                length: cleanSettings.width.round(),
+                length: 0,
                 autoHide: cleanSettings.taskbarSettings.autoHideEnabled,
                 revision: overlayConfigRevision,
               );

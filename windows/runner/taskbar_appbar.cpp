@@ -114,6 +114,9 @@ bool TaskbarAppBar::Apply(const Configuration& configuration,
     return false;
   }
 
+  last_configuration_ = configuration;
+  has_configuration_ = true;
+  visible_ = true;
   applied_revision_ = configuration.revision;
   LogProcessDiagnostic(
       "taskbar_appbar_configuration",
@@ -125,6 +128,26 @@ bool TaskbarAppBar::Apply(const Configuration& configuration,
           std::to_string(bounds_.top) + "," +
           std::to_string(bounds_.right) + "," +
           std::to_string(bounds_.bottom));
+  return true;
+}
+
+bool TaskbarAppBar::SetVisible(bool visible, std::string* error) {
+  if (visible == visible_) {
+    return true;
+  }
+  if (!visible) {
+    Remove();
+    ShowWindow(window_, SW_HIDE);
+    visible_ = false;
+    return true;
+  }
+  if (!has_configuration_) {
+    *error = "The AppBar has no configuration to restore.";
+    return false;
+  }
+  if (!Apply(last_configuration_, error)) {
+    return false;
+  }
   return true;
 }
 

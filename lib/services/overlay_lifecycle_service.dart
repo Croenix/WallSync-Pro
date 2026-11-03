@@ -533,7 +533,8 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
         } else if (latestRecord.ready &&
             (latestRecord.stage == DockReadinessStage.dockReady ||
                 latestRecord.state == OverlayLifecycleState.ready)) {
-          status = latestRecord.instanceId == 'taskbar_dock'
+          status =
+              (latestRecord.instanceId?.startsWith('taskbar_dock') ?? false)
               ? OverlayReadinessStatus.dockReady
               : OverlayReadinessStatus.ready;
         } else {
@@ -594,7 +595,8 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
             finalInspection.matches(finalRecord) &&
             finalInspection.isRunning) {
           return OverlayReadinessResult(
-            status: finalRecord.instanceId == 'taskbar_dock'
+            status:
+                (finalRecord.instanceId?.startsWith('taskbar_dock') ?? false)
                 ? OverlayReadinessStatus.dockReady
                 : OverlayReadinessStatus.ready,
             record: finalRecord,

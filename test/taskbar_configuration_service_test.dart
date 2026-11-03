@@ -84,6 +84,36 @@ void main() {
     );
   });
 
+  test('accepts a full-monitor AppBar length', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          final args = Map<String, dynamic>.from(call.arguments as Map);
+          return {
+            'success': true,
+            'hwnd': 1234,
+            'ownerPid': pid,
+            'appliedRevision': args['revision'],
+            'left': 0,
+            'top': 1032,
+            'right': 1920,
+            'bottom': 1080,
+          };
+        });
+
+    final service = TaskbarConfigurationService(channel: channel);
+    final result = await service.applyNativeDock(
+      edge: 'bottom',
+      thickness: 48,
+      length: 0,
+      autoHide: false,
+      revision: 4,
+    );
+
+    expect((calls.single.arguments as Map)['length'], 0);
+    expect(result.right - result.left, 1920);
+  });
+
   test('rejects unsupported edges before making a native call', () async {
     final service = TaskbarConfigurationService(channel: channel);
     await expectLater(
@@ -97,5 +127,26 @@ void main() {
       throwsArgumentError,
     );
     expect(calls, isEmpty);
+  });
+
+  test('tracks fullscreen visibility for a monitor AppBar', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          if (call.method == 'isFullscreenForegroundWindowOnMonitor') {
+            return true;
+          }
+          return {'success': true};
+        });
+
+    final service = TaskbarConfigurationService(channel: channel);
+    expect(await service.isFullscreenOnMonitor('DISPLAY1'), isTrue);
+    await service.setVisible(false);
+
+    expect(calls.map((call) => call.method), [
+      'isFullscreenForegroundWindowOnMonitor',
+      'setTaskbarAppBarVisible',
+    ]);
+    expect(calls.last.arguments, {'visible': false});
   });
 }

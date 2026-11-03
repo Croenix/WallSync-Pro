@@ -174,9 +174,11 @@ ParsedProcessArguments parseProcessArguments(List<String> arguments) {
         }
       : ProcessMode.main;
 
-  if (mode == ProcessMode.taskbarDock && instanceId != 'taskbar_dock') {
+  if (mode == ProcessMode.taskbarDock &&
+      instanceId != 'taskbar_dock' &&
+      !(instanceId?.startsWith('taskbar_dock_') ?? false)) {
     throw const FormatException(
-      'taskbar_dock mode requires --instance-id=taskbar_dock',
+      'taskbar_dock mode requires a taskbar_dock instance ID',
     );
   }
   if (mode == ProcessMode.taskbarDock && operationId == null) {

@@ -23,6 +23,7 @@ class TaskbarAppBar {
   TaskbarAppBar& operator=(const TaskbarAppBar&) = delete;
 
   bool Apply(const Configuration& configuration, std::string* error);
+  bool SetVisible(bool visible, std::string* error);
   std::optional<LRESULT> HandleWindowMessage(UINT message, WPARAM wparam);
   int applied_revision() const;
   RECT bounds() const;
@@ -38,8 +39,11 @@ class TaskbarAppBar {
   int thickness_ = 48;
   int length_ = 640;
   int applied_revision_ = 0;
+  Configuration last_configuration_{};
   bool auto_hide_ = false;
   bool registered_ = false;
+  bool has_configuration_ = false;
+  bool visible_ = true;
   RECT bounds_{};
 };
 

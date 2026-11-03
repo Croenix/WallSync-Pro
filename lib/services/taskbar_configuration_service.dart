@@ -26,10 +26,43 @@ class TaskbarConfigurationService {
   static int _latestRevision = 0;
 
   TaskbarConfigurationService({
-    MethodChannel channel = const MethodChannel('wallsync/live_wallpaper'),
-  }) : _channel = channel;
+    this.channel = const MethodChannel('wallsync/live_wallpaper'),
+  });
 
-  final MethodChannel _channel;
+  final MethodChannel channel;
+
+  Future<bool> isFullscreenOnMonitor(String monitorId) async {
+    if (!Platform.isWindows) return false;
+    if (monitorId.isEmpty) {
+      throw ArgumentError.value(monitorId, 'monitorId', 'Must not be empty.');
+    }
+    final result = await channel.invokeMethod<bool>(
+      'isFullscreenForegroundWindowOnMonitor',
+      {'monitorId': monitorId},
+    );
+    if (result == null) {
+      throw StateError('Windows did not return the monitor fullscreen state.');
+    }
+    return result;
+  }
+
+  Future<void> setVisible(bool visible) async {
+    if (!Platform.isWindows) {
+      throw UnsupportedError(
+        'Native taskbar AppBars are only available on Windows.',
+      );
+    }
+    final response = await channel.invokeMapMethod<String, dynamic>(
+      'setTaskbarAppBarVisible',
+      {'visible': visible},
+    );
+    if (response == null || response['success'] != true) {
+      throw StateError(
+        'Windows could not ${visible ? 'show' : 'hide'} the taskbar AppBar: '
+        '${response?['error'] ?? 'no native response'}.',
+      );
+    }
+  }
 
   Future<TaskbarAppBarConfiguration> applyNativeDock({
     required String edge,
@@ -60,7 +93,7 @@ class TaskbarConfigurationService {
         : _latestRevision + 1;
     _latestRevision = requestedRevision;
 
-    final response = await _channel
+    final response = await channel
         .invokeMapMethod<String, dynamic>('configureTaskbarAppBar', {
           'edge': edge,
           'thickness': thickness,

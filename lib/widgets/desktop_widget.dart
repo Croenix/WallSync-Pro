@@ -68,6 +68,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
   StreamSubscription<FileSystemEvent>? _settingsWatcher;
   bool _isLoading = true;
   String? _startupError;
+  bool _isCheckingTaskbarFullscreen = false;
+  bool _taskbarHiddenForFullscreen = false;
   late AnimationController _neonAnimationController;
   Timer? _inactivityTimer;
   bool _visualEditorModeActive = false;
@@ -98,6 +100,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   final List<DockWindowInfo> _dockWindows = [];
   bool _isRefreshingDockWindows = false;
   final Set<String> _hoveredTaskbarActions = {};
+  bool get _isTaskbarWidget => _settings.widgetTemplate.startsWith('taskbar_');
   bool get _isTaskbarReplacement =>
       _settings.widgetTemplate == 'taskbar_dock' &&
       WindowsTaskbarService.supportsFullReplacement &&
@@ -314,7 +317,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     _settings = widget.initialSettings ?? WidgetSettings();
     windowManager.addListener(this);
     _isLoading = widget.initialSettings == null;
-    _visualEditorModeActive = _settings.editorMode;
+    _visualEditorModeActive = _settings.editorMode && !_isTaskbarWidget;
     _dateTime = DateTime.now();
     _syncConnectivityService();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -333,6 +336,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
         }
         if (_settings.widgetTemplate == 'taskbar_dock' && timer.tick % 2 == 0) {
           unawaited(_refreshDockWindows());
+        }
+        if (_usesNativeTaskbarAppBar && timer.tick % 2 == 0) {
+          unawaited(_updateTaskbarFullscreenVisibility());
         }
         if (shouldUpdate) {
           setState(() {
@@ -361,6 +367,30 @@ class _DesktopWidgetState extends State<DesktopWidget>
       duration: const Duration(seconds: 8),
     );
     _initSettings();
+  }
+
+  Future<void> _updateTaskbarFullscreenVisibility() async {
+    if (_isCheckingTaskbarFullscreen) return;
+    final monitorId = _settings.taskbarSettings.activeMonitorId;
+    if (monitorId == null || monitorId.isEmpty) return;
+
+    _isCheckingTaskbarFullscreen = true;
+    try {
+      final isFullscreen = await _taskbarConfigurationService
+          .isFullscreenOnMonitor(monitorId);
+      if (!isFullscreen && !_taskbarHiddenForFullscreen) return;
+      await _taskbarConfigurationService.setVisible(!isFullscreen);
+      _taskbarHiddenForFullscreen = isFullscreen;
+    } catch (error, stackTrace) {
+      logError(
+        'DesktopWidget',
+        'Could not synchronize the taskbar AppBar with fullscreen state.',
+        error,
+        stackTrace,
+      );
+    } finally {
+      _isCheckingTaskbarFullscreen = false;
+    }
   }
 
   void _syncMediaSubscription() {
@@ -494,7 +524,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
         _settings = loaded;
         _systemMetrics = const SystemMetricsSnapshot();
         _isLoading = false;
-        _visualEditorModeActive = loaded.editorMode;
+        _visualEditorModeActive =
+            loaded.editorMode && !loaded.widgetTemplate.startsWith('taskbar_');
       });
       if (_settingsNeedSystemMetrics(loaded)) {
         unawaited(_refreshSystemMetrics());
@@ -619,7 +650,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
                   .applyNativeDock(
                     edge: updated.taskbarSettings.taskbarPosition,
                     thickness: updated.height.round().clamp(24, 256).toInt(),
-                    length: updated.width.round(),
+                    length: 0,
                     autoHide: updated.taskbarSettings.autoHideEnabled,
                     revision: updated.taskbarSettings.configurationVersion,
                   );
@@ -691,9 +722,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
               (_settingsNeedSystemMetrics(updated)
                   ? _systemMetrics
                   : const SystemMetricsSnapshot());
-          if (updated.editorMode != prevEditorMode) {
-            _visualEditorModeActive = updated.editorMode;
-          }
+          _visualEditorModeActive =
+              updated.editorMode &&
+              !updated.widgetTemplate.startsWith('taskbar_');
         });
         _syncMediaServiceState();
         _syncConnectivityService();
@@ -792,7 +823,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     if (_dockWindows.isEmpty) return const SizedBox.shrink();
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: _dockWindows.take(5).map((window) {
+      children: _dockWindows.map((window) {
         return Tooltip(
           message: window.title,
           child: InkWell(
@@ -938,7 +969,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
 
   void _resetInactivityTimer() {
     _inactivityTimer?.cancel();
-    if (_settings.editorMode &&
+    if (!_isTaskbarWidget &&
+        _settings.editorMode &&
         _visualEditorModeActive &&
         !_settings.isLocked) {
       _inactivityTimer = Timer(const Duration(seconds: 10), () {
@@ -952,7 +984,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   void _handleInteraction() {
-    if (_settings.editorMode && !_settings.isLocked) {
+    if (!_isTaskbarWidget && _settings.editorMode && !_settings.isLocked) {
       if (!_visualEditorModeActive) {
         setState(() {
           _visualEditorModeActive = true;
@@ -1131,6 +1163,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     BuildContext context,
     Offset globalPosition,
   ) async {
+    if (_isTaskbarWidget) return;
     final RenderBox? overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
@@ -3872,8 +3905,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   Widget _buildTaskbarDockLayout() {
-    final isReplacementMode =
-        _settings.taskbarSettings.nativeTaskbarHideEnabled;
+    final isFullWidthTaskbar =
+        _settings.taskbarSettings.nativeTaskbarHideEnabled ||
+        (Platform.isWindows && _settings.widgetTemplate == 'taskbar_dock');
     if (_settings.activeDockTemplateJson != null &&
         _settings.activeDockTemplateJson!.isNotEmpty) {
       try {
@@ -3882,7 +3916,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
                 as Map<String, dynamic>;
         final template = DesktopStudioTemplate.fromJson(decoded);
         final templateLayout = _buildStudioTemplateDockLayout(template);
-        if (!isReplacementMode) return templateLayout;
+        if (!isFullWidthTaskbar) return templateLayout;
         return _buildTaskbarGlassContainer(
           width: double.infinity,
           height: double.infinity,
@@ -3946,6 +3980,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
         );
       } catch (_) {}
     }
+    if (isFullWidthTaskbar) return _buildFullWidthTaskbarLayout();
+
     final tempStr = _settings.weatherTemp.isNotEmpty
         ? '${_settings.weatherTemp}°'
         : '22°';
@@ -3969,8 +4005,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
         : (_ramUsage > 70 ? const Color(0xFFF59E0B) : const Color(0xFFA855F7));
 
     final taskbarContents = Row(
-      mainAxisSize: isReplacementMode ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: isReplacementMode
+      mainAxisSize: isFullWidthTaskbar ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: isFullWidthTaskbar
           ? MainAxisAlignment.spaceBetween
           : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -4025,7 +4061,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           ),
         ),
         _buildTaskbarDivider(),
-        if (isReplacementMode) ...[
+        if (isFullWidthTaskbar) ...[
           _buildTaskbarActionButton(
             'search',
             Icons.search_rounded,
@@ -4477,7 +4513,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
           _buildTaskbarDivider(),
         ],
 
-        if (isReplacementMode) ...[
+        if (isFullWidthTaskbar) ...[
           _buildTaskbarActionButton(
             'wifi-settings',
             Icons.wifi_rounded,
@@ -4663,16 +4699,116 @@ class _DesktopWidgetState extends State<DesktopWidget>
     );
 
     return _buildTaskbarGlassContainer(
-      width: isReplacementMode ? double.infinity : null,
-      height: isReplacementMode ? double.infinity : 48,
-      borderRadius: isReplacementMode ? BorderRadius.zero : null,
-      child: isReplacementMode
+      width: isFullWidthTaskbar ? double.infinity : null,
+      height: isFullWidthTaskbar ? double.infinity : 48,
+      borderRadius: isFullWidthTaskbar ? BorderRadius.zero : null,
+      child: isFullWidthTaskbar
           ? taskbarContents
           : FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.center,
               child: taskbarContents,
             ),
+    );
+  }
+
+  Widget _buildFullWidthTaskbarLayout() {
+    return _buildTaskbarGlassContainer(
+      width: double.infinity,
+      height: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      borderRadius: BorderRadius.zero,
+      child: Row(
+        children: [
+          _buildTaskbarActionButton(
+            'search',
+            Icons.search_rounded,
+            'Windows Search',
+          ),
+          _buildTaskbarActionButton(
+            'task-view',
+            Icons.view_carousel_rounded,
+            'Task View and virtual desktops',
+          ),
+          _buildTaskbarActionButton(
+            'file-explorer',
+            Icons.folder_rounded,
+            'File Explorer',
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: _buildTaskbarRunningApps(),
+              ),
+            ),
+          ),
+          _buildTaskbarActionButton(
+            'wifi-settings',
+            Icons.wifi_rounded,
+            'Wi-Fi settings',
+          ),
+          _buildTaskbarActionButton(
+            'quick-settings',
+            Icons.tune_rounded,
+            'Quick settings',
+          ),
+          _buildTaskbarActionButton(
+            'sound-settings',
+            Icons.volume_up_rounded,
+            'Audio settings',
+          ),
+          _buildTaskbarActionButton(
+            'battery-settings',
+            Icons.battery_charging_full_rounded,
+            'Battery and power settings',
+          ),
+          _buildTaskbarActionButton(
+            'notifications',
+            Icons.notifications_rounded,
+            'Notifications',
+          ),
+          Tooltip(
+            message: DateFormat('EEEE, MMMM d').format(_dateTime),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    DateFormat('HH:mm').format(_dateTime),
+                    style: TextStyle(
+                      color: Color(_settings.taskbarTextColor),
+                      fontSize: _settings.taskbarFontSize + 1,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Segoe UI',
+                    ),
+                  ),
+                  Text(
+                    DateFormat('E d').format(_dateTime),
+                    style: TextStyle(
+                      color: Color(
+                        _settings.taskbarTextColor,
+                      ).withValues(alpha: 0.7),
+                      fontSize: (_settings.taskbarFontSize - 2).clamp(
+                        8.0,
+                        14.0,
+                      ),
+                      fontFamily: 'Segoe UI',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _buildTaskbarActionButton(
+            'show-desktop',
+            Icons.desktop_windows_rounded,
+            'Show desktop',
+          ),
+        ],
+      ),
     );
   }
 
@@ -7582,9 +7718,15 @@ class _DesktopWidgetState extends State<DesktopWidget>
       );
     } else if (isTaskbar) {
       final effectiveWidth = math.max(baseWidth, _settings.width);
+      final isVerticalTaskbar =
+          _usesNativeTaskbarAppBar &&
+          (_settings.taskbarSettings.taskbarPosition == 'left' ||
+              _settings.taskbarSettings.taskbarPosition == 'right');
       mainWidget = GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
+        onSecondaryTapUp: _usesNativeTaskbarAppBar
+            ? null
+            : (d) => _showContextMenu(context, d.globalPosition),
         onPanStart: (d) {
           _handleInteraction();
           if (!_settings.isLocked &&
@@ -7598,6 +7740,22 @@ class _DesktopWidgetState extends State<DesktopWidget>
         onPanCancel: () => _endUserWindowInteraction(),
         child: isTaskbarReplacement
             ? SizedBox.expand(child: _buildLayout())
+            : isVerticalTaskbar
+            ? LayoutBuilder(
+                builder: (context, constraints) => Center(
+                  child: RotatedBox(
+                    quarterTurns:
+                        _settings.taskbarSettings.taskbarPosition == 'left'
+                        ? 3
+                        : 1,
+                    child: SizedBox(
+                      width: constraints.maxHeight,
+                      height: constraints.maxWidth,
+                      child: _buildLayout(),
+                    ),
+                  ),
+                ),
+              )
             : Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -7664,10 +7822,11 @@ class _DesktopWidgetState extends State<DesktopWidget>
           onHover: (_) => _handleInteraction(),
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onSecondaryTapUp: (d) =>
-                _showContextMenu(context, d.globalPosition),
+            onSecondaryTapUp: _usesNativeTaskbarAppBar
+                ? null
+                : (d) => _showContextMenu(context, d.globalPosition),
             onTap: () {
-              if (_visualEditorModeActive) {
+              if (!isTaskbar && _visualEditorModeActive) {
                 logInfo(
                   'DesktopWidget',
                   'Tap outside detected. Exiting visual editor mode.',
@@ -7678,7 +7837,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
             child: Stack(
               children: [
                 Positioned.fill(child: mainWidget),
-                if (_visualEditorModeActive && !_settings.isLocked) ...[
+                if (!isTaskbar &&
+                    _visualEditorModeActive &&
+                    !_settings.isLocked) ...[
                   Positioned.fill(
                     child: IgnorePointer(
                       ignoring: true,

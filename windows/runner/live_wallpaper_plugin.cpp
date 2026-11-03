@@ -247,6 +247,8 @@ class LiveWallpaperPlugin::Impl {
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
   bool AttachToDesktop();
   bool IsFullscreenForegroundWindow() const;
+  bool IsFullscreenForegroundWindowOnMonitor(
+      const std::string& monitor_id) const;
   void RefreshBatterySaverStatus();
   std::optional<LRESULT> HandleWindowMessage(HWND hwnd,
                                              UINT message,
@@ -272,6 +274,7 @@ class LiveWallpaperPlugin::Impl {
   bool SetTaskbarBlur(int mode);
   flutter::EncodableMap ConfigureTaskbarAppBar(
       const flutter::EncodableMap* args);
+  flutter::EncodableMap SetTaskbarAppBarVisible(bool visible);
   flutter::EncodableMap GetWindowsTaskbarInfo();
   bool SetWindowsTaskbarVisibility(bool visible);
   bool RestoreWindowsTaskbar();
@@ -570,6 +573,48 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
       return;
     }
     result->Success(flutter::EncodableValue(ConfigureTaskbarAppBar(args)));
+    return;
+  }
+  if (call.method_name() == "setTaskbarAppBarVisible") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (GetProcessModeName() != "taskbar_dock") {
+      result->Error("TASKBAR_MODE_REQUIRED",
+                    "AppBar visibility is only available to taskbar_dock.");
+      return;
+    }
+    if (args == nullptr) {
+      result->Error("INVALID_ARGUMENT",
+                    "Expected a taskbar AppBar visibility map.");
+      return;
+    }
+    const auto visible_entry = args->find(flutter::EncodableValue("visible"));
+    if (visible_entry == args->end() ||
+        !std::holds_alternative<bool>(visible_entry->second)) {
+      result->Error("INVALID_ARGUMENT",
+                    "Taskbar AppBar visibility must be a boolean.");
+      return;
+    }
+    result->Success(flutter::EncodableValue(
+        SetTaskbarAppBarVisible(std::get<bool>(visible_entry->second))));
+    return;
+  }
+  if (call.method_name() == "isFullscreenForegroundWindowOnMonitor") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    if (GetProcessModeName() != "taskbar_dock" || args == nullptr) {
+      result->Error("INVALID_ARGUMENT",
+                    "A taskbar monitor identity is required.");
+      return;
+    }
+    const auto monitor_entry =
+        args->find(flutter::EncodableValue("monitorId"));
+    if (monitor_entry == args->end() ||
+        !std::holds_alternative<std::string>(monitor_entry->second)) {
+      result->Error("INVALID_ARGUMENT", "Monitor identity must be a string.");
+      return;
+    }
+    result->Success(flutter::EncodableValue(
+        IsFullscreenForegroundWindowOnMonitor(
+            std::get<std::string>(monitor_entry->second))));
     return;
   }
   if (call.method_name() == "setWindowsTaskbarVisibility") {
@@ -1933,6 +1978,69 @@ bool LiveWallpaperPlugin::Impl::IsFullscreenForegroundWindow() const {
   return covers_work_area;
 }
 
+bool LiveWallpaperPlugin::Impl::IsFullscreenForegroundWindowOnMonitor(
+    const std::string& monitor_id) const {
+  if (monitor_id.empty() || !IsFullscreenForegroundWindow()) {
+    return false;
+  }
+  HWND foreground = GetForegroundWindow();
+  if (!foreground || !IsWindow(foreground)) {
+    return false;
+  }
+  HWND root_window = GetAncestor(foreground, GA_ROOT);
+  if (!root_window) {
+    root_window = foreground;
+  }
+  RECT foreground_bounds{};
+  if (!GetWindowRect(root_window, &foreground_bounds)) {
+    return false;
+  }
+  const HMONITOR monitor =
+      MonitorFromWindow(root_window, MONITOR_DEFAULTTONEAREST);
+  MONITORINFOEXW monitor_info{};
+  monitor_info.cbSize = sizeof(monitor_info);
+  if (!GetMonitorInfoW(monitor,
+                       reinterpret_cast<MONITORINFO*>(&monitor_info))) {
+    return false;
+  }
+  constexpr LONG kFullscreenBoundsTolerance = 12;
+  const RECT& monitor_bounds = monitor_info.rcMonitor;
+  if (foreground_bounds.left > monitor_bounds.left + kFullscreenBoundsTolerance ||
+      foreground_bounds.top > monitor_bounds.top + kFullscreenBoundsTolerance ||
+      foreground_bounds.right < monitor_bounds.right - kFullscreenBoundsTolerance ||
+      foreground_bounds.bottom < monitor_bounds.bottom - kFullscreenBoundsTolerance) {
+    return false;
+  }
+
+  const int expected_length = MultiByteToWideChar(
+      CP_UTF8, MB_ERR_INVALID_CHARS, monitor_id.c_str(), -1, nullptr, 0);
+  if (expected_length <= 1) {
+    return false;
+  }
+  std::wstring expected_id(static_cast<size_t>(expected_length), L'\0');
+  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, monitor_id.c_str(),
+                          -1, expected_id.data(), expected_length) == 0) {
+    return false;
+  }
+  expected_id.pop_back();
+
+  DISPLAY_DEVICEW display_device{};
+  display_device.cb = sizeof(display_device);
+  for (DWORD index = 0;
+       EnumDisplayDevicesW(monitor_info.szDevice, index, &display_device, 0);
+       ++index) {
+    if (display_device.DeviceID[0] != L'\0' &&
+        CompareStringOrdinal(expected_id.c_str(), -1,
+                             display_device.DeviceID, -1, TRUE) ==
+            CSTR_EQUAL) {
+      return true;
+    }
+    display_device = {};
+    display_device.cb = sizeof(display_device);
+  }
+  return false;
+}
+
 void LiveWallpaperPlugin::Impl::RefreshBatterySaverStatus() {
   SYSTEM_POWER_STATUS status{};
   if (GetSystemPowerStatus(&status) && status.SystemStatusFlag == 1) {
@@ -2462,6 +2570,21 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::ConfigureTaskbarAppBar(
     LogProcessDiagnostic("taskbar_appbar_configuration",
                          "result=failed revision=" +
                              std::to_string(revision) + " error=" + error);
+  }
+  return response;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::SetTaskbarAppBarVisible(
+    bool visible) {
+  flutter::EncodableMap response;
+  std::string error;
+  const bool success =
+      taskbar_appbar_ && taskbar_appbar_->SetVisible(visible, &error);
+  response[flutter::EncodableValue("success")] =
+      flutter::EncodableValue(success);
+  if (!success) {
+    response[flutter::EncodableValue("error")] = flutter::EncodableValue(
+        taskbar_appbar_ ? error : "The taskbar AppBar has not been configured.");
   }
   return response;
 }
