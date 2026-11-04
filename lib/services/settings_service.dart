@@ -878,6 +878,23 @@ class WidgetSettings {
     'taskbar_parking_lot': {'width': 240.0, 'height': 44.0, 'sizeFactor': 1.0},
   };
 
+  WidgetSettings normalizedWindowSize() {
+    final isTaskbar = widgetTemplate.startsWith('taskbar_');
+    final minimumWidth = isTaskbar ? 120.0 : 180.0;
+    final minimumHeight = isTaskbar ? 36.0 : 60.0;
+    final defaults =
+        templateDefaults[widgetTemplate] ??
+        {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
+    final validWidth = width.isFinite && width >= minimumWidth;
+    final validHeight = height.isFinite && height >= minimumHeight;
+    if (validWidth && validHeight) return this;
+
+    return copyWith(
+      width: validWidth ? width : defaults['width'],
+      height: validHeight ? height : defaults['height'],
+    );
+  }
+
   WidgetSettings({
     this.backgroundType = 'none',
     this.curatedIndex = 0,
@@ -1944,6 +1961,19 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
 class SettingsService {
   final String? instanceId;
   SettingsService({this.instanceId});
+
+  static bool matchesSettingsFileWatchEvent(
+    String eventPath,
+    String settingsFileName,
+  ) {
+    final normalizedPath = eventPath.replaceAll('\\', '/');
+    final eventFileName = normalizedPath.substring(
+      normalizedPath.lastIndexOf('/') + 1,
+    );
+    return eventFileName == settingsFileName ||
+        (eventFileName.startsWith('$settingsFileName.') &&
+            eventFileName.endsWith('.tmp'));
+  }
 
   static Future<void> _settingsWriteQueue = Future<void>.value();
   static final Map<String, Timer> _pendingDebounceTimers = {};

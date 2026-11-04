@@ -26,6 +26,33 @@ void main() {
     expect(restored.alwaysOnTop, isFalse);
   });
 
+  test('invalid saved widget dimensions recover to template defaults', () {
+    final settings = WidgetSettings(
+      widgetTemplate: 'cyber',
+      width: 220.0,
+      height: 44.0,
+    );
+
+    final recovered = settings.normalizedWindowSize();
+
+    expect(recovered.width, 220.0);
+    expect(recovered.height, 280.0);
+  });
+
+  test('valid custom widget dimensions are preserved', () {
+    final settings = WidgetSettings(
+      widgetTemplate: 'atomic_clock',
+      width: 220.0,
+      height: 100.0,
+    );
+
+    final normalized = settings.normalizedWindowSize();
+
+    expect(identical(normalized, settings), isTrue);
+    expect(normalized.width, 220.0);
+    expect(normalized.height, 100.0);
+  });
+
   test(
     'saved wallpaper and explicit widget opt-out survive restoration loads',
     () {
@@ -256,6 +283,37 @@ void main() {
     final dir1 = await service.getAppDirectory();
     final dir2 = await service.getAppDirectory();
     expect(identical(dir1, dir2), isTrue);
+  });
+
+  test('settings watcher accepts atomic replacement events only', () {
+    expect(
+      SettingsService.matchesSettingsFileWatchEvent(
+        r'C:\Wallsync\overlay_settings_classic.json',
+        'overlay_settings_classic.json',
+      ),
+      isTrue,
+    );
+    expect(
+      SettingsService.matchesSettingsFileWatchEvent(
+        r'C:\Wallsync\overlay_settings_classic.json.123.456.tmp',
+        'overlay_settings_classic.json',
+      ),
+      isTrue,
+    );
+    expect(
+      SettingsService.matchesSettingsFileWatchEvent(
+        r'C:\Wallsync\overlay_settings_other.json.123.456.tmp',
+        'overlay_settings_classic.json',
+      ),
+      isFalse,
+    );
+    expect(
+      SettingsService.matchesSettingsFileWatchEvent(
+        r'C:\Wallsync\overlay_classic.pid',
+        'overlay_settings_classic.json',
+      ),
+      isFalse,
+    );
   });
 
   test(

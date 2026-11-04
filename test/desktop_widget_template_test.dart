@@ -46,4 +46,37 @@ void main() {
       DesktopWidgetLayout.classic,
     );
   });
+
+  test('connectivity monitoring is enabled only for widgets that use it', () {
+    expect(
+      DesktopWidget.requiresConnectivity(
+        WidgetSettings(widgetTemplate: 'atomic_clean'),
+      ),
+      isFalse,
+    );
+    expect(
+      DesktopWidget.requiresConnectivity(
+        WidgetSettings(widgetTemplate: 'sleep_weather'),
+      ),
+      isTrue,
+    );
+    expect(
+      DesktopWidget.requiresConnectivity(
+        WidgetSettings(
+          widgetTemplate: 'custom',
+          customElements: [CustomWidgetElement(id: 'wifi', type: 'wifi_icon')],
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      DesktopWidget.requiresConnectivity(
+        WidgetSettings(
+          widgetTemplate: 'custom',
+          customElements: [CustomWidgetElement(id: 'time', type: 'hours')],
+        ),
+      ),
+      isFalse,
+    );
+  });
 }

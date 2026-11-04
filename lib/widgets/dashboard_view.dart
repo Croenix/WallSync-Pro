@@ -2687,6 +2687,18 @@ class _DashboardViewState extends State<DashboardView>
         );
       }
 
+      final normalizedSettings = instSettings.normalizedWindowSize();
+      if (normalizedSettings.width != instSettings.width ||
+          normalizedSettings.height != instSettings.height) {
+        logWarning(
+          'DashboardView',
+          'Recovered invalid saved size for widget "$widgetId": '
+              '${instSettings.width}x${instSettings.height} -> '
+              '${normalizedSettings.width}x${normalizedSettings.height}.',
+        );
+        instSettings = normalizedSettings;
+      }
+
       // Compute distinct coordinates if not set, or if colliding with default/stale positions
       if (instSettings.posX == null || instSettings.posY == null) {
         if (!isTaskbar) {

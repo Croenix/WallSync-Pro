@@ -2043,7 +2043,7 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
   const int height = screen_bounds.bottom - screen_bounds.top;
   const UINT flags = SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED;
   const HWND z_order = attach_to_desktop
-                           ? insert_after
+                           ? (raised_desktop ? HWND_TOP : insert_after)
                            : ((extended_style & WS_EX_TOPMOST) != 0
                                   ? HWND_TOPMOST
                                   : HWND_TOP);
@@ -2056,7 +2056,11 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
       std::string("result=success attached=") +
           (attach_to_desktop ? "true" : "false") +
           " hwnd=" + std::to_string(reinterpret_cast<intptr_t>(target)) +
-          " parent=" + std::to_string(reinterpret_cast<intptr_t>(parent)));
+          " parent=" + std::to_string(reinterpret_cast<intptr_t>(parent)) +
+          " raisedDesktop=" + (raised_desktop ? "true" : "false") +
+          " zOrder=" +
+          (attach_to_desktop && raised_desktop ? "above_desktop_view"
+                                               : "desktop_default"));
   return true;
 }
 

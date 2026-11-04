@@ -838,11 +838,23 @@ void main(List<String> args) async {
     }
 
     final overlayEntryPointMs = DateTime.now().millisecondsSinceEpoch;
-    final cleanSettings = settings.exitOverlay
+    var cleanSettings = settings.exitOverlay
         ? await settingsService.updateSettings(
             (current) => current.copyWith(exitOverlay: false),
           )
         : settings;
+    final normalizedSettings = cleanSettings.normalizedWindowSize();
+    if (normalizedSettings.width != cleanSettings.width ||
+        normalizedSettings.height != cleanSettings.height) {
+      logWarning(
+        'OverlayStartup',
+        'Recovered invalid saved widget size for "$overlayType": '
+            '${cleanSettings.width}x${cleanSettings.height} -> '
+            '${normalizedSettings.width}x${normalizedSettings.height}.',
+      );
+      await settingsService.saveSettings(normalizedSettings);
+      cleanSettings = normalizedSettings;
+    }
 
     int? overlayHwnd;
     try {
