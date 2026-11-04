@@ -9,11 +9,7 @@ class TemplateGalleryView extends StatefulWidget {
   final ValueChanged<DesktopStudioTemplate>? onEditInStudio;
   final VoidCallback? onCreateNew;
 
-  const TemplateGalleryView({
-    super.key,
-    this.onEditInStudio,
-    this.onCreateNew,
-  });
+  const TemplateGalleryView({super.key, this.onEditInStudio, this.onCreateNew});
 
   @override
   State<TemplateGalleryView> createState() => _TemplateGalleryViewState();
@@ -63,7 +59,8 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       if (_selectedCategory == 'Custom') {
         if (template.isBuiltIn) return false;
       } else if (_selectedCategory != 'All') {
-        if (template.category.toLowerCase() != _selectedCategory.toLowerCase()) {
+        if (template.category.toLowerCase() !=
+            _selectedCategory.toLowerCase()) {
           return false;
         }
       }
@@ -73,7 +70,9 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
         final query = _searchQuery.toLowerCase();
         final nameMatches = template.name.toLowerCase().contains(query);
         final descMatches = template.description.toLowerCase().contains(query);
-        final tagMatches = template.tags.any((t) => t.toLowerCase().contains(query));
+        final tagMatches = template.tags.any(
+          (t) => t.toLowerCase().contains(query),
+        );
         final authorMatches = template.author.toLowerCase().contains(query);
         if (!nameMatches && !descMatches && !tagMatches && !authorMatches) {
           return false;
@@ -91,10 +90,16 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF10B981),
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Applied "${template.name}" directly to your desktop!'),
+                child: Text(
+                  'Applied "${template.name}" directly to your desktop!',
+                ),
               ),
             ],
           ),
@@ -107,9 +112,9 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
   Future<void> _duplicateTemplate(DesktopStudioTemplate template) async {
     final copy = await _studioService.duplicateTemplate(template.id);
     if (copy != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Duplicated into "${copy.name}"')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Duplicated into "${copy.name}"')));
     }
   }
 
@@ -118,7 +123,10 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF131824),
-        title: const Text('Delete Template', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Delete Template',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Text(
           'Are you sure you want to permanently delete "${template.name}"?',
           style: const TextStyle(color: Colors.white70),
@@ -126,7 +134,10 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white60),
+            ),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -146,14 +157,17 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
     try {
       final path = await _studioService.exportTemplate(template);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported template to: $path')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Exported template to: $path')));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -180,12 +194,13 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                 ? _buildEmptyState()
                 : GridView.builder(
                     padding: const EdgeInsets.all(24),
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 440,
-                      mainAxisExtent: 270,
-                      crossAxisSpacing: 18,
-                      mainAxisSpacing: 18,
-                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 440,
+                          mainAxisExtent: 280,
+                          crossAxisSpacing: 18,
+                          mainAxisSpacing: 18,
+                        ),
                     itemCount: templates.length,
                     itemBuilder: (context, index) {
                       final item = templates[index];
@@ -200,6 +215,71 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
   }
 
   Widget _buildHeaderBar() {
+    final title = Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(
+            Icons.grid_view_rounded,
+            size: 20,
+            color: Color(0xFF070B14),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Template Gallery',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              Text(
+                'Curated desktop dock & taskbar templates designed for Windows 10 & 11',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final createButton = widget.onCreateNew == null
+        ? null
+        : FilledButton.icon(
+            icon: const Icon(Icons.add_rounded, size: 16),
+            label: const Text(
+              'Create New in Studio',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF38BDF8),
+              foregroundColor: const Color(0xFF070B14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: widget.onCreateNew,
+          );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
@@ -211,70 +291,31 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
           ),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 600) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.grid_view_rounded,
-                    size: 20,
-                    color: Color(0xFF070B14),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Template Gallery',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      Text(
-                        'Curated desktop dock & taskbar templates designed for Windows 10 & 11',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                title,
+                if (createButton != null) ...[
+                  const SizedBox(height: 10),
+                  Align(alignment: Alignment.centerRight, child: createButton),
+                ],
               ],
-            ),
-          ),
+            );
+          }
 
-          // Create New Button
-          if (widget.onCreateNew != null)
-            FilledButton.icon(
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Create New in Studio', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF38BDF8),
-                foregroundColor: const Color(0xFF070B14),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: widget.onCreateNew,
-            ),
-        ],
+          return Row(
+            children: [
+              Expanded(child: title),
+              if (createButton != null) ...[
+                const SizedBox(width: 12),
+                createButton,
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -285,74 +326,86 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       decoration: BoxDecoration(
         color: const Color(0xFF0B0E17),
         border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.05),
-          ),
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
         ),
       ),
-      child: Row(
-        children: [
-          // Quick Taskbar shortcut
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ActionChip(
-              avatar: const Icon(Icons.window_rounded, size: 14, color: Color(0xFF070B14)),
-              label: const Text('Taskbar', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              backgroundColor: const Color(0xFF38BDF8),
-              labelStyle: const TextStyle(color: Color(0xFF070B14)),
-              onPressed: () => setState(() => _selectedCategory = 'Taskbar'),
-            ),
-          ),
-
-          // Category Pills
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _categories.map((cat) {
-                  final isSelected = _selectedCategory == cat;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(cat),
-                      selected: isSelected,
-                      selectedColor: const Color(0xFF38BDF8),
-                      backgroundColor: const Color(0xFF141824),
-                      side: BorderSide(
-                        color: isSelected
-                            ? const Color(0xFF38BDF8)
-                            : Colors.white.withValues(alpha: 0.08),
-                      ),
-                      labelStyle: TextStyle(
-                        fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color: isSelected ? const Color(0xFF070B14) : Colors.white70,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      onSelected: (_) => setState(() => _selectedCategory = cat),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final categoryFilters = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _categories.map((cat) {
+                final isSelected = _selectedCategory == cat;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(cat),
+                    selected: isSelected,
+                    selectedColor: const Color(0xFF38BDF8),
+                    backgroundColor: const Color(0xFF141824),
+                    side: BorderSide(
+                      color: isSelected
+                          ? const Color(0xFF38BDF8)
+                          : Colors.white.withValues(alpha: 0.08),
                     ),
-                  );
-                }).toList(),
-              ),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: isSelected
+                          ? const Color(0xFF070B14)
+                          : Colors.white70,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    onSelected: (_) => setState(() => _selectedCategory = cat),
+                  ),
+                );
+              }).toList(),
             ),
-          ),
-
-          const SizedBox(width: 16),
-
-          // Search Box
-          SizedBox(
-            width: 240,
+          );
+          final taskbarShortcut = ActionChip(
+            avatar: const Icon(
+              Icons.window_rounded,
+              size: 14,
+              color: Color(0xFF070B14),
+            ),
+            label: const Text(
+              'Taskbar',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: const Color(0xFF38BDF8),
+            labelStyle: const TextStyle(color: Color(0xFF070B14)),
+            onPressed: () => setState(() => _selectedCategory = 'Taskbar'),
+          );
+          final searchField = SizedBox(
+            width: compact ? double.infinity : 240,
             height: 34,
             child: TextField(
               controller: _searchController,
               style: const TextStyle(fontSize: 12, color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Search templates...',
-                hintStyle: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.35)),
-                prefixIcon: const Icon(Icons.search_rounded, size: 16, color: Colors.white54),
+                hintStyle: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.35),
+                ),
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  size: 16,
+                  color: Colors.white54,
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 14, color: Colors.white54),
+                        icon: const Icon(
+                          Icons.clear_rounded,
+                          size: 14,
+                          color: Colors.white54,
+                        ),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _searchQuery = '');
@@ -364,11 +417,15 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -377,8 +434,37 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
               ),
               onChanged: (val) => setState(() => _searchQuery = val.trim()),
             ),
-          ),
-        ],
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    taskbarShortcut,
+                    const SizedBox(width: 8),
+                    Expanded(child: categoryFilters),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                searchField,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: taskbarShortcut,
+              ),
+              Expanded(child: categoryFilters),
+              const SizedBox(width: 16),
+              searchField,
+            ],
+          );
+        },
       ),
     );
   }
@@ -412,16 +498,12 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
               decoration: BoxDecoration(
                 color: const Color(0xFF090C14),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.05),
-                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
               ),
               child: Stack(
                 children: [
                   // Dock Preview Placement
-                  Center(
-                    child: _buildMiniDockPreview(template),
-                  ),
+                  Center(child: _buildMiniDockPreview(template)),
 
                   // Top Badges
                   Positioned(
@@ -430,16 +512,27 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: template.isBuiltIn
-                                ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
-                                : const Color(0xFFA855F7).withValues(alpha: 0.15),
+                                ? const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.15)
+                                : const Color(
+                                    0xFFA855F7,
+                                  ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
                               color: template.isBuiltIn
-                                  ? const Color(0xFF38BDF8).withValues(alpha: 0.35)
-                                  : const Color(0xFFA855F7).withValues(alpha: 0.35),
+                                  ? const Color(
+                                      0xFF38BDF8,
+                                    ).withValues(alpha: 0.35)
+                                  : const Color(
+                                      0xFFA855F7,
+                                    ).withValues(alpha: 0.35),
                             ),
                           ),
                           child: Text(
@@ -456,7 +549,10 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                         ),
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(4),
@@ -479,7 +575,10 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                       top: 8,
                       right: 8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF10B981),
                           borderRadius: BorderRadius.circular(4),
@@ -487,7 +586,11 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check_rounded, size: 10, color: Color(0xFF070B14)),
+                            Icon(
+                              Icons.check_rounded,
+                              size: 10,
+                              color: Color(0xFF070B14),
+                            ),
                             SizedBox(width: 3),
                             Text(
                               'APPLIED',
@@ -558,19 +661,27 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                     Expanded(
                       child: FilledButton.icon(
                         icon: Icon(
-                          isApplied ? Icons.check_circle_rounded : Icons.desktop_windows_rounded,
+                          isApplied
+                              ? Icons.check_circle_rounded
+                              : Icons.desktop_windows_rounded,
                           size: 13,
                         ),
                         label: Text(
                           isApplied ? 'Applied' : 'Apply',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         style: FilledButton.styleFrom(
                           backgroundColor: isApplied
                               ? const Color(0xFF10B981)
                               : const Color(0xFF38BDF8),
                           foregroundColor: const Color(0xFF070B14),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
                           minimumSize: const Size(0, 28),
                         ),
                         onPressed: () => _applyTemplate(template),
@@ -582,11 +693,19 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                     if (widget.onEditInStudio != null)
                       OutlinedButton.icon(
                         icon: const Icon(Icons.edit_rounded, size: 12),
-                        label: const Text('Edit', style: TextStyle(fontSize: 11)),
+                        label: const Text(
+                          'Edit',
+                          style: TextStyle(fontSize: 11),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white70,
-                          side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.15),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
                           minimumSize: const Size(0, 28),
                         ),
                         onPressed: () {
@@ -597,7 +716,11 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
 
                     // More Menu (Duplicate, Export, Delete)
                     PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert_rounded, size: 16, color: Colors.white54),
+                      icon: const Icon(
+                        Icons.more_vert_rounded,
+                        size: 16,
+                        color: Colors.white54,
+                      ),
                       color: const Color(0xFF141926),
                       tooltip: 'Options',
                       itemBuilder: (ctx) => [
@@ -605,9 +728,19 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                           value: 'duplicate',
                           child: Row(
                             children: [
-                              Icon(Icons.copy_rounded, size: 14, color: Colors.white70),
+                              Icon(
+                                Icons.copy_rounded,
+                                size: 14,
+                                color: Colors.white70,
+                              ),
                               SizedBox(width: 8),
-                              Text('Duplicate', style: TextStyle(fontSize: 12, color: Colors.white)),
+                              Text(
+                                'Duplicate',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -615,9 +748,19 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                           value: 'export',
                           child: Row(
                             children: [
-                              Icon(Icons.file_download_outlined, size: 14, color: Colors.white70),
+                              Icon(
+                                Icons.file_download_outlined,
+                                size: 14,
+                                color: Colors.white70,
+                              ),
                               SizedBox(width: 8),
-                              Text('Export .wstemplate', style: TextStyle(fontSize: 12, color: Colors.white)),
+                              Text(
+                                'Export .wstemplate',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -626,9 +769,19 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
                             value: 'delete',
                             child: Row(
                               children: [
-                                Icon(Icons.delete_outline_rounded, size: 14, color: Colors.redAccent),
+                                Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 14,
+                                  color: Colors.redAccent,
+                                ),
                                 SizedBox(width: 8),
-                                Text('Delete', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                                Text(
+                                  'Delete',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -665,10 +818,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       decoration: BoxDecoration(
         color: Color(appearance.backgroundColor),
         borderRadius: BorderRadius.circular(appearance.borderRadius * 0.5),
-        border: Border.all(
-          color: Color(appearance.borderColor),
-          width: 1.0,
-        ),
+        border: Border.all(color: Color(appearance.borderColor), width: 1.0),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -373,16 +373,20 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
                     ],
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    'WallSync Workspace Virtual Display',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.6),
-                      letterSpacing: 0.4,
+                  Expanded(
+                    child: Text(
+                      'WallSync Workspace Virtual Display',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.6),
+                        letterSpacing: 0.4,
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Icon(
                     Icons.crop_square_rounded,
                     size: 11,
@@ -394,34 +398,37 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
             // Mock window body
             Expanded(
               child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.desktop_windows_rounded,
-                      size: 32,
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.template.name,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white70,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.desktop_windows_rounded,
+                        size: 32,
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.isLivePreviewMode
-                          ? 'Live Preview Mode (Hover & Click Active)'
-                          : 'Edit Mode (Select items to inspect & customize)',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.white.withValues(alpha: 0.4),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.template.name,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white70,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.isLivePreviewMode
+                            ? 'Live Preview Mode (Hover & Click Active)'
+                            : 'Edit Mode (Select items to inspect & customize)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -720,17 +727,20 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
         vertical: layout.paddingVertical,
       ),
       decoration: decoration,
-      child: isHorizontal
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: _buildDockItems(isHorizontal: true),
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: _buildDockItems(isHorizontal: false),
-            ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: isHorizontal
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: _buildDockItems(isHorizontal: true),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: _buildDockItems(isHorizontal: false),
+              ),
+      ),
     );
 
     // Apply acrylic backdrop blur

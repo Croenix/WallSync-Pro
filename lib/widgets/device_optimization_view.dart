@@ -105,9 +105,12 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 Text(
                   res.workingSetFreedMb > 0
                       ? 'Optimization complete! Working Set: ${res.workingSetFreedMb.toStringAsFixed(1)} MB trimmed'
-                          '${res.privateBytesFreedMb > 0 ? " • Private: ${res.privateBytesFreedMb.toStringAsFixed(1)} MB freed" : ""}'
+                            '${res.privateBytesFreedMb > 0 ? " • Private: ${res.privateBytesFreedMb.toStringAsFixed(1)} MB freed" : ""}'
                       : 'Optimization complete! Memory stabilized at ${res.workingSetAfterMb.toStringAsFixed(1)} MB (heaps compacted, cache purged)',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -182,7 +185,11 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             SizedBox(width: 10),
             Text(
               'Optimization History',
-              style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -199,17 +206,24 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 )
               : ListView.separated(
                   itemCount: history.length,
-                  separatorBuilder: (_, _) => Divider(color: Colors.white.withValues(alpha: 0.08)),
+                  separatorBuilder: (_, _) =>
+                      Divider(color: Colors.white.withValues(alpha: 0.08)),
                   itemBuilder: (ctx, i) {
                     final item = history[i];
                     final dateStr = item['timestamp'] as String? ?? '';
                     final dt = DateTime.tryParse(dateStr) ?? DateTime.now();
-                    final freed = (item['workingSetFreedMb'] as num?)?.toDouble() ??
+                    final freed =
+                        (item['workingSetFreedMb'] as num?)?.toDouble() ??
                         (item['ramFreedMb'] as num?)?.toDouble() ??
                         0.0;
                     final privFreed =
-                        (item['privateBytesFreedMb'] as num?)?.toDouble() ?? 0.0;
-                    final actions = (item['actionsTaken'] as List?)?.whereType<String>().toList() ?? [];
+                        (item['privateBytesFreedMb'] as num?)?.toDouble() ??
+                        0.0;
+                    final actions =
+                        (item['actionsTaken'] as List?)
+                            ?.whereType<String>()
+                            .toList() ??
+                        [];
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -220,21 +234,35 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                DateFormat('MMM dd, yyyy - hh:mm:ss a').format(dt),
-                                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                DateFormat(
+                                  'MMM dd, yyyy - hh:mm:ss a',
+                                ).format(dt),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.3),
+                                  ),
                                 ),
                                 child: Text(
                                   freed > 0 || privFreed > 0
                                       ? (privFreed > 0
-                                          ? '-${freed.toStringAsFixed(1)} MB WS | -${privFreed.toStringAsFixed(1)} MB Priv'
-                                          : '-${freed.toStringAsFixed(1)} MB RAM')
+                                            ? '-${freed.toStringAsFixed(1)} MB WS | -${privFreed.toStringAsFixed(1)} MB Priv'
+                                            : '-${freed.toStringAsFixed(1)} MB RAM')
                                       : 'Stabilized (${(item['workingSetAfterMb'] as num?)?.toStringAsFixed(0) ?? "Stable"} MB)',
                                   style: const TextStyle(
                                     color: Color(0xFF10B981),
@@ -249,7 +277,10 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                             const SizedBox(height: 4),
                             Text(
                               actions.join(' • '),
-                              style: const TextStyle(color: Colors.white38, fontSize: 11),
+                              style: const TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                              ),
                             ),
                           ],
                         ],
@@ -261,7 +292,10 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: Color(0xFF38BDF8))),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: Color(0xFF38BDF8)),
+            ),
           ),
         ],
       ),
@@ -295,61 +329,81 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
   }
 
   Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
+    final tunedBadge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Text(
+        (_winVer?.isWindows11 ?? true)
+            ? 'WINDOWS 11 TUNED'
+            : 'WINDOWS 10 TUNED',
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF10B981),
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final titleRow = Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+                ),
+              ),
+              child: const Icon(
+                Icons.speed_rounded,
+                color: Color(0xFF38BDF8),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Device Optimization',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            if (constraints.maxWidth >= 500) ...[
+              const SizedBox(width: 10),
+              tunedBadge,
+            ],
+          ],
+        );
+
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
-                  ),
-                  child: const Icon(Icons.speed_rounded, color: Color(0xFF38BDF8), size: 22),
-                ),
-                const SizedBox(width: 14),
-                const Text(
-                  'Device Optimization',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.5,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    (_winVer?.isWindows11 ?? true) ? 'WINDOWS 11 TUNED' : 'WINDOWS 10 TUNED',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF10B981),
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            titleRow,
+            if (constraints.maxWidth < 500) ...[
+              const SizedBox(height: 8),
+              tunedBadge,
+            ],
             const SizedBox(height: 6),
             const Text(
               'Real-time Windows kernel diagnostics, native memory trimming, and hardware-accelerated profiles.',
               style: TextStyle(fontSize: 13, color: Colors.white54),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -358,8 +412,11 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
     final cpuPercent = _metrics?.cpuPercent ?? 0.0;
     final totalPhysMb = _metrics?.totalPhysMb ?? 8192.0;
     final availPhysMb = _metrics?.availPhysMb ?? 4096.0;
-    final usedPhysMb = totalPhysMb > availPhysMb ? (totalPhysMb - availPhysMb) : 0.0;
-    final ramLoadPercent = _metrics?.ramLoadPercent ?? ((usedPhysMb / totalPhysMb) * 100);
+    final usedPhysMb = totalPhysMb > availPhysMb
+        ? (totalPhysMb - availPhysMb)
+        : 0.0;
+    final ramLoadPercent =
+        _metrics?.ramLoadPercent ?? ((usedPhysMb / totalPhysMb) * 100);
 
     final appWorkingSet = _metrics?.processWorkingSetMb ?? 0.0;
     final mpvWorkingSet = _metrics?.mpvWorkingSetMb ?? 0.0;
@@ -396,12 +453,13 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 icon: Icons.memory_rounded,
                 title: 'CPU Utilization',
                 value: '${cpuPercent.toStringAsFixed(1)}%',
-                subtitle: '${_winVer?.processorCount ?? 8} Hardware Cores Available',
+                subtitle:
+                    '${_winVer?.processorCount ?? 8} Hardware Cores Available',
                 accentColor: cpuPercent > 80
                     ? const Color(0xFFF43F5E)
                     : cpuPercent > 45
-                        ? Colors.amberAccent
-                        : const Color(0xFF10B981),
+                    ? Colors.amberAccent
+                    : const Color(0xFF10B981),
                 progress: (cpuPercent / 100).clamp(0.0, 1.0),
               ),
             ),
@@ -461,8 +519,9 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 10,
             children: [
               _buildStatusPill(
                 Icons.layers_rounded,
@@ -474,12 +533,16 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                 Icons.wallpaper_rounded,
                 'Wallpaper Engine',
                 wallpaperMode,
-                wallpaperMode == 'VIDEO' ? const Color(0xFFEC4899) : const Color(0xFF10B981),
+                wallpaperMode == 'VIDEO'
+                    ? const Color(0xFFEC4899)
+                    : const Color(0xFF10B981),
               ),
               _buildStatusPill(
                 Icons.eco_rounded,
                 'EcoQoS Throttling',
-                widget.settings.performanceProfile == 'power_saver' ? 'Enabled' : 'Disabled',
+                widget.settings.performanceProfile == 'power_saver'
+                    ? 'Enabled'
+                    : 'Disabled',
                 widget.settings.performanceProfile == 'power_saver'
                     ? const Color(0xFF10B981)
                     : Colors.white54,
@@ -522,7 +585,11 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 12, color: Colors.white60, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white60,
+                    fontWeight: FontWeight.w500,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -560,7 +627,12 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
     );
   }
 
-  Widget _buildStatusPill(IconData icon, String label, String value, Color color) {
+  Widget _buildStatusPill(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -569,8 +641,18 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
-            Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10.5, color: Colors.white38),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
           ],
         ),
       ],
@@ -579,6 +661,104 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
 
   // ── SECTION B: Overall Performance Optimization ───────────────────────────
   Widget _buildSectionBOverallOptimizationAction() {
+    final readyBadge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10B981).withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Text(
+        'READY',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF10B981),
+        ),
+      ),
+    );
+    final summary = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final title = Row(
+              children: [
+                const Icon(
+                  Icons.bolt_rounded,
+                  color: Color(0xFF38BDF8),
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Overall Performance Optimization',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                if (constraints.maxWidth >= 500) ...[
+                  const SizedBox(width: 8),
+                  readyBadge,
+                ],
+              ],
+            );
+            if (constraints.maxWidth >= 500) {
+              return title;
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [title, const SizedBox(height: 6), readyBadge],
+            );
+          },
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Instantly trims unused virtual memory pages across WallSync and MPV, compacts native heaps, flushes image decode buffers, and frees RAM with 0 visual glitching.',
+          style: TextStyle(fontSize: 13, color: Colors.white70, height: 1.4),
+        ),
+        if (_lastResult != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Last run: Trimmed ${_lastResult!.workingSetFreedMb.toStringAsFixed(1)} MB Working Set'
+            '${_lastResult!.privateBytesFreedMb > 0 ? " • ${_lastResult!.privateBytesFreedMb.toStringAsFixed(1)} MB Private Commit" : ""} '
+            '(${_lastResult!.actionsTaken.length} actions completed).',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF10B981),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
+    );
+    final optimizeButton = ElevatedButton.icon(
+      onPressed: _isOptimizing ? null : _runOverallOptimization,
+      icon: _isOptimizing
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.black,
+              ),
+            )
+          : const Icon(Icons.rocket_launch_rounded, size: 18),
+      label: Text(
+        _isOptimizing ? 'Optimizing...' : 'Optimize Overall Performance',
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF38BDF8),
+        foregroundColor: const Color(0xFF070913),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 4,
+      ),
+    );
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -591,85 +771,27 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.2)),
+        border: Border.all(
+          color: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+        ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.bolt_rounded, color: Color(0xFF38BDF8), size: 24),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Overall Performance Optimization',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'READY',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF10B981),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Instantly trims unused virtual memory pages across WallSync and MPV, compacts native heaps, flushes image decode buffers, and frees RAM with 0 visual glitching.',
-                  style: TextStyle(fontSize: 13, color: Colors.white70, height: 1.4),
-                ),
-                if (_lastResult != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Last run: Trimmed ${_lastResult!.workingSetFreedMb.toStringAsFixed(1)} MB Working Set'
-                    '${_lastResult!.privateBytesFreedMb > 0 ? " • ${_lastResult!.privateBytesFreedMb.toStringAsFixed(1)} MB Private Commit" : ""} '
-                    '(${_lastResult!.actionsTaken.length} actions completed).',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 24),
-          ElevatedButton.icon(
-            onPressed: _isOptimizing ? null : _runOverallOptimization,
-            icon: _isOptimizing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                  )
-                : const Icon(Icons.rocket_launch_rounded, size: 18),
-            label: Text(
-              _isOptimizing ? 'Optimizing...' : 'Optimize Overall Performance',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF38BDF8),
-              foregroundColor: const Color(0xFF070913),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 4,
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 720) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [summary, const SizedBox(height: 16), optimizeButton],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: summary),
+              const SizedBox(width: 24),
+              optimizeButton,
+            ],
+          );
+        },
       ),
     );
   }
@@ -736,17 +858,27 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? const Color(0xFF38BDF8) : Colors.white,
+                                  color: isSelected
+                                      ? const Color(0xFF38BDF8)
+                                      : Colors.white,
                                 ),
                               ),
                               if (isSelected)
-                                const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 18),
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: Color(0xFF38BDF8),
+                                  size: 18,
+                                ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           Text(
                             prof.description,
-                            style: const TextStyle(fontSize: 11.5, color: Colors.white54, height: 1.35),
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.white54,
+                              height: 1.35,
+                            ),
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -755,9 +887,15 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                             spacing: 6,
                             runSpacing: 4,
                             children: [
-                              _buildProfileBadge('${prof.wallpaperFpsLimit} FPS'),
-                              _buildProfileBadge('${prof.widgetRefreshIntervalMs}ms Refresh'),
-                              _buildProfileBadge('${prof.imageCacheLimitMb}MB Cache'),
+                              _buildProfileBadge(
+                                '${prof.wallpaperFpsLimit} FPS',
+                              ),
+                              _buildProfileBadge(
+                                '${prof.widgetRefreshIntervalMs}ms Refresh',
+                              ),
+                              _buildProfileBadge(
+                                '${prof.imageCacheLimitMb}MB Cache',
+                              ),
                             ],
                           ),
                         ],
@@ -780,7 +918,10 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
         color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(5),
       ),
-      child: Text(text, style: const TextStyle(fontSize: 9.5, color: Colors.white70)),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 9.5, color: Colors.white70),
+      ),
     );
   }
 
@@ -873,13 +1014,22 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             type: MaterialType.transparency,
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Auto-Pause Inactive Background Animations', style: TextStyle(color: Colors.white, fontSize: 14)),
-              subtitle: const Text('Suspends animation loops when dashboard or overlay is unfocused or obscured by games.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              title: const Text(
+                'Auto-Pause Inactive Background Animations',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              subtitle: const Text(
+                'Suspends animation loops when dashboard or overlay is unfocused or obscured by games.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
               value: widget.settings.pauseInactiveAnimations,
               activeThumbColor: const Color(0xFF38BDF8),
               onChanged: (val) async {
                 final updated = await widget.settingsService.updateSettings(
-                  (c) => c.copyWith(pauseInactiveAnimations: val, performanceProfile: 'custom'),
+                  (c) => c.copyWith(
+                    pauseInactiveAnimations: val,
+                    performanceProfile: 'custom',
+                  ),
                 );
                 widget.onSettingsChanged(updated);
                 setState(() {});
@@ -890,8 +1040,14 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             type: MaterialType.transparency,
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Automatic Widget Sizing (Default ON)', style: TextStyle(color: Colors.white, fontSize: 14)),
-              subtitle: const Text('Automatically adapts widget window dimensions to content length and Windows display DPI.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              title: const Text(
+                'Automatic Widget Sizing (Default ON)',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+              subtitle: const Text(
+                'Automatically adapts widget window dimensions to content length and Windows display DPI.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
               value: widget.settings.autoSizing,
               activeThumbColor: const Color(0xFF10B981),
               onChanged: (val) async {
@@ -923,8 +1079,18 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 13.5)),
-            Text(valueText, style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 13.5)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 13.5),
+            ),
+            Text(
+              valueText,
+              style: const TextStyle(
+                color: Color(0xFF38BDF8),
+                fontWeight: FontWeight.bold,
+                fontSize: 13.5,
+              ),
+            ),
           ],
         ),
         Slider(
@@ -989,12 +1155,18 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(value: 'all', label: Text('All Processes')),
-                      ButtonSegment(value: 'wallsync', label: Text('WallSync Only')),
+                      ButtonSegment(
+                        value: 'wallsync',
+                        label: Text('WallSync Only'),
+                      ),
                     ],
                     selected: {_processFilter},
-                    onSelectionChanged: (set) => setState(() => _processFilter = set.first),
+                    onSelectionChanged: (set) =>
+                        setState(() => _processFilter = set.first),
                     style: ButtonStyle(
-                      textStyle: WidgetStateProperty.all(const TextStyle(fontSize: 11)),
+                      textStyle: WidgetStateProperty.all(
+                        const TextStyle(fontSize: 11),
+                      ),
                     ),
                   ),
                 ],
@@ -1009,7 +1181,11 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             decoration: InputDecoration(
               hintText: 'Search processes by name or PID...',
               hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
-              prefixIcon: const Icon(Icons.search_rounded, color: Colors.white38, size: 18),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: Colors.white38,
+                size: 18,
+              ),
               isDense: true,
               filled: true,
               fillColor: Colors.black.withValues(alpha: 0.25),
@@ -1029,17 +1205,27 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             ),
             child: ListView.separated(
               itemCount: filtered.length,
-              separatorBuilder: (_, _) => Divider(color: Colors.white.withValues(alpha: 0.04), height: 1),
+              separatorBuilder: (_, _) => Divider(
+                color: Colors.white.withValues(alpha: 0.04),
+                height: 1,
+              ),
               itemBuilder: (ctx, i) {
                 final proc = filtered[i];
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       Icon(
-                        proc.isWallSync ? Icons.widgets_rounded : Icons.apps_rounded,
+                        proc.isWallSync
+                            ? Icons.widgets_rounded
+                            : Icons.apps_rounded,
                         size: 16,
-                        color: proc.isWallSync ? const Color(0xFF38BDF8) : Colors.white38,
+                        color: proc.isWallSync
+                            ? const Color(0xFF38BDF8)
+                            : Colors.white38,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1047,9 +1233,13 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                         child: Text(
                           proc.name,
                           style: TextStyle(
-                            color: proc.isWallSync ? const Color(0xFF38BDF8) : Colors.white,
+                            color: proc.isWallSync
+                                ? const Color(0xFF38BDF8)
+                                : Colors.white,
                             fontSize: 12.5,
-                            fontWeight: proc.isWallSync ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: proc.isWallSync
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1058,27 +1248,37 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                         flex: 1,
                         child: Text(
                           'PID: ${proc.pid}',
-                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                       Expanded(
                         flex: 2,
                         child: Text(
                           '${proc.workingSetMb.toStringAsFixed(1)} MB',
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                       if (proc.isWallSync)
                         TextButton(
                           onPressed: () async {
-                            final ok = await _optimizer.trimProcessMemory(proc.pid);
+                            final ok = await _optimizer.trimProcessMemory(
+                              proc.pid,
+                            );
                             if (ok) {
                               await _pollMetrics();
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     backgroundColor: const Color(0xFF10B981),
-                                    content: Text('Trimmed memory for ${proc.name} (PID ${proc.pid})'),
+                                    content: Text(
+                                      'Trimmed memory for ${proc.name} (PID ${proc.pid})',
+                                    ),
                                     duration: const Duration(seconds: 1),
                                   ),
                                 );
@@ -1086,11 +1286,20 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
                             }
                           },
                           style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          child: const Text('Trim RAM', style: TextStyle(fontSize: 11, color: Color(0xFF38BDF8))),
+                          child: const Text(
+                            'Trim RAM',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF38BDF8),
+                            ),
+                          ),
                         ),
                     ],
                   ),
@@ -1113,34 +1322,58 @@ class _DeviceOptimizationViewState extends State<DeviceOptimizationView> {
             OutlinedButton.icon(
               onPressed: _restoreDefaults,
               icon: const Icon(Icons.settings_backup_restore_rounded, size: 16),
-              label: const Text('Restore Balanced Defaults', style: TextStyle(fontSize: 12.5)),
+              label: const Text(
+                'Restore Balanced Defaults',
+                style: TextStyle(fontSize: 12.5),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white70,
                 side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
             const SizedBox(width: 12),
             OutlinedButton.icon(
               onPressed: _undoLastOptimization,
               icon: const Icon(Icons.undo_rounded, size: 16),
-              label: const Text('Undo Last Optimization', style: TextStyle(fontSize: 12.5)),
+              label: const Text(
+                'Undo Last Optimization',
+                style: TextStyle(fontSize: 12.5),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white70,
                 side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ],
         ),
         TextButton.icon(
           onPressed: _showOptimizationHistory,
-          icon: const Icon(Icons.history_rounded, size: 16, color: Color(0xFF38BDF8)),
+          icon: const Icon(
+            Icons.history_rounded,
+            size: 16,
+            color: Color(0xFF38BDF8),
+          ),
           label: const Text(
             'View Optimization History',
-            style: TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Color(0xFF38BDF8),
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ],

@@ -3119,14 +3119,12 @@ class _DashboardViewState extends State<DashboardView>
       return pending;
     }
     late final Future<void> operation;
-    operation = _closeWidgetOverlayInternal(
-      widgetId,
-      reason: reason,
-    ).whenComplete(() {
-      if (identical(_widgetCloseOperations[widgetId], operation)) {
-        _widgetCloseOperations.remove(widgetId);
-      }
-    });
+    operation = _closeWidgetOverlayInternal(widgetId, reason: reason)
+        .whenComplete(() {
+          if (identical(_widgetCloseOperations[widgetId], operation)) {
+            _widgetCloseOperations.remove(widgetId);
+          }
+        });
     _widgetCloseOperations[widgetId] = operation;
     return operation;
   }
@@ -3411,12 +3409,7 @@ class _DashboardViewState extends State<DashboardView>
     }
     _syncMediaServiceState();
     _syncConnectivityService();
-    unawaited(
-      _syncSettingsToRunningWidget(
-        s,
-        immediate: alwaysOnTopChanged,
-      ),
-    );
+    unawaited(_syncSettingsToRunningWidget(s, immediate: alwaysOnTopChanged));
 
     if (shouldSaveImmediately) {
       _saveDebounce?.cancel();
@@ -24549,238 +24542,257 @@ class _DashboardViewState extends State<DashboardView>
     }
 
     // Default standby showcase when no widgets running
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 12, 24, 6),
-      height: 168,
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D101C),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF38BDF8).withValues(alpha: 0.16),
-            blurRadius: 24,
-            offset: const Offset(0, 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 760;
+        final shortWindow = MediaQuery.sizeOf(context).height < 560;
+        final preview = Container(
+          width: compact ? 180 : 200,
+          height: compact ? (shortWindow ? 96 : 108) : 128,
+          decoration: BoxDecoration(
+            color: const Color(0xFF07090F),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(21),
-        child: Stack(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: _buildMiniWidgetPreview(activeKey),
+            ),
+          ),
+        );
+        final details = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Positioned(
-              left: -40,
-              top: -40,
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF38BDF8).withValues(alpha: 0.08),
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF38BDF8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.6),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 7),
+                const Expanded(
+                  child: Text(
+                    'MULTI-WIDGET ENGINE READY • STANDBY',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                      color: Color(0xFF38BDF8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              activeTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: -0.2,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    width: 200,
-                    height: 128,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF07090F),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        width: 1.0,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: _buildMiniWidgetPreview(activeKey),
-                      ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isTaskbar ? 'TASKBAR DOCK' : 'DESKTOP OVERLAY',
+                    style: const TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF38BDF8),
+                      letterSpacing: 0.5,
                     ),
                   ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFF38BDF8),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFF38BDF8,
-                                    ).withValues(alpha: 0.6),
-                                    blurRadius: 6,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 7),
-                            const Text(
-                              'MULTI-WIDGET ENGINE READY • STANDBY',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.8,
-                                color: Color(0xFF38BDF8),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          activeTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: -0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                isTaskbar ? 'TASKBAR DOCK' : 'DESKTOP OVERLAY',
-                                style: const TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF38BDF8),
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF10B981,
-                                ).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Text(
-                                'RUN MULTIPLE SIMULTANEOUSLY',
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF10B981),
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: () => _launchWidgetOverlay(activeKey),
-                              icon: const Icon(
-                                Icons.play_arrow_rounded,
-                                size: 16,
-                              ),
-                              label: const Text(
-                                'Launch Widget',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF10B981),
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 9,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(9),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            OutlinedButton.icon(
-                              onPressed: () => _customizeWidget(activeKey),
-                              icon: const Icon(
-                                Icons.tune_rounded,
-                                size: 15,
-                                color: Color(0xFF38BDF8),
-                              ),
-                              label: const Text(
-                                'Customize Widget',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(
-                                  color: const Color(
-                                    0xFF38BDF8,
-                                  ).withValues(alpha: 0.4),
-                                ),
-                                backgroundColor: const Color(
-                                  0xFF38BDF8,
-                                ).withValues(alpha: 0.07),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 9,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(9),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'RUN MULTIPLE SIMULTANEOUSLY',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF10B981),
+                      letterSpacing: 0.5,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _launchWidgetOverlay(activeKey),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                  label: const Text(
+                    'Launch Widget',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _customizeWidget(activeKey),
+                  icon: const Icon(
+                    Icons.tune_rounded,
+                    size: 15,
+                    color: Color(0xFF38BDF8),
+                  ),
+                  label: const Text(
+                    'Customize Widget',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                    ),
+                    backgroundColor: const Color(
+                      0xFF38BDF8,
+                    ).withValues(alpha: 0.07),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-      ),
+        );
+
+        return Container(
+          margin: EdgeInsets.fromLTRB(
+            24,
+            shortWindow ? 2 : 12,
+            24,
+            shortWindow ? 2 : 6,
+          ),
+          height: compact
+              ? constraints.maxWidth < 500
+                    ? (shortWindow ? 320 : 380)
+                    : (shortWindow ? 280 : 320)
+              : 184,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D101C),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.16),
+                blurRadius: 24,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(21),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: -40,
+                  top: -40,
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.08),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: compact
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Center(child: preview),
+                            const SizedBox(height: 10),
+                            details,
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            preview,
+                            const SizedBox(width: 24),
+                            Expanded(child: details),
+                          ],
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -25403,8 +25415,7 @@ class _DashboardViewState extends State<DashboardView>
               final desc = item['desc'] as String;
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
-              final isRunning =
-                  _activeRunningWidgetIds.contains(key);
+              final isRunning = _activeRunningWidgetIds.contains(key);
 
               return SizedBox(
                 width: 320,
@@ -26739,12 +26750,16 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   ),
                   SizedBox(width: 4),
-                  Text(
-                    '27 OCT 2026',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 7,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      '27 OCT 2026',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -29510,11 +29525,37 @@ class _DashboardViewState extends State<DashboardView>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final refreshButton = ElevatedButton.icon(
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text('Refresh Stats'),
+                          onPressed: () => setState(() {
+                            _diagnosticsStorageSnapshot = diag
+                                .getStorageSnapshot();
+                          }),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.08,
+                            ),
+                            foregroundColor: const Color(0xFF38BDF8),
+                            elevation: 0,
+                            side: BorderSide(
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.25),
+                              width: 1.0,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                          ),
+                        );
+                        final titleGroup = Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(11),
@@ -29554,91 +29595,96 @@ class _DashboardViewState extends State<DashboardView>
                               ),
                             ),
                             const SizedBox(width: 14),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Text(
-                                      'Performance & Diagnostics Monitor',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                        letterSpacing: -0.3,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Performance & Diagnostics Monitor',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            letterSpacing: -0.3,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 7,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(
-                                          0xFF10B981,
-                                        ).withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
                                           color: const Color(
                                             0xFF10B981,
-                                          ).withValues(alpha: 0.35),
-                                          width: 0.9,
+                                          ).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(
+                                              0xFF10B981,
+                                            ).withValues(alpha: 0.35),
+                                            width: 0.9,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'LIVE TELEMETRY',
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF10B981),
+                                            letterSpacing: 0.6,
+                                          ),
                                         ),
                                       ),
-                                      child: const Text(
-                                        'LIVE TELEMETRY',
-                                        style: TextStyle(
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF10B981),
-                                          letterSpacing: 0.6,
-                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    'Real-time profiling: RAM, CPU, Storage, GPU, 60 FPS Jank & Hang Watchdog',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white.withValues(
+                                        alpha: 0.55,
                                       ),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  'Real-time profiling: RAM, CPU, Storage, GPU, 60 FPS Jank & Hang Watchdog',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withValues(alpha: 0.55),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
-                        ),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.refresh_rounded, size: 16),
-                          label: const Text('Refresh Stats'),
-                          onPressed: () => setState(() {
-                            _diagnosticsStorageSnapshot = diag
-                                .getStorageSnapshot();
-                          }),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white.withValues(
-                              alpha: 0.08,
-                            ),
-                            foregroundColor: const Color(0xFF38BDF8),
-                            elevation: 0,
-                            side: BorderSide(
-                              color: const Color(
-                                0xFF38BDF8,
-                              ).withValues(alpha: 0.25),
-                              width: 1.0,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                          ),
-                        ),
-                      ],
+                        );
+
+                        if (constraints.maxWidth < 620) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              titleGroup,
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: refreshButton,
+                              ),
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: titleGroup),
+                            const SizedBox(width: 12),
+                            refreshButton,
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 24),
 
@@ -29862,9 +29908,9 @@ class _DashboardViewState extends State<DashboardView>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final icon = Container(
                                 padding: const EdgeInsets.all(6),
                                 decoration: BoxDecoration(
                                   color: const Color(
@@ -29877,18 +29923,18 @@ class _DashboardViewState extends State<DashboardView>
                                   size: 18,
                                   color: Color(0xFF10B981),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              const Text(
+                              );
+                              const title = Text(
                                 'Runtime Watchdog & Hang / Over-waiting Detector',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                 ),
-                              ),
-                              const Spacer(),
-                              Container(
+                              );
+                              final status = Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 4,
@@ -29923,8 +29969,34 @@ class _DashboardViewState extends State<DashboardView>
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                              );
+                              final titleRow = Row(
+                                children: [
+                                  icon,
+                                  const SizedBox(width: 10),
+                                  const Expanded(child: title),
+                                ],
+                              );
+                              if (constraints.maxWidth < 500) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    titleRow,
+                                    const SizedBox(height: 8),
+                                    status,
+                                  ],
+                                );
+                              }
+                              return Row(
+                                children: [
+                                  icon,
+                                  const SizedBox(width: 10),
+                                  const Expanded(child: title),
+                                  const SizedBox(width: 8),
+                                  status,
+                                ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -29963,143 +30035,158 @@ class _DashboardViewState extends State<DashboardView>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Header & Filter Row
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF38BDF8,
-                                  ).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.history_rounded,
-                                  size: 18,
-                                  color: Color(0xFF38BDF8),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              const Text(
-                                'Diagnostics Telemetry & Event History',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const Spacer(),
-                              // Time Range filter
-                              DropdownButton<Duration?>(
-                                value: _diagHistoryTimeRangeFilter,
-                                dropdownColor: const Color(0xFF141724),
-                                underline: const SizedBox(),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white70,
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: null,
-                                    child: Text('All Time'),
+                          LayoutBuilder(
+                            builder: (context, _) {
+                              return Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  SizedBox(
+                                    width: 360,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFF38BDF8,
+                                            ).withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.history_rounded,
+                                            size: 18,
+                                            color: Color(0xFF38BDF8),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        const Expanded(
+                                          child: Text(
+                                            'Diagnostics Telemetry & Event History',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  DropdownMenuItem(
-                                    value: Duration(minutes: 5),
-                                    child: Text('Last 5m'),
+                                  // Time Range filter
+                                  DropdownButton<Duration?>(
+                                    value: _diagHistoryTimeRangeFilter,
+                                    dropdownColor: const Color(0xFF141724),
+                                    underline: const SizedBox(),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: null,
+                                        child: Text('All Time'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: Duration(minutes: 5),
+                                        child: Text('Last 5m'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: Duration(minutes: 15),
+                                        child: Text('Last 15m'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: Duration(hours: 1),
+                                        child: Text('Last 1h'),
+                                      ),
+                                    ],
+                                    onChanged: (val) => setState(
+                                      () => _diagHistoryTimeRangeFilter = val,
+                                    ),
                                   ),
-                                  DropdownMenuItem(
-                                    value: Duration(minutes: 15),
-                                    child: Text('Last 15m'),
+                                  // Severity filter
+                                  DropdownButton<String>(
+                                    value: _diagHistorySeverityFilter,
+                                    dropdownColor: const Color(0xFF141724),
+                                    underline: const SizedBox(),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: 'ALL',
+                                        child: Text('All Severities'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'INFO',
+                                        child: Text('Info Only'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'WARN',
+                                        child: Text('Warnings'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'ERROR',
+                                        child: Text('Errors'),
+                                      ),
+                                    ],
+                                    onChanged: (val) => setState(
+                                      () => _diagHistorySeverityFilter =
+                                          val ?? 'ALL',
+                                    ),
                                   ),
-                                  DropdownMenuItem(
-                                    value: Duration(hours: 1),
-                                    child: Text('Last 1h'),
+                                  const SizedBox(width: 8),
+                                  // Category filter
+                                  DropdownButton<String>(
+                                    value: _diagHistoryCategoryFilter,
+                                    dropdownColor: const Color(0xFF141724),
+                                    underline: const SizedBox(),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: 'ALL',
+                                        child: Text('All Categories'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'Telemetry',
+                                        child: Text('Telemetry'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'Frame',
+                                        child: Text('Frame / Jank'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'Watchdog',
+                                        child: Text('Watchdog'),
+                                      ),
+                                    ],
+                                    onChanged: (val) => setState(
+                                      () => _diagHistoryCategoryFilter =
+                                          val ?? 'ALL',
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 16,
+                                      color: Colors.white54,
+                                    ),
+                                    tooltip: 'Clear History',
+                                    onPressed: () {
+                                      diag.clearHistoryEntries();
+                                      setState(() {});
+                                    },
                                   ),
                                 ],
-                                onChanged: (val) => setState(
-                                  () => _diagHistoryTimeRangeFilter = val,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Severity filter
-                              DropdownButton<String>(
-                                value: _diagHistorySeverityFilter,
-                                dropdownColor: const Color(0xFF141724),
-                                underline: const SizedBox(),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white70,
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: 'ALL',
-                                    child: Text('All Severities'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'INFO',
-                                    child: Text('Info Only'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'WARN',
-                                    child: Text('Warnings'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'ERROR',
-                                    child: Text('Errors'),
-                                  ),
-                                ],
-                                onChanged: (val) => setState(
-                                  () =>
-                                      _diagHistorySeverityFilter = val ?? 'ALL',
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Category filter
-                              DropdownButton<String>(
-                                value: _diagHistoryCategoryFilter,
-                                dropdownColor: const Color(0xFF141724),
-                                underline: const SizedBox(),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white70,
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: 'ALL',
-                                    child: Text('All Categories'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'Telemetry',
-                                    child: Text('Telemetry'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'Frame',
-                                    child: Text('Frame / Jank'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'Watchdog',
-                                    child: Text('Watchdog'),
-                                  ),
-                                ],
-                                onChanged: (val) => setState(
-                                  () =>
-                                      _diagHistoryCategoryFilter = val ?? 'ALL',
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline_rounded,
-                                  size: 16,
-                                  color: Colors.white54,
-                                ),
-                                tooltip: 'Clear History',
-                                onPressed: () {
-                                  diag.clearHistoryEntries();
-                                  setState(() {});
-                                },
-                              ),
-                            ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 12),
 
@@ -30154,82 +30241,87 @@ class _DashboardViewState extends State<DashboardView>
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 2,
                                       ),
-                                      child: Row(
+                                      child: Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            '${entry.timestamp.hour.toString().padLeft(2, '0')}:${entry.timestamp.minute.toString().padLeft(2, '0')}:${entry.timestamp.second.toString().padLeft(2, '0')}',
-                                            style: TextStyle(
-                                              fontSize: 10.5,
-                                              fontFamily: 'Segoe UI',
-                                              color: Colors.white.withValues(
-                                                alpha: 0.40,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 5,
-                                              vertical: 1,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: badgeColor.withValues(
-                                                alpha: 0.15,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: badgeColor.withValues(
-                                                  alpha: 0.35,
+                                          Wrap(
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: [
+                                              Text(
+                                                '${entry.timestamp.hour.toString().padLeft(2, '0')}:${entry.timestamp.minute.toString().padLeft(2, '0')}:${entry.timestamp.second.toString().padLeft(2, '0')}',
+                                                style: TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontFamily: 'Segoe UI',
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.40),
                                                 ),
-                                                width: 0.8,
                                               ),
-                                            ),
-                                            child: Text(
-                                              entry.severity,
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w700,
-                                                color: badgeColor,
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 5,
+                                                      vertical: 1,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: badgeColor.withValues(
+                                                    alpha: 0.15,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                  border: Border.all(
+                                                    color: badgeColor
+                                                        .withValues(
+                                                          alpha: 0.35,
+                                                        ),
+                                                    width: 0.8,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  entry.severity,
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: badgeColor,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 5,
+                                                      vertical: 1,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.06),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  entry.category,
+                                                  style: const TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 5,
-                                              vertical: 1,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.06,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              entry.category,
-                                              style: const TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white70,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              entry.message,
-                                              style: TextStyle(
-                                                fontSize: 11.5,
-                                                color: isWarn || isError
-                                                    ? Colors.white
-                                                    : Colors.white.withValues(
-                                                        alpha: 0.75,
-                                                      ),
-                                              ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            entry.message,
+                                            style: TextStyle(
+                                              fontSize: 11.5,
+                                              color: isWarn || isError
+                                                  ? Colors.white
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.75,
+                                                    ),
                                             ),
                                           ),
                                         ],
@@ -30607,25 +30699,31 @@ class _DashboardViewState extends State<DashboardView>
                 child: Icon(icon, size: 18, color: accentColor),
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.50),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.50),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -30659,21 +30757,30 @@ class _DashboardViewState extends State<DashboardView>
             (item) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 3.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    item.$1,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.65),
+                  Expanded(
+                    child: Text(
+                      item.$1,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.65),
+                      ),
                     ),
                   ),
-                  Text(
-                    item.$2,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      item.$2,
+                      textAlign: TextAlign.end,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ],
@@ -30936,62 +31043,73 @@ class _DashboardViewState extends State<DashboardView>
                     ),
                   ),
                   const SizedBox(width: 14),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            'Report an Issue',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: -0.3,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF6366F1), Color(0xFFA855F7)],
-                              ),
-                              borderRadius: BorderRadius.circular(6),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFFA855F7,
-                                  ).withValues(alpha: 0.35),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Report an Issue',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: -0.3,
                                 ),
-                              ],
-                            ),
-                            child: const Text(
-                              'PRO',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 0.8,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Direct transmission to engineering & QA',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.50),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF6366F1),
+                                    Color(0xFFA855F7),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFFA855F7,
+                                    ).withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Text(
+                                'PRO',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 3),
+                        Text(
+                          'Direct transmission to engineering & QA',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.50),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

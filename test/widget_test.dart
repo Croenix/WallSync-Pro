@@ -20,7 +20,11 @@ void main() {
     expect(find.byType(DashboardApp), findsOneWidget);
   });
 
-  for (final size in <Size>[const Size(640, 480), const Size(700, 500), const Size(850, 600)]) {
+  for (final size in <Size>[
+    const Size(640, 480),
+    const Size(700, 500),
+    const Size(850, 600),
+  ]) {
     testWidgets(
       'Dashboard fits supported ${size.width.toInt()}x${size.height.toInt()} window',
       (WidgetTester tester) async {
@@ -30,10 +34,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
 
         await tester.pumpWidget(
-          DashboardApp(
-            settings: WidgetSettings(),
-            startMinimized: true,
-          ),
+          DashboardApp(settings: WidgetSettings(), startMinimized: true),
         );
 
         expect(find.byType(DashboardApp), findsOneWidget);
@@ -43,6 +44,61 @@ void main() {
         await tester.pump(const Duration(milliseconds: 701));
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 101));
+      },
+    );
+  }
+
+  for (final configuration in <({Size size, double devicePixelRatio})>[
+    (size: const Size(360, 640), devicePixelRatio: 1),
+    (size: const Size(640, 480), devicePixelRatio: 1.25),
+    (size: const Size(960, 600), devicePixelRatio: 1.5),
+    (size: const Size(1440, 900), devicePixelRatio: 2),
+  ]) {
+    testWidgets(
+      'Dashboard navigation stays within ${configuration.size.width.toInt()} logical pixels at ${configuration.devicePixelRatio}x DPI',
+      (WidgetTester tester) async {
+        tester.view.devicePixelRatio = configuration.devicePixelRatio;
+        tester.view.physicalSize =
+            configuration.size * configuration.devicePixelRatio;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          DashboardApp(
+            settings: WidgetSettings(),
+            startMinimized: true,
+            initialTab: 'widgets',
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'initial dashboard');
+
+        final labels = [
+          'Wallpapers',
+          'Widgets',
+          'Studio',
+          'Templates',
+          'Optimization',
+          'Diagnostics',
+          'Bug Report',
+          'About',
+        ];
+        for (final label in labels) {
+          final finder = configuration.size.width < 1180
+              ? find.byTooltip(label)
+              : find.text(label);
+          expect(finder, findsWidgets, reason: '$label navigation control');
+          await tester.tap(finder.first);
+          await tester.pump(const Duration(milliseconds: 400));
+          final exception = tester.takeException();
+          expect(
+            exception,
+            isNull,
+            reason: '$label at ${configuration.size.width} logical pixels',
+          );
+        }
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 901));
       },
     );
   }
@@ -124,7 +180,10 @@ void main() {
                   child: Container(
                     width: 190,
                     height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
                         const Icon(Icons.access_time_rounded, size: 10),
@@ -133,7 +192,12 @@ void main() {
                         Expanded(
                           child: Row(
                             children: const [
-                              Expanded(child: Text('Nightcall', overflow: TextOverflow.ellipsis)),
+                              Expanded(
+                                child: Text(
+                                  'Nightcall',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ),
                         ),

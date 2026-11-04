@@ -12,10 +12,7 @@ import 'desktop_studio_sidebar.dart';
 class DesktopStudioView extends StatefulWidget {
   final VoidCallback? onOpenGallery;
 
-  const DesktopStudioView({
-    super.key,
-    this.onOpenGallery,
-  });
+  const DesktopStudioView({super.key, this.onOpenGallery});
 
   @override
   State<DesktopStudioView> createState() => _DesktopStudioViewState();
@@ -24,6 +21,8 @@ class DesktopStudioView extends StatefulWidget {
 class _DesktopStudioViewState extends State<DesktopStudioView> {
   final DesktopStudioService _studioService = DesktopStudioService();
   final FocusNode _keyboardFocusNode = FocusNode();
+  final ScrollController _toolbarScrollController = ScrollController();
+  final ScrollController _bodyScrollController = ScrollController();
 
   bool _isLivePreviewMode = true;
   String? _selectedElementId;
@@ -42,6 +41,8 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
   void dispose() {
     _studioService.removeListener(_onServiceChanged);
     _keyboardFocusNode.dispose();
+    _toolbarScrollController.dispose();
+    _bodyScrollController.dispose();
     super.dispose();
   }
 
@@ -110,7 +111,11 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
         backgroundColor: const Color(0xFF131824),
         title: const Text(
           'Save As New Template',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: TextField(
           controller: textController,
@@ -127,12 +132,20 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white60),
+            ),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF38BDF8)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF38BDF8),
+            ),
             onPressed: () => Navigator.pop(ctx, textController.text.trim()),
-            child: const Text('Save', style: TextStyle(color: Color(0xFF070B14))),
+            child: const Text(
+              'Save',
+              style: TextStyle(color: Color(0xFF070B14)),
+            ),
           ),
         ],
       ),
@@ -141,16 +154,18 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
     if (newName != null && newName.isNotEmpty) {
       await _studioService.saveAsNewTemplate(newName);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Created template "$newName"')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Created template "$newName"')));
       }
     }
   }
 
   Future<void> _handleExport() async {
     try {
-      final path = await _studioService.exportTemplate(_studioService.currentTemplate);
+      final path = await _studioService.exportTemplate(
+        _studioService.currentTemplate,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -162,7 +177,10 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -176,18 +194,27 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
       );
 
       if (result.isNotEmpty && result.first.path != null) {
-        final imported = await _studioService.importTemplateFromFile(result.first.path!);
+        final imported = await _studioService.importTemplateFromFile(
+          result.first.path!,
+        );
         _studioService.selectTemplate(imported);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Imported template "${imported.name}" successfully!')),
+            SnackBar(
+              content: Text(
+                'Imported template "${imported.name}" successfully!',
+              ),
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import error: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Import error: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -202,7 +229,11 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF10B981),
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -218,7 +249,10 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Apply failed: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Apply failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } finally {
@@ -231,6 +265,37 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
     final currentTemplate = _studioService.currentTemplate;
     final isApplied = _studioService.appliedTemplateId == currentTemplate.id;
     final isDirty = _studioService.isDirty;
+
+    Widget studioBody() {
+      return Row(
+        children: [
+          Expanded(
+            child: Container(
+              color: const Color(0xFF07090F),
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: DesktopStudioPreview(
+                  template: currentTemplate,
+                  isLivePreviewMode: _isLivePreviewMode,
+                  selectedElementId: _selectedElementId,
+                  onSelectElement: (id) =>
+                      setState(() => _selectedElementId = id),
+                  onUpdateTemplate: (updated) =>
+                      _studioService.updateCurrentTemplate(updated),
+                ),
+              ),
+            ),
+          ),
+          DesktopStudioSidebar(
+            template: currentTemplate,
+            selectedElementId: _selectedElementId,
+            onSelectElement: (id) => setState(() => _selectedElementId = id),
+            onUpdateTemplate: (updated) =>
+                _studioService.updateCurrentTemplate(updated),
+          ),
+        ],
+      );
+    }
 
     return Focus(
       focusNode: _keyboardFocusNode,
@@ -245,33 +310,24 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
 
             // Main Studio Body: Center Preview Viewport + Right Customization Sidebar
             Expanded(
-              child: Row(
-                children: [
-                  // Center Virtual Desktop Preview
-                  Expanded(
-                    child: Container(
-                      color: const Color(0xFF07090F),
-                      padding: const EdgeInsets.all(24),
-                      child: Center(
-                        child: DesktopStudioPreview(
-                          template: currentTemplate,
-                          isLivePreviewMode: _isLivePreviewMode,
-                          selectedElementId: _selectedElementId,
-                          onSelectElement: (id) => setState(() => _selectedElementId = id),
-                          onUpdateTemplate: (updated) => _studioService.updateCurrentTemplate(updated),
-                        ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth >= 760) return studioBody();
+
+                  return Scrollbar(
+                    controller: _bodyScrollController,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _bodyScrollController,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: 760,
+                        height: constraints.maxHeight,
+                        child: studioBody(),
                       ),
                     ),
-                  ),
-
-                  // Right Customization Sidebar
-                  DesktopStudioSidebar(
-                    template: currentTemplate,
-                    selectedElementId: _selectedElementId,
-                    onSelectElement: (id) => setState(() => _selectedElementId = id),
-                    onUpdateTemplate: (updated) => _studioService.updateCurrentTemplate(updated),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ],
@@ -280,7 +336,11 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
     );
   }
 
-  Widget _buildTopToolbar(DesktopStudioTemplate template, bool isApplied, bool isDirty) {
+  Widget _buildTopToolbar(
+    DesktopStudioTemplate template,
+    bool isApplied,
+    bool isDirty,
+  ) {
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -293,227 +353,284 @@ class _DesktopStudioViewState extends State<DesktopStudioView> {
           ),
         ),
       ),
-      child: Row(
-        children: [
-          // Template Info & Name
-          Icon(
-            template.isBuiltIn ? Icons.verified_rounded : Icons.palette_rounded,
-            size: 20,
-            color: const Color(0xFF38BDF8),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Scrollbar(
+        controller: _toolbarScrollController,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _toolbarScrollController,
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
+              // Template Info & Name
+              Icon(
+                template.isBuiltIn
+                    ? Icons.verified_rounded
+                    : Icons.palette_rounded,
+                size: 20,
+                color: const Color(0xFF38BDF8),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Text(
+                        template.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Status Badge
+                      _buildStatusBadge(isApplied: isApplied, isDirty: isDirty),
+                    ],
+                  ),
                   Text(
-                    template.name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                    '${template.category} • v${template.version} • ${template.elements.length} elements',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white.withValues(alpha: 0.45),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Status Badge
-                  _buildStatusBadge(isApplied: isApplied, isDirty: isDirty),
                 ],
               ),
-              Text(
-                '${template.category} • v${template.version} • ${template.elements.length} elements',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.white.withValues(alpha: 0.45),
+              const SizedBox(width: 20),
+
+              // Presets Quick Dropdown
+              Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161C28),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: template.id,
+                    dropdownColor: const Color(0xFF131824),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: Colors.white60,
+                    ),
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    items: _studioService.allTemplates.map((t) {
+                      return DropdownMenuItem<String>(
+                        value: t.id,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              t.isBuiltIn
+                                  ? Icons.bookmark_rounded
+                                  : Icons.person_rounded,
+                              size: 13,
+                              color: t.isBuiltIn
+                                  ? const Color(0xFF38BDF8)
+                                  : const Color(0xFFA855F7),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(t.name),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (id) {
+                      if (id != null) _studioService.selectTemplateById(id);
+                    },
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Undo & Redo buttons
+              IconButton(
+                icon: const Icon(Icons.undo_rounded, size: 18),
+                color: _studioService.canUndo ? Colors.white70 : Colors.white24,
+                tooltip: 'Undo (Ctrl+Z)',
+                onPressed: _studioService.canUndo
+                    ? () => _studioService.undo()
+                    : null,
+              ),
+              IconButton(
+                icon: const Icon(Icons.redo_rounded, size: 18),
+                color: _studioService.canRedo ? Colors.white70 : Colors.white24,
+                tooltip: 'Redo (Ctrl+Y)',
+                onPressed: _studioService.canRedo
+                    ? () => _studioService.redo()
+                    : null,
+              ),
+
+              const SizedBox(width: 8),
+              Container(
+                height: 20,
+                width: 1,
+                color: Colors.white.withValues(alpha: 0.1),
+              ),
+              const SizedBox(width: 8),
+
+              // Live Preview Mode Toggle
+              InkWell(
+                onTap: () =>
+                    setState(() => _isLivePreviewMode = !_isLivePreviewMode),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _isLivePreviewMode
+                        ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
+                        : const Color(0xFF161B26),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _isLivePreviewMode
+                          ? const Color(0xFF38BDF8).withValues(alpha: 0.5)
+                          : Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isLivePreviewMode
+                            ? Icons.play_arrow_rounded
+                            : Icons.edit_note_rounded,
+                        size: 15,
+                        color: _isLivePreviewMode
+                            ? const Color(0xFF38BDF8)
+                            : Colors.white60,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _isLivePreviewMode ? 'Live Preview' : 'Edit Mode',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _isLivePreviewMode
+                              ? const Color(0xFF38BDF8)
+                              : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Template Gallery shortcut
+              if (widget.onOpenGallery != null) ...[
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.grid_view_rounded, size: 14),
+                  label: const Text('Gallery', style: TextStyle(fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.15),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: widget.onOpenGallery,
+                ),
+                const SizedBox(width: 8),
+              ],
+
+              // Import & Export
+              IconButton(
+                icon: const Icon(Icons.file_upload_outlined, size: 18),
+                color: Colors.white70,
+                tooltip: 'Import Template (.wstemplate)',
+                onPressed: _handleImport,
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download_outlined, size: 18),
+                color: Colors.white70,
+                tooltip: 'Export Template (.wstemplate)',
+                onPressed: _handleExport,
+              ),
+
+              const SizedBox(width: 8),
+
+              // Save & Save As
+              OutlinedButton.icon(
+                icon: const Icon(Icons.copy_rounded, size: 14),
+                label: const Text('Save As', style: TextStyle(fontSize: 11)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                ),
+                onPressed: _handleSaveAs,
+              ),
+              const SizedBox(width: 8),
+
+              if (isDirty)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.save_rounded, size: 14),
+                  label: const Text('Save', style: TextStyle(fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFF59E0B),
+                    side: const BorderSide(color: Color(0xFFF59E0B)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: _handleSave,
+                ),
+
+              const SizedBox(width: 8),
+
+              // Apply to Desktop Button
+              FilledButton.icon(
+                icon: Icon(
+                  isApplied
+                      ? Icons.check_circle_rounded
+                      : Icons.desktop_windows_rounded,
+                  size: 15,
+                ),
+                label: Text(
+                  isApplied ? 'CURRENTLY APPLIED' : 'Apply to Desktop',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: isApplied
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFF38BDF8),
+                  foregroundColor: const Color(0xFF070B14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: _handleApplyToDesktop,
               ),
             ],
           ),
-          const SizedBox(width: 20),
-
-          // Presets Quick Dropdown
-          Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF161C28),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.1),
-              ),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: template.id,
-                dropdownColor: const Color(0xFF131824),
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.white60),
-                style: const TextStyle(fontSize: 12, color: Colors.white),
-                items: _studioService.allTemplates.map((t) {
-                  return DropdownMenuItem<String>(
-                    value: t.id,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          t.isBuiltIn ? Icons.bookmark_rounded : Icons.person_rounded,
-                          size: 13,
-                          color: t.isBuiltIn ? const Color(0xFF38BDF8) : const Color(0xFFA855F7),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(t.name),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (id) {
-                  if (id != null) _studioService.selectTemplateById(id);
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 14),
-
-          // Undo & Redo buttons
-          IconButton(
-            icon: const Icon(Icons.undo_rounded, size: 18),
-            color: _studioService.canUndo ? Colors.white70 : Colors.white24,
-            tooltip: 'Undo (Ctrl+Z)',
-            onPressed: _studioService.canUndo ? () => _studioService.undo() : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.redo_rounded, size: 18),
-            color: _studioService.canRedo ? Colors.white70 : Colors.white24,
-            tooltip: 'Redo (Ctrl+Y)',
-            onPressed: _studioService.canRedo ? () => _studioService.redo() : null,
-          ),
-
-          const SizedBox(width: 8),
-          Container(
-            height: 20,
-            width: 1,
-            color: Colors.white.withValues(alpha: 0.1),
-          ),
-          const SizedBox(width: 8),
-
-          // Live Preview Mode Toggle
-          InkWell(
-            onTap: () => setState(() => _isLivePreviewMode = !_isLivePreviewMode),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: _isLivePreviewMode
-                    ? const Color(0xFF38BDF8).withValues(alpha: 0.15)
-                    : const Color(0xFF161B26),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _isLivePreviewMode
-                      ? const Color(0xFF38BDF8).withValues(alpha: 0.5)
-                      : Colors.white.withValues(alpha: 0.1),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isLivePreviewMode ? Icons.play_arrow_rounded : Icons.edit_note_rounded,
-                    size: 15,
-                    color: _isLivePreviewMode ? const Color(0xFF38BDF8) : Colors.white60,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    _isLivePreviewMode ? 'Live Preview' : 'Edit Mode',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: _isLivePreviewMode ? const Color(0xFF38BDF8) : Colors.white70,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const Spacer(),
-
-          // Template Gallery shortcut
-          if (widget.onOpenGallery != null) ...[
-            OutlinedButton.icon(
-              icon: const Icon(Icons.grid_view_rounded, size: 14),
-              label: const Text('Gallery', style: TextStyle(fontSize: 11)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white70,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              ),
-              onPressed: widget.onOpenGallery,
-            ),
-            const SizedBox(width: 8),
-          ],
-
-          // Import & Export
-          IconButton(
-            icon: const Icon(Icons.file_upload_outlined, size: 18),
-            color: Colors.white70,
-            tooltip: 'Import Template (.wstemplate)',
-            onPressed: _handleImport,
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_download_outlined, size: 18),
-            color: Colors.white70,
-            tooltip: 'Export Template (.wstemplate)',
-            onPressed: _handleExport,
-          ),
-
-          const SizedBox(width: 8),
-
-          // Save & Save As
-          OutlinedButton.icon(
-            icon: const Icon(Icons.copy_rounded, size: 14),
-            label: const Text('Save As', style: TextStyle(fontSize: 11)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white70,
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            ),
-            onPressed: _handleSaveAs,
-          ),
-          const SizedBox(width: 8),
-
-          if (isDirty)
-            OutlinedButton.icon(
-              icon: const Icon(Icons.save_rounded, size: 14),
-              label: const Text('Save', style: TextStyle(fontSize: 11)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFF59E0B),
-                side: const BorderSide(color: Color(0xFFF59E0B)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              ),
-              onPressed: _handleSave,
-            ),
-
-          const SizedBox(width: 8),
-
-          // Apply to Desktop Button
-          FilledButton.icon(
-            icon: Icon(
-              isApplied ? Icons.check_circle_rounded : Icons.desktop_windows_rounded,
-              size: 15,
-            ),
-            label: Text(
-              isApplied ? 'CURRENTLY APPLIED' : 'Apply to Desktop',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.4),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: isApplied ? const Color(0xFF10B981) : const Color(0xFF38BDF8),
-              foregroundColor: const Color(0xFF070B14),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: _handleApplyToDesktop,
-          ),
-        ],
+        ),
       ),
     );
   }
