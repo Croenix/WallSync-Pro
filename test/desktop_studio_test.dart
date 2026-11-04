@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wall_sync/models/desktop_studio_template.dart';
 import 'package:wall_sync/services/desktop_studio_service.dart';
 import 'package:wall_sync/services/settings_service.dart';
+import 'package:wall_sync/widgets/template_gallery_view.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,18 +16,19 @@ void main() {
   });
 
   group('DesktopStudioTemplate Model & Presets', () {
-    test('8 Original WallSync Built-In Presets exist and are valid', () {
+    test('9 Original WallSync Built-In Presets exist and are valid', () {
       final presets = DesktopStudioTemplate.builtInPresets;
-      expect(presets.length, equals(8));
+      expect(presets.length, equals(9));
 
       final presetIds = presets.map((p) => p.id).toSet();
-      expect(presetIds.length, equals(8)); // All IDs unique
+      expect(presetIds.length, equals(9)); // All IDs unique
 
       expect(presetIds, contains('wallsync.preset.centered_dock'));
       expect(presetIds, contains('wallsync.preset.minimal_floating'));
       expect(presetIds, contains('wallsync.preset.floating_shelf'));
       expect(presetIds, contains('wallsync.preset.classic_taskbar'));
       expect(presetIds, contains('wallsync.preset.top_desktop_bar'));
+      expect(presetIds, contains('wallsync.preset.animated_windows_taskbar_widget'));
       expect(presetIds, contains('wallsync.preset.widget_focused_bar'));
       expect(presetIds, contains('wallsync.preset.compact_launcher'));
       expect(presetIds, contains('wallsync.preset.custom_layout'));
@@ -152,6 +154,20 @@ void main() {
     });
   });
 
+  group('Template gallery visibility', () {
+    testWidgets('taskbar widgets are shown by default in the gallery', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: TemplateGalleryView(),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Animated Windows Taskbar Widget'), findsOneWidget);
+    });
+  });
+
   group('DesktopStudioService Operations', () {
     test(
       'Initialization loads built-ins and sets default active template',
@@ -160,7 +176,7 @@ void main() {
         await service.init();
 
         expect(service.isInitialized, isTrue);
-        expect(service.allTemplates.length, greaterThanOrEqualTo(8));
+        expect(service.allTemplates.length, greaterThanOrEqualTo(9));
         expect(
           service.currentTemplate.id,
           equals('wallsync.preset.centered_dock'),

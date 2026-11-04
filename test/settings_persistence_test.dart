@@ -169,29 +169,21 @@ void main() {
     expect(restored.widgetTemplate, 'atomic_clock');
   });
 
-  test('taskbar widget templates defaults and Segoe UI font resolution', () {
-    const taskbarTemplates = [
-      'taskbar_dock',
-      'taskbar_media',
-      'taskbar_system',
-      'taskbar_steam',
-      'taskbar_discord',
-      'taskbar_weather',
-      'taskbar_parking_lot',
-    ];
+  test('retired taskbar widgets migrate to standard widget state', () {
+    final restored = WidgetSettings.fromJson({
+      'widgetTemplate': 'taskbar_dock',
+      'activeWidgetIds': ['taskbar_dock', 'classic'],
+    });
 
-    for (final template in taskbarTemplates) {
-      final defaults = WidgetSettings.templateDefaults[template];
-      expect(defaults, isNotNull);
-      expect(defaults!['height'], anyOf(equals(44.0), equals(48.0)));
+    expect(restored.widgetTemplate, 'classic');
+    expect(restored.activeWidgetIds, ['classic']);
 
-      final settings = WidgetSettings(widgetTemplate: template);
-      expect(settings.fontFor(ElementKey.hours), 'Segoe UI');
-
-      final json = settings.toJson();
-      final restored = WidgetSettings.fromJson(json);
-      expect(restored.widgetTemplate, template);
-    }
+    final dockOnly = WidgetSettings.fromJson({
+      'widgetTemplate': 'taskbar_dock',
+      'activeWidgetIds': ['taskbar_dock'],
+    });
+    expect(dockOnly.widgetTemplate, 'classic');
+    expect(dockOnly.activeWidgetIds, isEmpty);
   });
 
   test(

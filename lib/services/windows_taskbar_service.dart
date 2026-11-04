@@ -414,29 +414,17 @@ class WindowsTaskbarService extends ChangeNotifier {
 
     _initialized = true;
 
-    // Recover legacy replacement settings before starting any dock process.
+    // The custom dock is retired; restore Windows for any previously enabled state.
     if (_settings.recoveryPending ||
-        (!supportsFullReplacement && _settings.nativeTaskbarHideEnabled)) {
+        _settings.customTaskbarEnabled ||
+        _settings.nativeTaskbarHideEnabled) {
       logWarning(
         'WindowsTaskbarService',
-        'Startup detected an unrecoverable or unsupported hidden-taskbar '
-            'configuration. Restoring the standard Windows taskbar.',
+        'Startup detected retired taskbar settings. Restoring the standard '
+            'Windows taskbar and stopping the custom dock.',
       );
       _updateState(TaskbarReplacementState.recoveryRequired);
       await restoreWindowsTaskbar();
-    } else if (_settings.customTaskbarEnabled) {
-      final info = await getWindowsTaskbarInfo();
-      final allVisible = info['allVisible'] as bool? ?? true;
-      if (info['primaryPresent'] == true && allVisible) {
-        _updateState(TaskbarReplacementState.wallSyncTaskbarActive);
-      } else {
-        logWarning(
-          'WindowsTaskbarService',
-          'Could not verify the native taskbar as visible during startup; '
-              'restoring the standard taskbar and stopping the custom dock.',
-        );
-        await restoreWindowsTaskbar();
-      }
     } else {
       // Normal state: Windows taskbar active
       _updateState(TaskbarReplacementState.windowsTaskbarActive);
@@ -524,9 +512,18 @@ class WindowsTaskbarService extends ChangeNotifier {
     }
   }
 
-  /// Starts the WallSync dock. Full Replacement is rejected until native taskbar
-  /// hiding has a supported, reversible Windows integration.
+  /// The custom taskbar replacement system has been removed. The native
+  /// Windows taskbar remains the only supported taskbar experience.
   Future<bool> enableCustomTaskbar({bool hideNativeTaskbar = false}) async {
+    logWarning(
+      'WindowsTaskbarService',
+      'Custom taskbar support has been removed. The standard Windows taskbar remains active.',
+    );
+    _updateState(TaskbarReplacementState.windowsTaskbarActive);
+    return false;
+  }
+
+  Future<bool> _legacyEnableCustomTaskbar({bool hideNativeTaskbar = false}) async {
     if (_operationInProgress) {
       logWarning(
         'WindowsTaskbarService',
@@ -988,8 +985,7 @@ class WindowsTaskbarService extends ChangeNotifier {
     await for (final entity in appDirectory.list()) {
       if (entity is! File) continue;
       final name = entity.uri.pathSegments.last;
-      if (!name.startsWith('overlay_taskbar_dock_') ||
-          !name.endsWith('.pid')) {
+      if (!name.startsWith('overlay_taskbar_dock_') || !name.endsWith('.pid')) {
         continue;
       }
       final instanceId = name.substring(

@@ -289,7 +289,7 @@ void main() {
     );
 
     test(
-      'Transactional custom taskbar activation without hiding native taskbar',
+      'Custom taskbar activation is disabled and the native taskbar remains active',
       () async {
         final service = WindowsTaskbarService();
         await service.init();
@@ -297,11 +297,17 @@ void main() {
         final success = await service.enableCustomTaskbar(
           hideNativeTaskbar: false,
         );
-        expect(success, true);
-        expect(service.state, TaskbarReplacementState.wallSyncTaskbarActive);
-        expect(service.isCustomTaskbarActive, true);
+        expect(success, false);
+        expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
+        expect(service.isCustomTaskbarActive, false);
         expect(service.isWindowsTaskbarHidden, false);
         expect(mockTaskbarVisible, true);
+        expect(
+          methodCalls.any(
+            (call) => call.method == 'positionDockForReplacement',
+          ),
+          false,
+        );
       },
     );
 
@@ -315,7 +321,7 @@ void main() {
           hideNativeTaskbar: true,
         );
         expect(success, false);
-        expect(service.state, TaskbarReplacementState.failedToActivate);
+        expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
         expect(service.isCustomTaskbarActive, false);
         expect(service.isWindowsTaskbarHidden, false);
         expect(mockTaskbarVisible, true);
@@ -378,7 +384,7 @@ void main() {
         hideNativeTaskbar: true,
       );
       expect(success, false);
-      expect(service.state, TaskbarReplacementState.failedToActivate);
+      expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
       expect(mockTaskbarVisible, true);
     });
 
@@ -461,7 +467,7 @@ void main() {
     );
 
     test(
-      'Custom taskbar dock spawner and closer lifecycle verification',
+      'Custom taskbar lifecycle hooks are skipped once taskbar replacement is disabled',
       () async {
         final service = WindowsTaskbarService();
         bool spawnerCalled = false;
@@ -481,9 +487,10 @@ void main() {
         final activated = await service.enableCustomTaskbar(
           hideNativeTaskbar: true,
         );
-        expect(activated, true);
-        expect(spawnerCalled, true);
-        expect(service.isCustomTaskbarActive, true);
+        expect(activated, false);
+        expect(spawnerCalled, false);
+        expect(closerCalled, false);
+        expect(service.isCustomTaskbarActive, false);
 
         final restored = await service.restoreWindowsTaskbar();
         expect(restored, true);
@@ -530,7 +537,7 @@ void main() {
           hideNativeTaskbar: true,
         );
         expect(success, false);
-        expect(service.state, TaskbarReplacementState.failedToActivate);
+        expect(service.state, TaskbarReplacementState.windowsTaskbarActive);
         expect(service.isCustomTaskbarActive, false);
         expect(mockTaskbarVisible, true);
       },

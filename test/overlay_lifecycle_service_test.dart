@@ -411,8 +411,8 @@ void main() {
         creationTime: record.creationTime,
         executablePath: record.executablePath,
         ready: true,
-        instanceId: 'taskbar_dock',
-        processMode: 'taskbar_dock',
+        instanceId: 'widget_overlay',
+        processMode: 'widget_overlay',
         operationId: 7,
         configurationRevision: 3,
         hwnd: 12345,
@@ -422,8 +422,8 @@ void main() {
         readRecord: () async => dockRecord,
         inspectProcess: (_) async => _inspection(true),
         expectedPid: record.pid,
-        expectedInstanceId: 'taskbar_dock',
-        expectedProcessMode: 'taskbar_dock',
+        expectedInstanceId: 'widget_overlay',
+        expectedProcessMode: 'widget_overlay',
         expectedOperationId: 8,
         expectedConfigurationRevision: 3,
         requireWindowHandle: true,
@@ -437,15 +437,15 @@ void main() {
         readRecord: () async => dockRecord,
         inspectProcess: (_) async => _inspection(true),
         expectedPid: record.pid,
-        expectedInstanceId: 'taskbar_dock',
-        expectedProcessMode: 'taskbar_dock',
+        expectedInstanceId: 'widget_overlay',
+        expectedProcessMode: 'widget_overlay',
         expectedOperationId: 7,
         expectedConfigurationRevision: 3,
         requireWindowHandle: true,
         timeout: Duration.zero,
         pollInterval: Duration.zero,
       );
-      expect(accepted.status, OverlayReadinessStatus.overlayReady);
+      expect(accepted.status, OverlayReadinessStatus.ready);
       expect(accepted.record?.hwnd, 12345);
     },
   );

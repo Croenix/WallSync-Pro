@@ -1330,6 +1330,11 @@ class WidgetSettings {
     if (bgType == 'glass_dark' || bgType == 'glass_light') {
       bgType = 'none';
     }
+    final storedWidgetTemplate = (json['widgetTemplate'] ?? 'classic')
+        .toString();
+    final widgetTemplate = storedWidgetTemplate.startsWith('taskbar_')
+        ? 'classic'
+        : storedWidgetTemplate;
 
     // Parse custom gradient colors list
     List<int> customGrad = [];
@@ -1432,7 +1437,7 @@ class WidgetSettings {
       closeToTray: json['closeToTray'] ?? true,
       minimizeToTray: json['minimizeToTray'] ?? true,
       showOuterFrame: json['showOuterFrame'] ?? true,
-      widgetTemplate: json['widgetTemplate'] ?? 'classic',
+      widgetTemplate: widgetTemplate,
       editorMode: json['editorMode'] ?? false,
       sizeFactor: (json['sizeFactor'] ?? 1.0).toDouble(),
       autoSizing: json['autoSizing'] ?? true,
@@ -1476,8 +1481,13 @@ class WidgetSettings {
       showRam: json['showRam'] ?? true,
       showNeonBadge: json['showNeonBadge'] ?? true,
       activeWidgetIds: (json['activeWidgetIds'] is List)
-          ? (json['activeWidgetIds'] as List).whereType<String>().toList()
-          : [(json['widgetTemplate'] ?? 'classic').toString()],
+          ? (json['activeWidgetIds'] as List)
+                .whereType<String>()
+                .where((id) => !id.startsWith('taskbar_'))
+                .toList()
+          : (storedWidgetTemplate.startsWith('taskbar_')
+                ? <String>[]
+                : [storedWidgetTemplate]),
       widgetConfigurations: (json['widgetConfigurations'] is Map)
           ? (json['widgetConfigurations'] as Map).map(
               (k, v) => MapEntry(

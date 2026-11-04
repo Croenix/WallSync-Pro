@@ -1,18 +1,15 @@
 enum ProcessMode {
   main,
   classic,
-  taskbarDock,
   wallpaper;
 
   String get value => switch (this) {
     ProcessMode.main => 'main',
     ProcessMode.classic => 'classic',
-    ProcessMode.taskbarDock => 'taskbar_dock',
     ProcessMode.wallpaper => 'wallpaper',
   };
 
-  bool get isOverlay =>
-      this == ProcessMode.classic || this == ProcessMode.taskbarDock;
+  bool get isOverlay => this == ProcessMode.classic;
 }
 
 class ParsedProcessArguments {
@@ -169,21 +166,9 @@ ParsedProcessArguments parseProcessArguments(List<String> arguments) {
       : overlay
       ? switch (overlayType ?? 'classic') {
           'classic' => ProcessMode.classic,
-          'taskbar_dock' => ProcessMode.taskbarDock,
           _ => throw FormatException('Unsupported overlay type: $overlayType'),
         }
       : ProcessMode.main;
-
-  if (mode == ProcessMode.taskbarDock &&
-      instanceId != 'taskbar_dock' &&
-      !(instanceId?.startsWith('taskbar_dock_') ?? false)) {
-    throw const FormatException(
-      'taskbar_dock mode requires a taskbar_dock instance ID',
-    );
-  }
-  if (mode == ProcessMode.taskbarDock && operationId == null) {
-    throw const FormatException('taskbar_dock mode requires an --operation-id');
-  }
 
   return ParsedProcessArguments(
     mode: mode,

@@ -1240,7 +1240,111 @@ class DesktopStudioTemplate {
     );
   }
 
-  /// 7. Widget-Focused Desktop Bar
+  /// 7. Animated Windows Taskbar Widget
+  static DesktopStudioTemplate animatedWindowsTaskbarWidget() {
+    final now = DateTime.now().toIso8601String();
+    return DesktopStudioTemplate(
+      id: 'wallsync.preset.animated_windows_taskbar_widget',
+      name: 'Animated Windows Taskbar Widget',
+      author: 'WallSync Team',
+      version: '1.0.0',
+      description: 'Classic Windows taskbar styling reimagined as a fully animated widget-only dock that stays inside the WallSync desktop studio and never replaces the native Windows taskbar.',
+      category: 'Taskbar',
+      tags: ['windows', 'taskbar', 'animated', 'widget', 'classic', 'studio'],
+      isBuiltIn: true,
+      layout: const DockLayoutConfig(
+        position: DockPosition.bottom,
+        alignment: DockAlignment.center,
+        thickness: 62.0,
+        autoSize: false,
+        edgeOffset: 0.0,
+        paddingHorizontal: 18.0,
+        paddingVertical: 8.0,
+        itemSpacing: 8.0,
+      ),
+      appearance: const DockAppearanceConfig(
+        style: DockBackgroundStyle.gradient,
+        backgroundColor: 0xE8141727,
+        gradientColors: [0xE8141727, 0xE8121A33],
+        borderColor: 0x46FFFFFF,
+        borderWidth: 1.3,
+        borderRadius: 20.0,
+        shadowColor: 0x8A000000,
+        shadowBlur: 28.0,
+        shadowSpread: 2.0,
+        blurIntensity: 26.0,
+        activeIndicatorColor: 0xFF7DD3FC,
+        iconSize: 24.0,
+      ),
+      animation: const DockAnimationConfig(
+        enableHoverScale: true,
+        hoverScaleFactor: 1.4,
+        hoverDistance: 80.0,
+        hoverLift: 8.0,
+        enableIconBounce: true,
+        enableRunningPulse: true,
+        animationDurationMs: 180,
+        curveName: 'easeOutBack',
+      ),
+      elements: const [
+        DockItemElement(
+          id: 'win_task_start',
+          type: DockElementType.appLauncher,
+          label: 'Start',
+          iconCodePoint: 0xe871,
+        ),
+        DockItemElement(
+          id: 'win_task_apps',
+          type: DockElementType.runningTasks,
+          label: 'Running Apps',
+        ),
+        DockItemElement(
+          id: 'win_task_sep_1',
+          type: DockElementType.separator,
+          label: 'Divider',
+        ),
+        DockItemElement(
+          id: 'win_task_clock',
+          type: DockElementType.clock,
+          label: 'Time',
+        ),
+        DockItemElement(
+          id: 'win_task_date',
+          type: DockElementType.date,
+          label: 'Date',
+        ),
+        DockItemElement(
+          id: 'win_task_sep_2',
+          type: DockElementType.separator,
+          label: 'Divider',
+        ),
+        DockItemElement(
+          id: 'win_task_weather',
+          type: DockElementType.weatherSlot,
+          label: 'Weather',
+        ),
+        DockItemElement(
+          id: 'win_task_volume',
+          type: DockElementType.volumeSlider,
+          label: 'Volume',
+        ),
+        DockItemElement(
+          id: 'win_task_network',
+          type: DockElementType.networkStatus,
+          label: 'Network',
+        ),
+        DockItemElement(
+          id: 'win_task_tray',
+          type: DockElementType.systemTray,
+          label: 'System Tray',
+        ),
+      ],
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  /// 8. Widget-Focused Desktop Bar
   static DesktopStudioTemplate widgetFocusedBar() {
     final now = DateTime.now().toIso8601String();
     return DesktopStudioTemplate(
@@ -1408,13 +1512,14 @@ class DesktopStudioTemplate {
     );
   }
 
-  /// Returns all 8 built-in presets.
+  /// Returns all built-in presets, including widget-only taskbar variants.
   static List<DesktopStudioTemplate> get builtInPresets => [
         centeredDock(),
         minimalFloating(),
         floatingShelf(),
         classicTaskbar(),
         topDesktopBar(),
+        animatedWindowsTaskbarWidget(),
         widgetFocusedBar(),
         compactLauncher(),
         customLayout(),

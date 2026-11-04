@@ -2285,8 +2285,11 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _launchWidgetOverlay(String widgetId) async {
-    if (widgetId == 'taskbar_dock' && Platform.isWindows) {
-      await _startCustomTaskbarDock();
+    if (widgetId.startsWith('taskbar_')) {
+      logWarning(
+        'DashboardView',
+        'Ignoring launch request for retired taskbar widget "$widgetId".',
+      );
       return;
     }
     if (_launchingWidgetIds.contains(widgetId)) {
@@ -3835,13 +3838,6 @@ class _DashboardViewState extends State<DashboardView>
                               key: const ValueKey('widgets'),
                             ),
                           )
-                        : _currentMainTab == 'taskbar'
-                        ? _profileDashboardSection(
-                            'taskbar.build',
-                            () => _buildTaskbarWidgetsDedicatedSection(
-                              key: const ValueKey('taskbar'),
-                            ),
-                          )
                         : _currentMainTab == 'desktop_studio'
                         ? _profileDashboardSection(
                             'desktopStudio.build',
@@ -4198,13 +4194,6 @@ class _DashboardViewState extends State<DashboardView>
                             'Widgets',
                             'widgets',
                             Icons.widgets_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Taskbar',
-                            'taskbar',
-                            Icons.dock_rounded,
                             compact: compact,
                           ),
                           const SizedBox(width: 3),
@@ -18678,8 +18667,6 @@ class _DashboardViewState extends State<DashboardView>
           ),
           const SizedBox(height: 28),
 
-          _buildTaskbarReplacementControlCard(),
-
           // 2. Windows 11 Taskbar Visualizer Simulation Bar
           const Text(
             'LIVE WINDOWS 11 TASKBAR SIMULATOR',
@@ -20924,21 +20911,13 @@ class _DashboardViewState extends State<DashboardView>
       'sleep_weather': 'Smart Dashboard',
       'robik': 'Robik Theme',
       'atomic_clock': 'Atomic Clock',
-      'taskbar_dock': 'Taskbar Modular Dock',
-      'taskbar_media': 'Taskbar Media Player',
-      'taskbar_system': 'Taskbar Resource Monitor',
-      'taskbar_steam': 'Taskbar Steam Tracker',
-      'taskbar_discord': 'Taskbar Discord Voice',
-      'taskbar_weather': 'Taskbar Weather Pill',
-      'taskbar_parking_lot': 'Taskbar Parking Lot',
     };
 
     // Filter templates based on category
     final filteredTemplates = templates.entries.where((e) {
       if (_selectedWidgetCategory == 'User Designed') return false;
-      if (_selectedWidgetCategory == 'All') return true;
-      if (_selectedWidgetCategory == 'Taskbar Widgets') {
-        return e.key.startsWith('taskbar_');
+      if (_selectedWidgetCategory == 'All') {
+        return !e.key.startsWith('taskbar_');
       }
       if (_selectedWidgetCategory == 'Custom') return e.key == 'custom';
       if (_selectedWidgetCategory == 'Minimalist') {
@@ -21299,9 +21278,6 @@ class _DashboardViewState extends State<DashboardView>
             const SizedBox(height: 36),
           ],
 
-          // Taskbar Widgets Add-on Showcase Section
-          _buildTaskbarWidgetsAddonSection(),
-
           // 3. Category Filters Section
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -21320,7 +21296,6 @@ class _DashboardViewState extends State<DashboardView>
                 children:
                     [
                       'All',
-                      'Taskbar Widgets',
                       'User Designed',
                       'Minimalist',
                       'Neon Glow',
@@ -23707,11 +23682,9 @@ class _DashboardViewState extends State<DashboardView>
 
           // ── Sub-Tab Content ──
           Expanded(
-            child: _widgetSubTab == 'taskbar'
-                ? _buildTaskbarWidgetsSubView()
-                : (_widgetSubTab == 'custom'
-                      ? _buildCustomWidgetsSubView()
-                      : _buildDesktopWidgetsSubView()),
+            child: _widgetSubTab == 'custom'
+                ? _buildCustomWidgetsSubView()
+                : _buildDesktopWidgetsSubView(),
           ),
         ],
       ),
@@ -24314,14 +24287,6 @@ class _DashboardViewState extends State<DashboardView>
                       icon: Icons.desktop_windows_rounded,
                       activeColor: const Color(0xFF38BDF8),
                       count: 14,
-                    ),
-                    const SizedBox(width: 6),
-                    _buildWidgetSubTabChip(
-                      id: 'taskbar',
-                      label: 'Taskbar Widgets',
-                      icon: Icons.dock_rounded,
-                      activeColor: const Color(0xFF818CF8),
-                      count: 7,
                     ),
                     const SizedBox(width: 6),
                     _buildWidgetSubTabChip(

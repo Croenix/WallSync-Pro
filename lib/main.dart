@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'config/api.dart';
+import 'models/taskbar_settings.dart';
 import 'services/api_service.dart';
 import 'services/diagnostics_service.dart';
 import 'services/notification_service.dart';
@@ -18,8 +19,6 @@ import 'services/wallpaper_engine.dart';
 import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
 import 'services/windows_taskbar_service.dart';
-import 'services/taskbar_configuration_service.dart';
-import 'models/taskbar_settings.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
 import 'widgets/splash_screen.dart';
@@ -187,7 +186,6 @@ void _emitOverlayBootstrapEvent(
     ProcessMode.main => 'MainBootstrap',
     ProcessMode.wallpaper => 'WallpaperBootstrap',
     ProcessMode.classic => 'OverlayBootstrap',
-    ProcessMode.taskbarDock => 'OverlayBootstrap',
     null => 'ProcessBootstrap',
   };
   logInfo(tag, fields.join(' | '));
@@ -210,11 +208,27 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
 
   final executable = Platform.resolvedExecutable;
   final workingDirectory = File(executable).parent.path;
-  final activeIds = settings.activeWidgetIds.isNotEmpty
-      ? settings.activeWidgetIds
-      : [settings.widgetTemplate];
+  final activeIds = settings.activeWidgetIds;
+  if (activeIds.isEmpty) {
+    logInfo(
+      'OverlayStartup',
+      'No enabled desktop widgets are configured for startup restoration.',
+    );
+    return;
+  }
+  final restorableIds = activeIds
+      .where((id) => !id.startsWith('taskbar_'))
+      .toList(growable: false);
+  if (restorableIds.isEmpty &&
+      activeIds.any((id) => id.startsWith('taskbar_'))) {
+    logInfo(
+      'OverlayStartup',
+      'Saved taskbar dock widgets are no longer supported; skipping widget restoration.',
+    );
+    return;
+  }
 
-  for (final id in activeIds) {
+  for (final id in restorableIds) {
     final instService = SettingsService(instanceId: id);
     final pidFile = await instService.pidFile;
     bool isRunning = false;
@@ -302,7 +316,6 @@ void main(List<String> args) async {
   );
   final startupStopwatch = Stopwatch()..start();
   final isOverlayMode = processArguments.mode.isOverlay;
-  final isTaskbarDock = processArguments.mode == ProcessMode.taskbarDock;
   final isWallpaperMode = processArguments.mode == ProcessMode.wallpaper;
   final isStartupRegistration = processArguments.startupRegistration;
   final startupTrigger = processArguments.startupTrigger;
@@ -774,19 +787,15 @@ void main(List<String> args) async {
     );
 
     // Configure the transparent, frameless, always-on-top overlay window
-    final isTaskbar =
-        overlayType == 'taskbar_dock' ||
-        cleanSettings.widgetTemplate.startsWith('taskbar_') ||
-        overlayInstanceId.startsWith('taskbar');
     final WindowOptions windowOptions = WindowOptions(
       size: Size(cleanSettings.width, cleanSettings.height),
-      minimumSize: isTaskbar ? const Size(120, 36) : const Size(180, 60),
+      minimumSize: const Size(180, 60),
       maximumSize: const Size(1920, 1080),
       center: cleanSettings.posX == null,
       backgroundColor: Colors.transparent,
       skipTaskbar: true, // Hidden from taskbar — behaves like a desktop widget
       titleBarStyle: TitleBarStyle.hidden, // Hides native title bar
-      alwaysOnTop: !isTaskbarDock && cleanSettings.alwaysOnTop,
+      alwaysOnTop: cleanSettings.alwaysOnTop,
     );
 
     logInfo(
@@ -819,8 +828,7 @@ void main(List<String> args) async {
         }
 
         Offset? requestedPosition;
-        if (!isTaskbarDock &&
-            cleanSettings.posX != null &&
+        if (cleanSettings.posX != null &&
             cleanSettings.posY != null) {
           requestedPosition = Offset(cleanSettings.posX!, cleanSettings.posY!);
           try {
@@ -875,118 +883,7 @@ void main(List<String> args) async {
           }
         }
 
-        if (isTaskbarDock) {
-          final displays = await ScreenRetriever.instance
-              .getAllDisplays()
-              .timeout(const Duration(milliseconds: 500));
-          if (displays.isEmpty) {
-            throw StateError(
-              'Windows did not report a display for the taskbar AppBar.',
-            );
-          }
-          Display? targetDisplay;
-          final targetMonitorId =
-              cleanSettings.taskbarSettings.activeMonitorId;
-          if (targetMonitorId != null) {
-            for (final display in displays) {
-              if (display.id == targetMonitorId) {
-                targetDisplay = display;
-                break;
-              }
-            }
-          }
-          targetDisplay ??= await ScreenRetriever.instance
-              .getPrimaryDisplay()
-              .timeout(const Duration(milliseconds: 300));
-          final monitorOrigin = targetDisplay.visiblePosition ?? Offset.zero;
-          final monitorSize = targetDisplay.visibleSize ?? targetDisplay.size;
-          final appBarHostPosition = Offset(
-            monitorOrigin.dx + monitorSize.width / 2,
-            monitorOrigin.dy + monitorSize.height / 2,
-          );
-          await timeWindowOperation(
-            'positionTaskbarHostOnMonitor',
-            () => windowManager.setPosition(appBarHostPosition),
-          );
-          final configuration = await TaskbarConfigurationService()
-              .applyNativeDock(
-                edge: cleanSettings.taskbarSettings.taskbarPosition,
-                thickness: cleanSettings.height.round().clamp(24, 256).toInt(),
-                length: 0,
-                autoHide: cleanSettings.taskbarSettings.autoHideEnabled,
-                revision: overlayConfigRevision,
-              );
-          if (configuration.hwnd != overlayHwnd ||
-              configuration.ownerPid != pid) {
-            throw StateError(
-              'Native AppBar configuration acknowledged the wrong host '
-              '(configuredHwnd=${configuration.hwnd}, expectedHwnd=$overlayHwnd, '
-              'ownerPid=${configuration.ownerPid}, expectedPid=$pid).',
-            );
-          }
-          await processDiagnostics.record(
-            'taskbar_appbar_configuration',
-            'result=applied revision=${configuration.revision} '
-                'hwnd=${configuration.hwnd} '
-                'bounds=${configuration.left},${configuration.top},'
-                '${configuration.right},${configuration.bottom}',
-          );
-        } else if (isTaskbar) {
-          try {
-            final primaryDisplay = await ScreenRetriever.instance
-                .getPrimaryDisplay()
-                .timeout(const Duration(milliseconds: 300));
-            final screenSize = primaryDisplay.size;
-            final isTaskbarReplacement =
-                cleanSettings.widgetTemplate == 'taskbar_dock' &&
-                WindowsTaskbarService.supportsFullReplacement &&
-                cleanSettings.taskbarSettings.nativeTaskbarHideEnabled;
-            final posType = cleanSettings.taskbarSettings.taskbarPosition;
-            if (isTaskbarReplacement) {
-              await timeWindowOperation(
-                'setReplacementTaskbarSize',
-                () => windowManager.setSize(
-                  Size(screenSize.width, cleanSettings.height),
-                ),
-              );
-            }
-            Offset taskbarPos;
-            if (isTaskbarReplacement && posType == 'bottom') {
-              taskbarPos = Offset(0, screenSize.height - cleanSettings.height);
-            } else if (posType == 'top') {
-              taskbarPos = Offset(
-                (screenSize.width - cleanSettings.width) / 2,
-                8,
-              );
-            } else if (posType == 'left') {
-              taskbarPos = Offset(
-                8,
-                (screenSize.height - cleanSettings.height) / 2,
-              );
-            } else if (posType == 'right') {
-              taskbarPos = Offset(
-                screenSize.width - cleanSettings.width - 8,
-                (screenSize.height - cleanSettings.height) / 2,
-              );
-            } else {
-              // 'bottom' default
-              taskbarPos = Offset(
-                (screenSize.width - cleanSettings.width) / 2,
-                screenSize.height - cleanSettings.height - 10,
-              );
-            }
-            await timeWindowOperation(
-              'setPosition',
-              () => windowManager.setPosition(taskbarPos),
-            );
-            logInfo(
-              'OverlayStartup',
-              'Taskbar dock positioned at $posType: $taskbarPos',
-            );
-          } catch (_) {
-            await timeWindowOperation('center', windowManager.center);
-          }
-        } else if (requestedPosition != null) {
+        if (requestedPosition != null) {
           final position = requestedPosition;
           await timeWindowOperation(
             'setPosition',
@@ -1004,24 +901,22 @@ void main(List<String> args) async {
           );
         }
 
-        if (!isTaskbarDock) {
-          await timeWindowOperation(
-            'setTitle',
-            () => windowManager.setTitle(
-              'WallSync Overlay ${overlayInstanceId.isNotEmpty ? overlayInstanceId : "Default"}',
-            ),
-          );
-          await timeWindowOperation(
-            'setAsFrameless',
-            windowManager.setAsFrameless,
-          );
-          await timeWindowOperation(
-            'setHasShadow',
-            () => windowManager.setHasShadow(false),
-          );
-          await timeWindowOperation('show', windowManager.show);
-          await timeWindowOperation('focus', windowManager.focus);
-        }
+        await timeWindowOperation(
+          'setTitle',
+          () => windowManager.setTitle(
+            'WallSync Overlay ${overlayInstanceId.isNotEmpty ? overlayInstanceId : "Default"}',
+          ),
+        );
+        await timeWindowOperation(
+          'setAsFrameless',
+          windowManager.setAsFrameless,
+        );
+        await timeWindowOperation(
+          'setHasShadow',
+          () => windowManager.setHasShadow(false),
+        );
+        await timeWindowOperation('show', windowManager.show);
+        await timeWindowOperation('focus', windowManager.focus);
 
         final visible = await waitForOverlayWindowVisibility(
           isVisible: windowManager.isVisible,
@@ -1191,20 +1086,6 @@ void main(List<String> args) async {
       final readyPublishedMs = DateTime.now().millisecondsSinceEpoch;
       registration =
           () async {
-            if (processArguments.mode == ProcessMode.taskbarDock) {
-              final ipcAcknowledged = await const MethodChannel(
-                'wallsync/live_wallpaper',
-              ).invokeMethod<bool>('acknowledgeDockReadiness');
-              if (ipcAcknowledged != true) {
-                throw StateError(
-                  'The child could not signal its named readiness event.',
-                );
-              }
-              await processDiagnostics.record(
-                'readiness_acknowledgement',
-                'transport=named-readiness-event result=signaled',
-              );
-            }
             await OverlayLifecycleService.markCurrentProcessReady(
               settingsService,
               readyPublishedMs: readyPublishedMs,

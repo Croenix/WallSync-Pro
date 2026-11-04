@@ -23,7 +23,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
   final DesktopStudioService _studioService = DesktopStudioService();
   final TextEditingController _searchController = TextEditingController();
 
-  String _selectedCategory = 'All';
+  String _selectedCategory = 'Taskbar';
   String _searchQuery = '';
 
   static const List<String> _categories = [
@@ -31,6 +31,7 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
     'Modern',
     'Minimal',
     'Productivity',
+    'Taskbar',
     'Gaming',
     'Compact',
     'Custom',
@@ -213,45 +214,51 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.grid_view_rounded,
-                  size: 20,
-                  color: Color(0xFF070B14),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Template Gallery',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF38BDF8), Color(0xFF818CF8)],
                     ),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  Text(
-                    'Curated desktop dock & taskbar templates designed for Windows 10 & 11',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.5),
-                    ),
+                  child: const Icon(
+                    Icons.grid_view_rounded,
+                    size: 20,
+                    color: Color(0xFF070B14),
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Template Gallery',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      Text(
+                        'Curated desktop dock & taskbar templates designed for Windows 10 & 11',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
 
           // Create New Button
@@ -285,6 +292,18 @@ class _TemplateGalleryViewState extends State<TemplateGalleryView> {
       ),
       child: Row(
         children: [
+          // Quick Taskbar shortcut
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ActionChip(
+              avatar: const Icon(Icons.window_rounded, size: 14, color: Color(0xFF070B14)),
+              label: const Text('Taskbar', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              backgroundColor: const Color(0xFF38BDF8),
+              labelStyle: const TextStyle(color: Color(0xFF070B14)),
+              onPressed: () => setState(() => _selectedCategory = 'Taskbar'),
+            ),
+          ),
+
           // Category Pills
           Expanded(
             child: SingleChildScrollView(
