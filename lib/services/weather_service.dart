@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:collection';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
@@ -58,10 +59,22 @@ class WeatherInfo {
 }
 
 class WeatherService {
+  static const Duration autoLocationCacheDuration = Duration(hours: 6);
+  static const Duration failedAutoLocationCacheDuration = Duration(minutes: 2);
+  static const Duration geocodingCacheDuration = Duration(hours: 24);
+  static const int maxGeocodingCacheEntries = 64;
+
   static final WeatherService _instance = WeatherService._internal();
   factory WeatherService() => _instance;
 
-  WeatherService._internal() {
+  WeatherService._internal() : _dio = _createDio(), _clock = DateTime.now;
+
+  @visibleForTesting
+  WeatherService.forTesting(Dio dio, {DateTime Function()? clock})
+    : _dio = dio,
+      _clock = clock ?? DateTime.now;
+
+  static Dio _createDio() {
     final adapter = IOHttpClientAdapter();
     adapter.createHttpClient = () {
       final client = HttpClient();
@@ -116,23 +129,31 @@ class WeatherService {
 
       return client;
     };
-    _dio.httpClientAdapter = adapter;
+
+    return Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        validateStatus: (status) => true,
+        headers: {
+          'User-Agent': 'WallSyncPro/1.0 (Windows NT 10.0; Win64; x64)',
+        },
+      ),
+    )..httpClientAdapter = adapter;
   }
 
-  final Dio _dio = Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      validateStatus: (status) => true,
-      headers: {
-        'User-Agent': 'WallSyncPro/1.0 (Windows NT 10.0; Win64; x64)',
-      },
-    ),
-  );
+  final Dio _dio;
+  final DateTime Function() _clock;
 
-  final Map<String, Map<String, dynamic>> _geocodingCache = {};
+  final LinkedHashMap<
+    String,
+    ({Map<String, dynamic> value, DateTime expiresAt})
+  >
+  _geocodingCache = LinkedHashMap();
   final Map<String, Future<Map<String, dynamic>?>> _inFlightGeocoding = {};
   final Map<String, Future<WeatherInfo?>> _inFlightWeather = {};
+  Future<Map<String, dynamic>?>? _inFlightAutoLocation;
+  ({Map<String, dynamic>? value, DateTime expiresAt})? _autoLocationCache;
 
   /// Map WMO weather codes to user-friendly descriptions and icons.
   static final Map<int, ({String status, IconData icon})> _weatherCodeMap = {
@@ -183,7 +204,10 @@ class WeatherService {
     if (s.contains('thunder') || s.contains('storm') || s.contains('hail')) {
       return Icons.thunderstorm_rounded;
     }
-    if (s.contains('snow') || s.contains('ice') || s.contains('frost') || s.contains('blizzard')) {
+    if (s.contains('snow') ||
+        s.contains('ice') ||
+        s.contains('frost') ||
+        s.contains('blizzard')) {
       return Icons.ac_unit_rounded;
     }
     if (s.contains('drizzle') || s.contains('grain')) {
@@ -208,7 +232,45 @@ class WeatherService {
   }
 
   /// Automatically detects user's location via IP Geolocation APIs.
-  Future<Map<String, dynamic>?> autoDetectLocation() async {
+  Future<Map<String, dynamic>?> autoDetectLocation({
+    bool forceRefresh = false,
+  }) {
+    final now = _clock();
+    final cached = _autoLocationCache;
+    if (!forceRefresh && cached != null && now.isBefore(cached.expiresAt)) {
+      return Future.value(
+        cached.value == null ? null : Map<String, dynamic>.of(cached.value!),
+      );
+    }
+
+    final inFlight = _inFlightAutoLocation;
+    if (inFlight != null) return inFlight;
+
+    final request = _detectLocation();
+    late final Future<Map<String, dynamic>?> sharedRequest;
+    sharedRequest = request
+        .then((result) {
+          final cacheDuration = result == null
+              ? failedAutoLocationCacheDuration
+              : autoLocationCacheDuration;
+          _autoLocationCache = (
+            value: result == null
+                ? null
+                : Map<String, dynamic>.unmodifiable(result),
+            expiresAt: _clock().add(cacheDuration),
+          );
+          return result == null ? null : Map<String, dynamic>.of(result);
+        })
+        .whenComplete(() {
+          if (identical(_inFlightAutoLocation, sharedRequest)) {
+            _inFlightAutoLocation = null;
+          }
+        });
+    _inFlightAutoLocation = sharedRequest;
+    return sharedRequest;
+  }
+
+  Future<Map<String, dynamic>?> _detectLocation() async {
     logInfo('WeatherService', 'Starting autoDetectLocation process...');
 
     // 1. ip-api.com
@@ -217,7 +279,7 @@ class WeatherService {
       final response = await _dio.get('http://ip-api.com/json/');
       logInfo(
         'WeatherService',
-        'ip-api.com response code: ${response.statusCode}, payload: ${response.data}',
+        'ip-api.com response code: ${response.statusCode}',
       );
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -229,10 +291,7 @@ class WeatherService {
             'zip': data['zip'] as String,
             'countryCode': data['countryCode'] as String,
           };
-          logInfo(
-            'WeatherService',
-            'Successfully geocoded via ip-api.com: $result',
-          );
+          logInfo('WeatherService', 'Location detected via ip-api.com.');
           return result;
         } else {
           logError(
@@ -261,7 +320,7 @@ class WeatherService {
       final response = await _dio.get('https://ipwho.is/');
       logInfo(
         'WeatherService',
-        'ipwho.is response code: ${response.statusCode}, payload: ${response.data}',
+        'ipwho.is response code: ${response.statusCode}',
       );
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -273,10 +332,7 @@ class WeatherService {
             'zip': data['postal'] as String,
             'countryCode': data['country_code'] as String,
           };
-          logInfo(
-            'WeatherService',
-            'Successfully geocoded via ipwho.is: $result',
-          );
+          logInfo('WeatherService', 'Location detected via ipwho.is.');
           return result;
         } else {
           logError(
@@ -305,7 +361,7 @@ class WeatherService {
       final response = await _dio.get('https://freeipapi.com/api/json');
       logInfo(
         'WeatherService',
-        'freeipapi.com response code: ${response.statusCode}, payload: ${response.data}',
+        'freeipapi.com response code: ${response.statusCode}',
       );
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -316,10 +372,7 @@ class WeatherService {
           'zip': data['zipCode'] as String,
           'countryCode': data['countryCode'] as String,
         };
-        logInfo(
-          'WeatherService',
-          'Successfully geocoded via freeipapi.com: $result',
-        );
+        logInfo('WeatherService', 'Location detected via freeipapi.com.');
         return result;
       } else {
         logError(
@@ -342,7 +395,7 @@ class WeatherService {
       final response = await _dio.get('https://ipapi.co/json/');
       logInfo(
         'WeatherService',
-        'ipapi.co response code: ${response.statusCode}, payload: ${response.data}',
+        'ipapi.co response code: ${response.statusCode}',
       );
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -359,10 +412,7 @@ class WeatherService {
             'zip': data['postal'] as String,
             'countryCode': data['country_code'] as String,
           };
-          logInfo(
-            'WeatherService',
-            'Successfully geocoded via ipapi.co: $result',
-          );
+          logInfo('WeatherService', 'Location detected via ipapi.co.');
           return result;
         }
       } else {
@@ -396,32 +446,53 @@ class WeatherService {
     }
 
     final cached = _geocodingCache[cleanKey];
+    if (cached != null && _clock().isBefore(cached.expiresAt)) {
+      logInfo(
+        'WeatherService',
+        'Returning cached geocoding result for "$cleanKey".',
+      );
+      return Future.value(Map<String, dynamic>.of(cached.value));
+    }
     if (cached != null) {
-      logInfo('WeatherService', 'Returning cached geocoding result for "$cleanKey": $cached');
-      return Future.value(cached);
+      _geocodingCache.remove(cleanKey);
     }
 
     final inFlight = _inFlightGeocoding[cleanKey];
     if (inFlight != null) {
-      logInfo('WeatherService', 'Joining in-flight geocoding request for "$cleanKey"');
+      logInfo(
+        'WeatherService',
+        'Joining in-flight geocoding request for "$cleanKey"',
+      );
       return inFlight;
     }
 
     final future = _searchLocationInternal(query.trim());
     _inFlightGeocoding[cleanKey] = future;
-    return future.then((res) {
-      if (res != null) {
-        _geocodingCache[cleanKey] = res;
-      }
-      return res;
-    }).whenComplete(() => _inFlightGeocoding.remove(cleanKey));
+    return future
+        .then((res) {
+          if (res != null) {
+            if (_geocodingCache.length >= maxGeocodingCacheEntries) {
+              _geocodingCache.remove(_geocodingCache.keys.first);
+            }
+            _geocodingCache[cleanKey] = (
+              value: Map<String, dynamic>.unmodifiable(res),
+              expiresAt: _clock().add(geocodingCacheDuration),
+            );
+          }
+          return res;
+        })
+        .whenComplete(() => _inFlightGeocoding.remove(cleanKey));
   }
 
-  Future<Map<String, dynamic>?> _searchLocationInternal(String cleanQuery) async {
-
+  Future<Map<String, dynamic>?> _searchLocationInternal(
+    String cleanQuery,
+  ) async {
     // 1. Try Nominatim (Best for postal codes/pincodes and exact local towns)
     try {
-      logInfo('WeatherService', 'Trying Nominatim search for: "$cleanQuery"...');
+      logInfo(
+        'WeatherService',
+        'Trying Nominatim search for: "$cleanQuery"...',
+      );
       final nomRes = await _dio.get(
         'https://nominatim.openstreetmap.org/search',
         queryParameters: {
@@ -433,7 +504,9 @@ class WeatherService {
         options: Options(receiveTimeout: const Duration(seconds: 4)),
       );
 
-      if (nomRes.statusCode == 200 && nomRes.data is List && (nomRes.data as List).isNotEmpty) {
+      if (nomRes.statusCode == 200 &&
+          nomRes.data is List &&
+          (nomRes.data as List).isNotEmpty) {
         final item = (nomRes.data as List).first;
         final lat = double.tryParse(item['lat']?.toString() ?? '');
         final lon = double.tryParse(item['lon']?.toString() ?? '');
@@ -441,7 +514,8 @@ class WeatherService {
           String resolvedName = cleanQuery;
           final address = item['address'];
           if (address is Map) {
-            final city = address['city'] ??
+            final city =
+                address['city'] ??
                 address['town'] ??
                 address['village'] ??
                 address['municipality'] ??
@@ -462,17 +536,19 @@ class WeatherService {
             resolvedName = split.take(3).map((s) => s.trim()).join(', ');
           }
 
-          final result = {
-            'lat': lat,
-            'lon': lon,
-            'name': resolvedName,
-          };
-          logInfo('WeatherService', 'Nominatim resolved "$cleanQuery" to: $result');
+          final result = {'lat': lat, 'lon': lon, 'name': resolvedName};
+          logInfo(
+            'WeatherService',
+            'Nominatim resolved "$cleanQuery" to: $result',
+          );
           return result;
         }
       }
     } catch (e) {
-      logWarning('WeatherService', 'Nominatim lookup error: $e. Falling back to Open-Meteo...');
+      logWarning(
+        'WeatherService',
+        'Nominatim lookup error: $e. Falling back to Open-Meteo...',
+      );
     }
 
     // 2. Fallback to Open-Meteo Geocoding
@@ -562,7 +638,8 @@ class WeatherService {
         queryParameters: {
           'latitude': lat,
           'longitude': lon,
-          'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m',
+          'current':
+              'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m',
           'hourly': 'temperature_2m,weather_code',
           'forecast_hours': 12,
           'timezone': 'auto',
@@ -588,8 +665,10 @@ class WeatherService {
           final int code = current['weather_code'] as int;
           final mapItem = _weatherCodeMap[code];
           final weatherStatus = mapItem?.status ?? 'Cloudy';
-          final apparentTemp = (current['apparent_temperature'] as num?)?.toDouble() ?? temp;
-          final humidity = (current['relative_humidity_2m'] as num?)?.toInt() ?? 0;
+          final apparentTemp =
+              (current['apparent_temperature'] as num?)?.toDouble() ?? temp;
+          final humidity =
+              (current['relative_humidity_2m'] as num?)?.toInt() ?? 0;
 
           // Parse upcoming hourly forecasts strictly matching user local time
           final List<HourlyForecast> hourlyList = [];
@@ -602,7 +681,8 @@ class WeatherService {
             final currentTimeStr = current['time']?.toString() ?? '';
             for (int i = 0; i < times.length && hourlyList.length < 3; i++) {
               final tStr = times[i].toString();
-              if (currentTimeStr.isNotEmpty && tStr.compareTo(currentTimeStr) <= 0) {
+              if (currentTimeStr.isNotEmpty &&
+                  tStr.compareTo(currentTimeStr) <= 0) {
                 continue;
               }
               final hTemp = (temps[i] as num).toDouble();
@@ -611,16 +691,20 @@ class WeatherService {
               if (tStr.contains('T')) {
                 formattedTime = tStr.split('T').last;
               }
-              hourlyList.add(HourlyForecast(
-                time: formattedTime,
-                temperature: hTemp,
-                status: _weatherCodeMap[hCode]?.status ?? 'Cloudy',
-                weatherCode: hCode,
-              ));
+              hourlyList.add(
+                HourlyForecast(
+                  time: formattedTime,
+                  temperature: hTemp,
+                  status: _weatherCodeMap[hCode]?.status ?? 'Cloudy',
+                  weatherCode: hCode,
+                ),
+              );
             }
           }
 
-          final forecastJson = jsonEncode(hourlyList.map((h) => h.toJson()).toList());
+          final forecastJson = jsonEncode(
+            hourlyList.map((h) => h.toJson()).toList(),
+          );
 
           final info = WeatherInfo(
             temperature: temp,

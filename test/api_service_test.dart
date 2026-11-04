@@ -48,6 +48,23 @@ void main() {
   });
 
   test(
+    'ApiConfig initialization does not wait for RTDB network response',
+    () async {
+      final pendingFetch = Completer<String>();
+      var fetchStarted = false;
+
+      await ApiConfig.initForTesting(() {
+        fetchStarted = true;
+        return pendingFetch.future;
+      });
+
+      expect(fetchStarted, isTrue);
+      expect(pendingFetch.isCompleted, isFalse);
+      pendingFetch.complete(ApiConfig.serverUrl);
+    },
+  );
+
+  test(
     'ApiConfig normalizes URLs correctly with scheme and strips trailing slashes',
     () {
       expect(

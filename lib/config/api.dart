@@ -76,9 +76,17 @@ class ApiConfig {
       StreamController<String>.broadcast();
   static Stream<String> get onServerUrlChanged => _urlChangeController.stream;
 
-  /// Initializes ApiConfig: loads cached URL from SharedPreferences, then reads active server URL from RTDB.
+  /// Loads the cached URL before starting RTDB discovery in the background.
   /// Note: The application only reads from RTDB; it NEVER writes to RTDB.
-  static Future<void> init({String? rtdbBaseUrl}) async {
+  static Future<void> init({String? rtdbBaseUrl}) => _init(
+    () => fetchServerUrlFromDatabase(rtdbBaseUrl: rtdbBaseUrl, force: true),
+  );
+
+  @visibleForTesting
+  static Future<void> initForTesting(Future<String> Function() fetcher) =>
+      _init(fetcher);
+
+  static Future<void> _init(Future<String> Function() fetcher) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString(prefsServerUrlKey);
@@ -90,17 +98,21 @@ class ApiConfig {
       debugPrint('[ApiConfig] Error reading cached server URL: $e');
     }
 
-    // Await reading active server URL from Firebase Realtime Database with a short timeout
-    // so the desktop application connects directly to the server URL configured in RTDB.
-    try {
-      await fetchServerUrlFromDatabase(
-        rtdbBaseUrl: rtdbBaseUrl,
-        force: true,
-      ).timeout(const Duration(milliseconds: 2500));
-      debugPrint('[ApiConfig] Resolved live server URL from RTDB: $_serverUrl');
-    } catch (e) {
-      debugPrint('[ApiConfig] RTDB fetch timeout/fallback: $_serverUrl ($e)');
-    }
+    unawaited(
+      fetcher()
+          .then<void>((_) {
+            debugPrint(
+              '[ApiConfig] Background RTDB discovery finished; active URL: '
+              '$_serverUrl',
+            );
+          })
+          .catchError((Object error, StackTrace stackTrace) {
+            debugPrint(
+              '[ApiConfig] Background RTDB discovery failed; retaining '
+              '$_serverUrl ($error)',
+            );
+          }),
+    );
   }
 
   /// Manually overrides and persists the active server URL.

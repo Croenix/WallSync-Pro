@@ -1006,6 +1006,7 @@ class _DashboardViewState extends State<DashboardView>
 
   // Tab controller for editor
   late TabController _tabCtrl;
+  int _lastTabControllerIndex = 0;
 
   // Scroll controllers for horizontal lists
   late ScrollController _gradientScrollCtrl;
@@ -1125,7 +1126,7 @@ class _DashboardViewState extends State<DashboardView>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 3, vsync: this);
-    _tabCtrl.addListener(() => setState(() {}));
+    _tabCtrl.addListener(_handleTabControllerChanged);
 
     _settings = widget.initialSettings;
     if (widget.initialTab != null && widget.initialTab!.isNotEmpty) {
@@ -1483,6 +1484,13 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
+  void _handleTabControllerChanged() {
+    final index = _tabCtrl.index;
+    if (!mounted || index == _lastTabControllerIndex) return;
+    _lastTabControllerIndex = index;
+    setState(() {});
+  }
+
   Future<void> _initSettingsWatcher() async {
     final file = await _settingsService.settingsFile;
     final parentDir = file.parent;
@@ -1493,18 +1501,29 @@ class _DashboardViewState extends State<DashboardView>
           if (!mounted) return;
           final updated = await _settingsService.loadSettings();
           if (!mounted) return;
+          final nextSettings =
+              !_isOverlayRunning ||
+                  _settings.widgetTemplate == updated.widgetTemplate
+              ? updated
+              : updated.copyWith(
+                  isLocked: _settings.isLocked,
+                  editorMode: _settings.editorMode,
+                  alwaysOnTop: _settings.alwaysOnTop,
+                  startOnBoot: _settings.startOnBoot,
+                );
+          final settingsChanged =
+              jsonEncode(_settings.toJson()) !=
+              jsonEncode(nextSettings.toJson());
+          final templateChanged = _activeTemplate != updated.widgetTemplate;
+          final locationChanged =
+              _weatherSearchCtrl.text != updated.weatherLocation;
+          if (!settingsChanged && !templateChanged && !locationChanged) return;
           setState(() {
             _activeTemplate = updated.widgetTemplate;
-            _weatherSearchCtrl.text = updated.weatherLocation;
-            if (!_isOverlayRunning ||
-                _settings.widgetTemplate == updated.widgetTemplate) {
-              _settings = updated;
-            } else {
-              _settings.isLocked = updated.isLocked;
-              _settings.editorMode = updated.editorMode;
-              _settings.alwaysOnTop = updated.alwaysOnTop;
-              _settings.startOnBoot = updated.startOnBoot;
+            if (locationChanged) {
+              _weatherSearchCtrl.text = updated.weatherLocation;
             }
+            if (settingsChanged) _settings = nextSettings;
           });
         });
       }
@@ -30976,243 +30995,249 @@ class _DashboardViewState extends State<DashboardView>
 
     return Center(
       key: key,
-      child: Container(
-        width: 520,
-        margin: const EdgeInsets.symmetric(vertical: 32),
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xF80F121E), Color(0xF80A0C14)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(
-            color: const Color(0xFFEC4899).withValues(alpha: 0.25),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.55),
-              blurRadius: 36,
-              offset: const Offset(0, 10),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(vertical: 32),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xF80F121E), Color(0xF80A0C14)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            BoxShadow(
-              color: const Color(0xFFEC4899).withValues(alpha: 0.08),
-              blurRadius: 40,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: const Color(0xFFEC4899).withValues(alpha: 0.25),
+              width: 1.2,
             ),
-          ],
-        ),
-        child: Form(
-          key: _bugFormKey,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFEC4899).withValues(alpha: 0.25),
-                          const Color(0xFF818CF8).withValues(alpha: 0.12),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: const Color(0xFFEC4899).withValues(alpha: 0.45),
-                        width: 1.2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.55),
+                blurRadius: 36,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: const Color(0xFFEC4899).withValues(alpha: 0.08),
+                blurRadius: 40,
+              ),
+            ],
+          ),
+          child: Form(
+            key: _bugFormKey,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFEC4899).withValues(alpha: 0.25),
+                            const Color(0xFF818CF8).withValues(alpha: 0.12),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
                           color: const Color(
                             0xFFEC4899,
-                          ).withValues(alpha: 0.25),
-                          blurRadius: 12,
+                          ).withValues(alpha: 0.45),
+                          width: 1.2,
                         ),
-                      ],
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFEC4899,
+                            ).withValues(alpha: 0.25),
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.bug_report_rounded,
+                        size: 24,
+                        color: Color(0xFFEC4899),
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.bug_report_rounded,
-                      size: 24,
-                      color: Color(0xFFEC4899),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Report an Issue',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: -0.3,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Report an Issue',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    letterSpacing: -0.3,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF6366F1),
-                                    Color(0xFFA855F7),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF6366F1),
+                                      Color(0xFFA855F7),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(
+                                        0xFFA855F7,
+                                      ).withValues(alpha: 0.35),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
                                   ],
                                 ),
-                                borderRadius: BorderRadius.circular(6),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFFA855F7,
-                                    ).withValues(alpha: 0.35),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                                child: const Text(
+                                  'PRO',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: 0.8,
                                   ),
-                                ],
-                              ),
-                              child: const Text(
-                                'PRO',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 0.8,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Direct transmission to engineering & QA',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.50),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-
-              _buildTextFormField(
-                controller: _gmailCtrl,
-                label: 'Gmail ID',
-                icon: Icons.email_rounded,
-                validator: (v) {
-                  if (v == null || v.isEmpty) {
-                    return 'Please enter your Gmail ID';
-                  }
-                  if (!v.toLowerCase().endsWith('@gmail.com')) {
-                    return 'Please provide a valid @gmail.com address';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              _buildTextFormField(
-                controller: _nameCtrl,
-                label: 'Full Name',
-                icon: Icons.person_rounded,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Please enter your name' : null,
-              ),
-              const SizedBox(height: 16),
-
-              _buildTextFormField(
-                controller: _titleCtrl,
-                label: 'Issue Title',
-                icon: Icons.title_rounded,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Please enter a title' : null,
-              ),
-              const SizedBox(height: 16),
-
-              _buildTextFormField(
-                controller: _descCtrl,
-                label: 'Issue Description',
-                icon: Icons.description_rounded,
-                maxLines: 4,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Please describe the issue' : null,
-              ),
-              const SizedBox(height: 30),
-
-              Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFEC4899), Color(0xFF818CF8)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFEC4899).withValues(alpha: 0.35),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Direct transmission to engineering & QA',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.50),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-                child: ElevatedButton(
-                  onPressed: _submittingBug ? null : _submitBug,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: _submittingBug
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.send_rounded, size: 18),
-                            SizedBox(width: 8),
-                            Text(
-                              'Submit Priority Report',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                          ],
-                        ),
+                const SizedBox(height: 28),
+
+                _buildTextFormField(
+                  controller: _gmailCtrl,
+                  label: 'Gmail ID',
+                  icon: Icons.email_rounded,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Please enter your Gmail ID';
+                    }
+                    if (!v.toLowerCase().endsWith('@gmail.com')) {
+                      return 'Please provide a valid @gmail.com address';
+                    }
+                    return null;
+                  },
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+
+                _buildTextFormField(
+                  controller: _nameCtrl,
+                  label: 'Full Name',
+                  icon: Icons.person_rounded,
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'Please enter your name' : null,
+                ),
+                const SizedBox(height: 16),
+
+                _buildTextFormField(
+                  controller: _titleCtrl,
+                  label: 'Issue Title',
+                  icon: Icons.title_rounded,
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'Please enter a title' : null,
+                ),
+                const SizedBox(height: 16),
+
+                _buildTextFormField(
+                  controller: _descCtrl,
+                  label: 'Issue Description',
+                  icon: Icons.description_rounded,
+                  maxLines: 4,
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Please describe the issue'
+                      : null,
+                ),
+                const SizedBox(height: 30),
+
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFEC4899), Color(0xFF818CF8)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFEC4899).withValues(alpha: 0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: _submittingBug ? null : _submitBug,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: _submittingBug
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.send_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text(
+                                'Submit Priority Report',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -31553,7 +31578,7 @@ class _DashboardViewState extends State<DashboardView>
       _weatherSearchError = '';
     });
     try {
-      final loc = await WeatherService().autoDetectLocation();
+      final loc = await WeatherService().autoDetectLocation(forceRefresh: true);
       if (loc != null) {
         final lat = loc['lat'] as double;
         final lon = loc['lon'] as double;

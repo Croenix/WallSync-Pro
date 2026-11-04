@@ -6773,8 +6773,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final updated = await _settingsService.updateSettings(
       (current) => current.copyWith(
         wifiEnabled: snapshot.wifiEnabled ?? current.wifiEnabled,
-        bluetoothEnabled:
-            snapshot.bluetoothEnabled ?? current.bluetoothEnabled,
+        bluetoothEnabled: snapshot.bluetoothEnabled ?? current.bluetoothEnabled,
       ),
     );
     if (!mounted) return;
@@ -6979,8 +6978,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
                       }
                       if (!mounted) return;
                       final updated = await _settingsService.updateSettings(
-                        (current) =>
-                            current.copyWith(wifiEnabled: targetState),
+                        (current) => current.copyWith(wifiEnabled: targetState),
                       );
                       if (!mounted) return;
                       setState(() {
@@ -7737,7 +7735,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
       _weatherSearchError = '';
     });
     try {
-      final loc = await WeatherService().autoDetectLocation();
+      final loc = await WeatherService().autoDetectLocation(forceRefresh: true);
       if (!mounted) return;
       if (loc != null) {
         final lat = loc['lat'] as double;
