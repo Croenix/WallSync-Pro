@@ -51,7 +51,60 @@ Future<Uint8List> _decodeMediaThumbnailAsync(
   }
 }
 
+enum DesktopWidgetLayout {
+  classic,
+  custom,
+  minimal,
+  cyber,
+  split,
+  neon,
+  animatedNeon,
+  sleepWeather,
+  robik,
+  atomicClock,
+  cyberHud,
+  atomicClean,
+  arcClock,
+  flipClock,
+  stationWeather,
+  taskbarDock,
+  taskbarMedia,
+  taskbarSystem,
+  taskbarSteam,
+  taskbarDiscord,
+  taskbarWeather,
+  taskbarParkingLot,
+}
+
 class DesktopWidget extends StatefulWidget {
+  static const templateLayouts = <String, DesktopWidgetLayout>{
+    'classic': DesktopWidgetLayout.classic,
+    'custom': DesktopWidgetLayout.custom,
+    'minimal': DesktopWidgetLayout.minimal,
+    'cyber': DesktopWidgetLayout.cyber,
+    'split': DesktopWidgetLayout.split,
+    'neon': DesktopWidgetLayout.neon,
+    'animated_neon': DesktopWidgetLayout.animatedNeon,
+    'sleep_weather': DesktopWidgetLayout.sleepWeather,
+    'robik': DesktopWidgetLayout.robik,
+    'atomic_clock': DesktopWidgetLayout.atomicClock,
+    'cyber_hud': DesktopWidgetLayout.cyberHud,
+    'atomic_clean': DesktopWidgetLayout.atomicClean,
+    'arc_clock': DesktopWidgetLayout.arcClock,
+    'flip_clock': DesktopWidgetLayout.flipClock,
+    'station_weather': DesktopWidgetLayout.stationWeather,
+    'taskbar_dock': DesktopWidgetLayout.taskbarDock,
+    'taskbar_media': DesktopWidgetLayout.taskbarMedia,
+    'taskbar_system': DesktopWidgetLayout.taskbarSystem,
+    'taskbar_steam': DesktopWidgetLayout.taskbarSteam,
+    'taskbar_discord': DesktopWidgetLayout.taskbarDiscord,
+    'taskbar_weather': DesktopWidgetLayout.taskbarWeather,
+    'taskbar_parking_lot': DesktopWidgetLayout.taskbarParkingLot,
+  };
+
+  static DesktopWidgetLayout layoutForTemplate(String templateId) =>
+      templateLayouts[templateId] ?? DesktopWidgetLayout.classic;
+
   final WidgetSettings? initialSettings;
   final String? instanceId;
   const DesktopWidget({super.key, this.initialSettings, this.instanceId});
@@ -5591,51 +5644,50 @@ class _DesktopWidgetState extends State<DesktopWidget>
   }
 
   Widget _buildLayout() {
-    switch (_settings.widgetTemplate) {
-      case 'custom':
+    switch (DesktopWidget.layoutForTemplate(_settings.widgetTemplate)) {
+      case DesktopWidgetLayout.custom:
         return _buildCustomLayout();
-      case 'minimal':
+      case DesktopWidgetLayout.minimal:
         return _buildMinimalLayout();
-      case 'cyber':
+      case DesktopWidgetLayout.cyber:
         return _buildCyberLayout();
-      case 'split':
+      case DesktopWidgetLayout.split:
         return _buildSplitLayout();
-      case 'neon':
+      case DesktopWidgetLayout.neon:
         return _buildNeonLayout();
-      case 'animated_neon':
+      case DesktopWidgetLayout.animatedNeon:
         return _buildAnimatedNeonLayout();
-      case 'sleep_weather':
+      case DesktopWidgetLayout.sleepWeather:
         return _buildSleepWeatherLayout();
-      case 'robik':
+      case DesktopWidgetLayout.robik:
         return _buildRobikLayout();
-      case 'atomic_clock':
+      case DesktopWidgetLayout.atomicClock:
         return _buildAtomicClockLayout();
-      case 'cyber_hud':
+      case DesktopWidgetLayout.cyberHud:
         return _buildCyberHudLayout();
-      case 'atomic_clean':
+      case DesktopWidgetLayout.atomicClean:
         return _buildAtomicCleanLayout();
-      case 'arc_clock':
+      case DesktopWidgetLayout.arcClock:
         return _buildArcClockLayout();
-      case 'flip_clock':
+      case DesktopWidgetLayout.flipClock:
         return _buildFlipClockLayout();
-      case 'station_weather':
+      case DesktopWidgetLayout.stationWeather:
         return _buildStationWeatherLayout();
-      case 'taskbar_dock':
+      case DesktopWidgetLayout.taskbarDock:
         return _buildTaskbarDockLayout();
-      case 'taskbar_media':
+      case DesktopWidgetLayout.taskbarMedia:
         return _buildTaskbarMediaLayout();
-      case 'taskbar_system':
+      case DesktopWidgetLayout.taskbarSystem:
         return _buildTaskbarSystemLayout();
-      case 'taskbar_steam':
+      case DesktopWidgetLayout.taskbarSteam:
         return _buildTaskbarSteamLayout();
-      case 'taskbar_discord':
+      case DesktopWidgetLayout.taskbarDiscord:
         return _buildTaskbarDiscordLayout();
-      case 'taskbar_weather':
+      case DesktopWidgetLayout.taskbarWeather:
         return _buildTaskbarWeatherLayout();
-      case 'taskbar_parking_lot':
+      case DesktopWidgetLayout.taskbarParkingLot:
         return _buildTaskbarParkingLotLayout();
-      case 'classic':
-      default:
+      case DesktopWidgetLayout.classic:
         return _buildClassicLayout();
     }
   }

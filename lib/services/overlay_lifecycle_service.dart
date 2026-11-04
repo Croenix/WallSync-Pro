@@ -36,6 +36,7 @@ class OverlayProcessRecord {
     this.ready = true,
     this.state = OverlayLifecycleState.ready,
     this.instanceId,
+    this.templateId,
     this.processMode,
     this.diagnosticLogPath,
     this.hwnd,
@@ -59,6 +60,7 @@ class OverlayProcessRecord {
   final bool ready;
   final OverlayLifecycleState state;
   final String? instanceId;
+  final String? templateId;
   final String? processMode;
   final String? diagnosticLogPath;
   final int? hwnd;
@@ -82,6 +84,7 @@ class OverlayProcessRecord {
     bool? ready,
     OverlayLifecycleState? state,
     String? instanceId,
+    String? templateId,
     String? processMode,
     String? diagnosticLogPath,
     int? hwnd,
@@ -104,6 +107,7 @@ class OverlayProcessRecord {
     ready: ready ?? this.ready,
     state: state ?? this.state,
     instanceId: instanceId ?? this.instanceId,
+    templateId: templateId ?? this.templateId,
     processMode: processMode ?? this.processMode,
     diagnosticLogPath: diagnosticLogPath ?? this.diagnosticLogPath,
     hwnd: hwnd ?? this.hwnd,
@@ -128,6 +132,7 @@ class OverlayProcessRecord {
     'ready': ready,
     'state': state.name,
     if (instanceId != null) 'instanceId': instanceId,
+    if (templateId != null) 'templateId': templateId,
     if (processMode != null) 'processMode': processMode,
     if (diagnosticLogPath != null) 'diagnosticLogPath': diagnosticLogPath,
     if (hwnd != null) 'hwnd': hwnd,
@@ -224,6 +229,7 @@ class OverlayProcessRecord {
         ready: ready,
         state: state,
         instanceId: decoded['instanceId'] as String?,
+        templateId: decoded['templateId'] as String?,
         processMode: processMode as String?,
         diagnosticLogPath: diagnosticLogPath as String?,
         hwnd: parseMs(decoded['hwnd']),
@@ -252,6 +258,70 @@ class OverlayProcessRecord {
           other.executablePath == null ||
           _normalizePath(executablePath) ==
               _normalizePath(other.executablePath));
+}
+
+Future<String?> readOverlayPidFileContents(
+  File pidFile, {
+  int maxAttempts = 5,
+  Duration lockTimeout = const Duration(milliseconds: 400),
+  Future<String> Function()? readContents,
+  Duration Function(int attempt)? retryDelay,
+}) async {
+  if (maxAttempts < 1) {
+    throw ArgumentError.value(maxAttempts, 'maxAttempts', 'must be positive');
+  }
+  final lockFile = File('${pidFile.path}.lock');
+  final read = readContents ?? pidFile.readAsString;
+  Object? lastError;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    RandomAccessFile? lock;
+    try {
+      if (!await pidFile.exists()) return null;
+      lock = await lockFile.open(mode: FileMode.append);
+      await lock.lock(FileLock.shared).timeout(lockTimeout);
+      if (!await pidFile.exists()) return null;
+      return await read();
+    } on FileSystemException catch (error) {
+      lastError = error;
+      final code = error.osError?.errorCode;
+      final isSharingViolation =
+          code == 32 ||
+          code == 33 ||
+          error.message.toLowerCase().contains('sharing violation') ||
+          error.message.toLowerCase().contains('being used by another process');
+      if (!isSharingViolation || attempt == maxAttempts) rethrow;
+      logWarning(
+        'OverlayLifecycleService',
+        'PID read sharing violation; retry $attempt/$maxAttempts '
+            'for "${pidFile.path}" (errorCode=${code ?? 'unknown'}).',
+      );
+    } on TimeoutException catch (error) {
+      lastError = error;
+      if (attempt == maxAttempts) rethrow;
+      logWarning(
+        'OverlayLifecycleService',
+        'PID lock acquisition timed out; retry $attempt/$maxAttempts '
+            'for "${pidFile.path}".',
+      );
+    } finally {
+      if (lock != null) {
+        try {
+          await lock.unlock();
+        } finally {
+          await lock.close();
+        }
+      }
+    }
+
+    final delay =
+        retryDelay?.call(attempt) ??
+        Duration(milliseconds: 20 * (1 << (attempt - 1)));
+    await Future<void>.delayed(delay);
+  }
+  throw FileSystemException(
+    'Could not read PID record after bounded retries: $lastError',
+    pidFile.path,
+  );
 }
 
 class OverlayProcessInspection {
@@ -444,6 +514,7 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   required OverlayProcessInspector inspectProcess,
   int? expectedPid,
   String? expectedInstanceId,
+  String? expectedTemplateId,
   String? expectedProcessMode,
   int? expectedOperationId,
   int? expectedConfigurationRevision,
@@ -468,6 +539,7 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   bool matchesExpectedIdentity(OverlayProcessRecord record) =>
       (expectedPid == null || record.pid == expectedPid) &&
       (expectedInstanceId == null || record.instanceId == expectedInstanceId) &&
+      (expectedTemplateId == null || record.templateId == expectedTemplateId) &&
       (expectedProcessMode == null ||
           record.processMode == expectedProcessMode) &&
       (expectedOperationId == null ||
@@ -722,8 +794,8 @@ class OverlayLifecycleService {
 
     Future<OverlayProcessRecord?> readRecord() async {
       final pidFile = await pidFileFuture;
-      if (!await pidFile.exists()) return null;
-      final contents = await pidFile.readAsString();
+      final contents = await readOverlayPidFileContents(pidFile);
+      if (contents == null) return null;
       final record = OverlayProcessRecord.tryParse(contents);
       if (record == null) {
         logWarning(
@@ -787,6 +859,7 @@ class OverlayLifecycleService {
     OverlayLifecycleState state = OverlayLifecycleState.processStarted,
     DockReadinessStage stage = DockReadinessStage.dockReady,
     String? instanceId,
+    String? templateId,
     int? hwnd,
     int? configurationRevision,
     int? operationId,
@@ -839,6 +912,7 @@ class OverlayLifecycleService {
         ready: ready,
         state: state,
         instanceId: instanceId ?? existingRecord?.instanceId,
+        templateId: templateId ?? existingRecord?.templateId,
         processMode: processMode ?? existingRecord?.processMode,
         diagnosticLogPath:
             diagnosticLogPath ?? existingRecord?.diagnosticLogPath,
@@ -923,6 +997,7 @@ class OverlayLifecycleService {
     DockReadinessStage? stage,
     bool? ready,
     String? instanceId,
+    String? templateId,
     String? processMode,
     String? diagnosticLogPath,
     int? hwnd,
@@ -947,6 +1022,7 @@ class OverlayLifecycleService {
             : DockReadinessStage.processRunning),
     ready: ready ?? (state == OverlayLifecycleState.ready),
     instanceId: instanceId,
+    templateId: templateId,
     processMode: processMode,
     diagnosticLogPath: diagnosticLogPath,
     hwnd: hwnd,
@@ -968,6 +1044,7 @@ class OverlayLifecycleService {
     int? readyPublishedMs,
     int? hwnd,
     String? instanceId,
+    String? templateId,
     String? processMode,
     String? diagnosticLogPath,
     int? configurationRevision,
@@ -979,6 +1056,7 @@ class OverlayLifecycleService {
     ready: true,
     hwnd: hwnd,
     instanceId: instanceId,
+    templateId: templateId,
     processMode: processMode,
     diagnosticLogPath: diagnosticLogPath,
     configurationRevision: configurationRevision,

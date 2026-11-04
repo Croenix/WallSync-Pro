@@ -412,6 +412,7 @@ void main() {
         executablePath: record.executablePath,
         ready: true,
         instanceId: 'widget_overlay',
+        templateId: 'split',
         processMode: 'widget_overlay',
         operationId: 7,
         configurationRevision: 3,
@@ -423,6 +424,7 @@ void main() {
         inspectProcess: (_) async => _inspection(true),
         expectedPid: record.pid,
         expectedInstanceId: 'widget_overlay',
+        expectedTemplateId: 'classic',
         expectedProcessMode: 'widget_overlay',
         expectedOperationId: 8,
         expectedConfigurationRevision: 3,
@@ -438,6 +440,7 @@ void main() {
         inspectProcess: (_) async => _inspection(true),
         expectedPid: record.pid,
         expectedInstanceId: 'widget_overlay',
+        expectedTemplateId: 'split',
         expectedProcessMode: 'widget_overlay',
         expectedOperationId: 7,
         expectedConfigurationRevision: 3,
@@ -736,11 +739,42 @@ void main() {
 
     final updated = parsed.copyWith(
       state: OverlayLifecycleState.stopping,
+      templateId: 'split',
       failureReason: 'user requested stop',
     );
     expect(updated.state, OverlayLifecycleState.stopping);
+    expect(updated.templateId, 'split');
     expect(updated.failureReason, 'user requested stop');
     expect(updated.entryPointMs, 1000);
+  });
+
+  test('PID file reads retry a temporary Windows sharing violation', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'wallsync-pid-read-test-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final pidFile = File('${directory.path}\\overlay.pid');
+    await pidFile.writeAsString('{"pid":1234}');
+    var reads = 0;
+
+    final contents = await readOverlayPidFileContents(
+      pidFile,
+      readContents: () async {
+        reads++;
+        if (reads == 1) {
+          throw FileSystemException(
+            'sharing violation',
+            pidFile.path,
+            const OSError('sharing violation', 32),
+          );
+        }
+        return pidFile.readAsString();
+      },
+      retryDelay: (_) => Duration.zero,
+    );
+
+    expect(contents, '{"pid":1234}');
+    expect(reads, 2);
   });
 
   test(

@@ -8,6 +8,7 @@ class ProcessDiagnosticLog {
   Future<void> _writeQueue = Future<void>.value();
   String _processMode = 'unvalidated';
   String? _instanceId;
+  String? _templateId;
   int? _operationId;
   int _configurationRevision = 1;
 
@@ -16,11 +17,13 @@ class ProcessDiagnosticLog {
   void setContext({
     required String processMode,
     String? instanceId,
+    String? templateId,
     int? operationId,
     int configurationRevision = 1,
   }) {
     _processMode = processMode;
     _instanceId = instanceId;
+    _templateId = templateId;
     _operationId = operationId;
     _configurationRevision = configurationRevision;
   }
@@ -30,6 +33,7 @@ class ProcessDiagnosticLog {
     final line =
         '$timestamp processMode=$_processMode '
         'instanceId=${_instanceId ?? 'none'} '
+        'templateId=${_templateId ?? 'not-specified'} '
         'operationId=${_operationId?.toString() ?? 'none'} '
         'configRevision=$_configurationRevision stage=$stage $detail\r\n';
     _writeQueue = _writeQueue.then<void>((_) async {

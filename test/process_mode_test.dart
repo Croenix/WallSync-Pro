@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/services/process_mode.dart';
+import 'package:wall_sync/services/settings_service.dart';
 
 void main() {
   test('dashboard arguments classify the process as main', () {
@@ -14,6 +15,39 @@ void main() {
 
     expect(classic.mode, ProcessMode.classic);
     expect(classic.mode.value, 'classic');
+  });
+
+  test('keeps process mode, instance ID and visual template independent', () {
+    final parsed = parseProcessArguments([
+      '--overlay',
+      '--instance-id=widget-instance-7',
+      '--template-id=split',
+      '--operation-id=42',
+      '--config-revision=3',
+    ]);
+
+    expect(parsed.mode, ProcessMode.classic);
+    expect(parsed.instanceId, 'widget-instance-7');
+    expect(parsed.templateId, 'split');
+    expect(parsed.operationId, 42);
+    expect(parsed.configurationRevision, 3);
+  });
+
+  test('every supported visual template passes through process arguments', () {
+    final supportedTemplates = WidgetSettings.templateDefaults.keys.where(
+      (id) => !id.startsWith('taskbar_'),
+    );
+
+    for (final templateId in supportedTemplates) {
+      final parsed = parseProcessArguments([
+        '--overlay',
+        '--instance-id=instance-1',
+        '--template-id=$templateId',
+      ]);
+      expect(parsed.templateId, templateId);
+      expect(parsed.instanceId, 'instance-1');
+      expect(parsed.mode, ProcessMode.classic);
+    }
   });
 
   test('wallpaper mode remains independent from overlay mode', () {
@@ -37,6 +71,18 @@ void main() {
       throwsFormatException,
     );
     expect(
+      () => parseProcessArguments(['--overlay', '--template-id=bad template']),
+      throwsFormatException,
+    );
+    expect(
+      () => parseProcessArguments([
+        '--overlay',
+        '--template-id=split',
+        '--template-id=classic',
+      ]),
+      throwsFormatException,
+    );
+    expect(
       () => parseProcessArguments(['--overlay', '--wallpaper']),
       throwsFormatException,
     );
@@ -48,10 +94,7 @@ void main() {
 
   test('retired taskbar dock process type is rejected', () {
     expect(
-      () => parseProcessArguments([
-        '--overlay',
-        '--overlay-type=taskbar_dock',
-      ]),
+      () => parseProcessArguments(['--overlay', '--overlay-type=taskbar_dock']),
       throwsFormatException,
     );
   });

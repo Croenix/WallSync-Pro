@@ -19,6 +19,7 @@ class ParsedProcessArguments {
     required this.startupRegistration,
     required this.silent,
     this.instanceId,
+    this.templateId,
     this.operationId,
     this.configurationRevision = 1,
     this.videoPath,
@@ -30,6 +31,7 @@ class ParsedProcessArguments {
   final bool startupRegistration;
   final bool silent;
   final String? instanceId;
+  final String? templateId;
   final int? operationId;
   final int configurationRevision;
   final String? videoPath;
@@ -45,6 +47,7 @@ ParsedProcessArguments parseProcessArguments(List<String> arguments) {
   String? overlayType;
   String? startupTrigger;
   String? instanceId;
+  String? templateId;
   int? operationId;
   int? configurationRevision;
   String? videoPath;
@@ -104,6 +107,14 @@ ParsedProcessArguments parseProcessArguments(List<String> arguments) {
           '--instance-id may contain only letters, numbers, "_" and "-"',
         );
       }
+    } else if (argument.startsWith('--template-id=')) {
+      markSeen('--template-id');
+      templateId = readValue(argument, '--template-id');
+      if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(templateId)) {
+        throw const FormatException(
+          '--template-id may contain only letters, numbers, "_" and "-"',
+        );
+      }
     } else if (argument.startsWith('--operation-id=')) {
       markSeen('--operation-id');
       operationId = int.tryParse(readValue(argument, '--operation-id'));
@@ -147,9 +158,10 @@ ParsedProcessArguments parseProcessArguments(List<String> arguments) {
       '--sync-startup-registration is only valid in main mode',
     );
   }
-  if (!overlay && (instanceId != null || operationId != null)) {
+  if (!overlay &&
+      (instanceId != null || templateId != null || operationId != null)) {
     throw const FormatException(
-      '--instance-id and --operation-id require --overlay',
+      '--instance-id, --template-id and --operation-id require --overlay',
     );
   }
   if (configurationRevision != null && !overlay) {
@@ -176,6 +188,7 @@ ParsedProcessArguments parseProcessArguments(List<String> arguments) {
     startupRegistration: startupRegistration,
     silent: silent,
     instanceId: instanceId,
+    templateId: templateId,
     operationId: operationId,
     configurationRevision: configurationRevision ?? 1,
     videoPath: videoPath,

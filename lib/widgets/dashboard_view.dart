@@ -930,6 +930,9 @@ class _DashboardViewState extends State<DashboardView>
   Set<String> _activeRunningWidgetIds = {};
   final Set<String> _launchingWidgetIds = {};
   final Map<String, int> _widgetGenerations = {};
+  final Map<String, int> _widgetOperationIds = {};
+  final Map<String, Future<void>> _widgetLaunchOperations = {};
+  final Map<String, Future<void>> _widgetCloseOperations = {};
   final Map<String, DateTime> _widgetLaunchedAt = {};
   final Map<String, OverlayRecoveryPolicy> _widgetRecoveryPolicies = {};
   final Map<String, Timer?> _widgetRecoveryTimers = {};
@@ -2180,7 +2183,10 @@ class _DashboardViewState extends State<DashboardView>
         'Could not confirm live wallpaper shutdown before application exit.',
       );
     }
-    await _closeOverlay();
+    await _stopAllRunningWidgets(
+      reason: 'application_shutdown',
+      showSnackbar: false,
+    );
     try {
       await trayManager.destroy();
     } catch (e, st) {
@@ -2197,14 +2203,7 @@ class _DashboardViewState extends State<DashboardView>
   // ── Overlay status ───────────────────────────────────────────────────────
 
   Future<String> _safeReadPidFile(File file) async {
-    try {
-      if (await file.exists()) {
-        return await file.readAsString();
-      }
-    } catch (e) {
-      logWarning('DashboardView', 'Could not read overlay PID record: $e');
-    }
-    return '';
+    return await readOverlayPidFileContents(file) ?? '';
   }
 
   Future<void> _checkOverlayStatus() {
@@ -2223,7 +2222,23 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _checkOverlayStatusInternal() async {
     try {
       final pidFile = await _settingsService.pidFile;
-      final content = (await _safeReadPidFile(pidFile)).trim();
+      String content;
+      try {
+        content = (await _safeReadPidFile(pidFile)).trim();
+      } on FileSystemException catch (error, stackTrace) {
+        logWarning(
+          'DashboardView',
+          'Primary overlay PID state is temporarily unreadable; preserving '
+              'the last known widget state and skipping recovery this cycle.',
+        );
+        logError(
+          'DashboardView',
+          'Overlay PID read failed after bounded retries.',
+          error,
+          stackTrace,
+        );
+        return;
+      }
       final record = OverlayProcessRecord.tryParse(content);
       final inspection = record == null
           ? null
@@ -2238,6 +2253,7 @@ class _DashboardViewState extends State<DashboardView>
 
       // Verify all active simultaneous widget instances
       final runningWidgetIds = <String>{};
+      final unreadableWidgetIds = <String>{};
       final now = DateTime.now();
       for (final widgetId in _settings.activeWidgetIds) {
         try {
@@ -2250,22 +2266,85 @@ class _DashboardViewState extends State<DashboardView>
             if (instInspection != null &&
                 instInspection.isRunning &&
                 instInspection.matches(instRecord)) {
-              runningWidgetIds.add(widgetId);
-              if (instRecord.ready) {
-                _widgetLaunchedAt.remove(widgetId);
+              final expectedOperationId = _widgetOperationIds[widgetId];
+              final recordMatchesWidget =
+                  (instRecord.instanceId == null ||
+                      instRecord.instanceId == widgetId) &&
+                  (instRecord.templateId == null ||
+                      instRecord.templateId == widgetId) &&
+                  (expectedOperationId == null ||
+                      instRecord.operationId == expectedOperationId);
+              if (!recordMatchesWidget) {
+                unreadableWidgetIds.add(widgetId);
+                logError(
+                  'DashboardView',
+                  'Widget "$widgetId" has a live process record for a '
+                      'different instance, template or launch generation; '
+                      'preserving state and deferring recovery.',
+                );
+              } else {
+                runningWidgetIds.add(widgetId);
+                if (instRecord.operationId != null) {
+                  _widgetOperationIds[widgetId] = instRecord.operationId!;
+                }
+                if (instRecord.ready) {
+                  _widgetLaunchedAt.remove(widgetId);
+                }
               }
-            } else if (instInspection != null && !instInspection.isRunning) {
-              try {
-                if (await instPidFile.exists()) await instPidFile.delete();
-              } catch (_) {}
+            } else if (instInspection == null) {
+              unreadableWidgetIds.add(widgetId);
+              logWarning(
+                'DashboardView',
+                'Widget "$widgetId" process identity could not be verified; '
+                    'preserving state and deferring recovery.',
+              );
+            } else if (!instInspection.isRunning) {
+              DiagnosticsService.instance.recordWidgetLifecycleEvent(
+                widgetId,
+                'process_exited',
+                pid: instRecord.pid,
+                details: 'reason=unexpected_process_exit',
+              );
+              logWarning(
+                'DashboardView',
+                'Widget "$widgetId" process ${instRecord.pid} exited; '
+                    'recovery may proceed after the health check.',
+              );
+            } else {
+              unreadableWidgetIds.add(widgetId);
+              logWarning(
+                'DashboardView',
+                'Widget "$widgetId" PID record no longer matches process '
+                    '${instRecord.pid}; preserving state and deferring recovery.',
+              );
             }
+          } else if (instContent.isNotEmpty) {
+            unreadableWidgetIds.add(widgetId);
+            logError(
+              'DashboardView',
+              'Widget "$widgetId" PID record is malformed; preserving state '
+                  'and deferring recovery.',
+            );
           }
-        } catch (_) {}
+        } on FileSystemException catch (error, stackTrace) {
+          unreadableWidgetIds.add(widgetId);
+          logError(
+            'DashboardView',
+            'Widget "$widgetId" PID state is temporarily unreadable; '
+                'recovery is deferred until the next health check.',
+            error,
+            stackTrace,
+          );
+        }
 
         // Check if this widget is within its 15-second startup grace period
         final launchedAt = _widgetLaunchedAt[widgetId];
         if (launchedAt != null &&
             now.difference(launchedAt) < const Duration(seconds: 15)) {
+          runningWidgetIds.add(widgetId);
+        }
+        if (unreadableWidgetIds.contains(widgetId) &&
+            _activeRunningWidgetIds.contains(widgetId)) {
           runningWidgetIds.add(widgetId);
         }
       }
@@ -2291,7 +2370,8 @@ class _DashboardViewState extends State<DashboardView>
           _widgetRecoveryPolicies[widgetId]?.reset();
           _widgetRecoveryTimers[widgetId]?.cancel();
           _widgetRecoveryTimers[widgetId] = null;
-        } else if (!_isOverlayExplicitlyClosed &&
+        } else if (!unreadableWidgetIds.contains(widgetId) &&
+            !_isOverlayExplicitlyClosed &&
             !_launchingWidgetIds.contains(widgetId) &&
             _widgetRecoveryTimers[widgetId] == null) {
           final launchedAt = _widgetLaunchedAt[widgetId];
@@ -2344,7 +2424,21 @@ class _DashboardViewState extends State<DashboardView>
     } catch (_) {}
   }
 
-  Future<void> _launchWidgetOverlay(String widgetId) async {
+  Future<void> _launchWidgetOverlay(String widgetId) {
+    final pending = _widgetLaunchOperations[widgetId];
+    if (pending != null) return pending;
+
+    late final Future<void> operation;
+    operation = _launchWidgetOverlayInternal(widgetId).whenComplete(() {
+      if (identical(_widgetLaunchOperations[widgetId], operation)) {
+        _widgetLaunchOperations.remove(widgetId);
+      }
+    });
+    _widgetLaunchOperations[widgetId] = operation;
+    return operation;
+  }
+
+  Future<void> _launchWidgetOverlayInternal(String widgetId) async {
     if (widgetId.startsWith('taskbar_')) {
       logWarning(
         'DashboardView',
@@ -2371,6 +2465,8 @@ class _DashboardViewState extends State<DashboardView>
     DiagnosticsService.instance.markWidgetLaunchRequested(widgetId);
     final generation = (_widgetGenerations[widgetId] ?? 0) + 1;
     _widgetGenerations[widgetId] = generation;
+    final launchId = DateTime.now().millisecondsSinceEpoch;
+    _widgetOperationIds[widgetId] = launchId;
     _widgetRecoveryTimers[widgetId]?.cancel();
     _widgetRecoveryTimers[widgetId] = null;
     final launchStopwatch = Stopwatch()..start();
@@ -2396,11 +2492,27 @@ class _DashboardViewState extends State<DashboardView>
           final content = (await _safeReadPidFile(pidFile)).trim();
           final existingRecord = OverlayProcessRecord.tryParse(content);
           if (existingRecord != null) {
+            if (existingRecord.instanceId != null &&
+                existingRecord.instanceId != widgetId) {
+              throw StateError(
+                'Widget PID record instance "${existingRecord.instanceId}" '
+                'does not match requested instance "$widgetId".',
+              );
+            }
             final inspection = await inspectWindowsProcess(existingRecord.pid);
             if (inspection != null &&
                 inspection.isRunning &&
                 inspection.matches(existingRecord)) {
               if (existingRecord.ready) {
+                if (existingRecord.templateId != null &&
+                    existingRecord.templateId != widgetId) {
+                  throw StateError(
+                    'Widget "$widgetId" PID ${existingRecord.pid} is registered '
+                    'for template "${existingRecord.templateId}".',
+                  );
+                }
+                _widgetOperationIds[widgetId] =
+                    existingRecord.operationId ?? launchId;
                 logInfo(
                   'DashboardView',
                   'Widget "$widgetId" is already running live (PID ${existingRecord.pid}); joined existing instance.',
@@ -2427,22 +2539,84 @@ class _DashboardViewState extends State<DashboardView>
                   'DashboardView',
                   'Widget "$widgetId" process PID ${existingRecord.pid} is already starting up; awaiting existing instance.',
                 );
+                final existingReadiness = await waitForOverlayReadiness(
+                  readRecord: () async {
+                    final current = (await _safeReadPidFile(pidFile)).trim();
+                    return current.isEmpty
+                        ? null
+                        : OverlayProcessRecord.tryParse(current);
+                  },
+                  inspectProcess: inspectWindowsProcess,
+                  expectedPid: existingRecord.pid,
+                  expectedInstanceId: widgetId,
+                  expectedTemplateId: widgetId,
+                  expectedProcessMode: 'classic',
+                  requireWindowHandle: true,
+                  timeout: overlayStartupReadinessTimeout,
+                  pollInterval: const Duration(milliseconds: 200),
+                );
+                if (existingReadiness.isReady) {
+                  _widgetOperationIds[widgetId] =
+                      existingReadiness.record?.operationId ?? launchId;
+                  if (mounted) {
+                    setState(() {
+                      _activeRunningWidgetIds.add(widgetId);
+                      _isOverlayRunning = true;
+                    });
+                  }
+                  _updateTrayMenu();
+                  _widgetLaunchedAt.remove(widgetId);
+                  _widgetRecoveryPolicies[widgetId]?.reset();
+                  _widgetRecoveryTimers[widgetId]?.cancel();
+                  _widgetRecoveryTimers[widgetId] = null;
+                  return;
+                }
+                final currentProcess = await inspectWindowsProcess(
+                  existingRecord.pid,
+                );
+                if (currentProcess == null) {
+                  throw StateError(
+                    'Could not verify the existing widget process for '
+                    '"$widgetId"; refusing a duplicate launch.',
+                  );
+                }
+                if (currentProcess.isRunning &&
+                    currentProcess.matches(existingRecord)) {
+                  throw StateError(
+                    'Widget "$widgetId" remains alive but did not become ready; '
+                    'refusing to start a duplicate instance.',
+                  );
+                }
+                if (currentProcess.isRunning) {
+                  throw StateError(
+                    'The existing PID for "$widgetId" belongs to a different '
+                    'process; refusing a duplicate launch.',
+                  );
+                }
               }
             } else {
-              // Dead or stale PID file: remove it so new launch does not read old records
-              await pidFile.delete();
+              logInfo(
+                'DashboardView',
+                'Ignoring stale PID identity for "$widgetId"; the child will '
+                    'replace the record atomically after acquiring its lock.',
+              );
             }
           } else {
-            await pidFile.delete();
+            throw const FormatException(
+              'The existing widget PID record is malformed; refusing to '
+              'remove or bypass its single-instance lock.',
+            );
           }
-        } catch (_) {}
-      }
-
-      final lockFile = await instService.lockFile;
-      if (await lockFile.exists()) {
-        try {
-          await lockFile.delete();
-        } catch (_) {}
+        } on FileSystemException catch (error, stackTrace) {
+          logError(
+            'DashboardView',
+            'Could not verify the existing PID record for "$widgetId"; '
+                'refusing a potentially duplicate launch.',
+            error,
+            stackTrace,
+          );
+          rethrow;
+        }
       }
 
       final stageSettingsStopwatch = Stopwatch()..start();
@@ -2522,6 +2696,9 @@ class _DashboardViewState extends State<DashboardView>
           '--overlay',
           '--startup-trigger=dashboard',
           '--instance-id=$widgetId',
+          '--template-id=$widgetId',
+          '--operation-id=$launchId',
+          '--config-revision=1',
         ],
       );
 
@@ -2542,6 +2719,9 @@ class _DashboardViewState extends State<DashboardView>
             '--overlay',
             '--startup-trigger=dashboard',
             '--instance-id=$widgetId',
+            '--template-id=$widgetId',
+            '--operation-id=$launchId',
+            '--config-revision=1',
           ],
           workingDirectory: workingDir,
           environment: const {'FLUTTER_ENGINE_SWITCHES': '0'},
@@ -2567,7 +2747,8 @@ class _DashboardViewState extends State<DashboardView>
             'parentPid=$pid childPid=$launchedPid templateId=$widgetId '
                 'workingDirectory="$workingDir" executable="$appPath" '
                 'arguments="--overlay --startup-trigger=dashboard '
-                '--instance-id=$widgetId"',
+                '--instance-id=$widgetId --template-id=$widgetId '
+                '--operation-id=$launchId --config-revision=1"',
           );
         }
         DiagnosticsService.instance.recordWidgetLifecycleEvent(
@@ -2618,7 +2799,9 @@ class _DashboardViewState extends State<DashboardView>
         inspectProcess: inspectWindowsProcess,
         expectedPid: launchedPid,
         expectedInstanceId: widgetId,
+        expectedTemplateId: widgetId,
         expectedProcessMode: 'classic',
+        expectedOperationId: launchId,
         requireWindowHandle: true,
         timeout: overlayStartupReadinessTimeout,
         pollInterval: const Duration(milliseconds: 200),
@@ -2832,7 +3015,36 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
-  Future<void> _closeWidgetOverlay(String widgetId) async {
+  Future<void> _closeWidgetOverlay(
+    String widgetId, {
+    String reason = 'user_requested',
+  }) {
+    final pending = _widgetCloseOperations[widgetId];
+    if (pending != null) {
+      logInfo(
+        'DashboardView',
+        'Coalescing duplicate shutdown request for "$widgetId" '
+            '(reason=$reason).',
+      );
+      return pending;
+    }
+    late final Future<void> operation;
+    operation = _closeWidgetOverlayInternal(
+      widgetId,
+      reason: reason,
+    ).whenComplete(() {
+      if (identical(_widgetCloseOperations[widgetId], operation)) {
+        _widgetCloseOperations.remove(widgetId);
+      }
+    });
+    _widgetCloseOperations[widgetId] = operation;
+    return operation;
+  }
+
+  Future<void> _closeWidgetOverlayInternal(
+    String widgetId, {
+    required String reason,
+  }) async {
     if (widgetId == 'taskbar_dock' && Platform.isWindows) {
       final restored = await WindowsTaskbarService.instance
           .restoreWindowsTaskbar();
@@ -2858,37 +3070,44 @@ class _DashboardViewState extends State<DashboardView>
       final generation = (_widgetGenerations[widgetId] ?? 0) + 1;
       _widgetGenerations[widgetId] = generation;
       _widgetLaunchedAt.remove(widgetId);
+      _widgetOperationIds.remove(widgetId);
       _widgetRecoveryTimers[widgetId]?.cancel();
       _widgetRecoveryTimers.remove(widgetId);
       _widgetRecoveryPolicies.remove(widgetId);
+      final launchOperation = _widgetLaunchOperations[widgetId];
+      if (launchOperation != null) {
+        logInfo(
+          'DashboardView',
+          'Waiting for in-flight widget "$widgetId" launch to settle before '
+              'shutdown (reason=$reason).',
+        );
+        await launchOperation;
+      }
 
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
         widgetId,
-        'exited',
-        details: 'explicit stop',
+        'shutdown_requested',
+        details: 'reason=$reason generation=$generation',
       );
 
       final instService = SettingsService(instanceId: widgetId);
-      try {
-        final cur = await instService.load();
-        await instService.save(cur.copyWith(exitOverlay: true));
-      } catch (_) {}
-
-      try {
-        final pidFile = await instService.pidFile;
-        final content = (await _safeReadPidFile(pidFile)).trim();
-        final record = OverlayProcessRecord.tryParse(content);
-        if (record != null) {
-          Process.killPid(record.pid);
-        }
-        if (await pidFile.exists()) {
-          await pidFile.delete();
-        }
-        final lockFile = await instService.lockFile;
-        if (await lockFile.exists()) {
-          await lockFile.delete();
-        }
-      } catch (_) {}
+      final closeResult = await OverlayLifecycleService.forApp(
+        instService,
+      ).close();
+      final processStopped =
+          closeResult == OverlayCloseResult.stoppedGracefully ||
+          closeResult == OverlayCloseResult.stoppedAfterForceTermination ||
+          closeResult == OverlayCloseResult.processIdentityChanged ||
+          closeResult == OverlayCloseResult.noProcessRecord;
+      if (!processStopped) {
+        logError(
+          'DashboardView',
+          'Widget "$widgetId" shutdown was not confirmed '
+              '(reason=$reason, result=$closeResult); preserving its process '
+              'record and active state.',
+        );
+        return;
+      }
 
       final activeIds = List<String>.from(_settings.activeWidgetIds)
         ..remove(widgetId);
@@ -2905,6 +3124,11 @@ class _DashboardViewState extends State<DashboardView>
       unawaited(DiagnosticsService.instance.refreshOverlayPid());
       unawaited(SystemOptimizerService.instance.optimizeMemory());
 
+      DiagnosticsService.instance.recordWidgetLifecycleEvent(
+        widgetId,
+        'shutdown_completed',
+        details: 'reason=$reason result=$closeResult',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2919,23 +3143,22 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
-  Future<void> _stopAllRunningWidgets() async {
+  Future<void> _stopAllRunningWidgets({
+    String reason = 'user_requested',
+    bool showSnackbar = true,
+  }) async {
     _widgetLaunchedAt.clear();
     final toStop = Set<String>.from(_activeRunningWidgetIds);
     for (final id in _settings.activeWidgetIds) {
       toStop.add(id);
     }
     for (final id in toStop) {
-      await _closeWidgetOverlay(id);
+      await _closeWidgetOverlay(id, reason: reason);
     }
-    await _closeOverlay();
-    setState(() {
-      _activeRunningWidgetIds.clear();
-      _isOverlayRunning = false;
-    });
+    await _closeOverlay(reason: reason);
     _updateTrayMenu();
 
-    if (mounted) {
+    if (showSnackbar && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('All running widgets stopped.'),
@@ -3300,13 +3523,17 @@ class _DashboardViewState extends State<DashboardView>
     }
 
     final launchStopwatch = Stopwatch()..start();
+    final templateId = _settings.widgetTemplate.isNotEmpty
+        ? _settings.widgetTemplate
+        : _activeTemplate;
     _isOverlayExplicitlyClosed = false;
     setState(() => _isLaunching = true);
     DiagnosticsService.instance.markOverlayLaunchRequested();
     logInfo(
       'OverlayStartup',
       'Overlay launch requested from "$startupTrigger"; waiting for a '
-          'verified process identity, first frame, and visible window.',
+          'verified process identity, first frame, and visible window '
+          '(template=$templateId).',
     );
     try {
       final existingPidFile = await _settingsService.pidFile;
@@ -3463,7 +3690,11 @@ class _DashboardViewState extends State<DashboardView>
         try {
           await Process.start(
             appPath,
-            ['--overlay', '--startup-trigger=$startupTrigger'],
+            [
+              '--overlay',
+              '--startup-trigger=$startupTrigger',
+              '--template-id=$templateId',
+            ],
             workingDirectory: workingDir,
             mode: ProcessStartMode.detached,
           );
@@ -3494,7 +3725,7 @@ class _DashboardViewState extends State<DashboardView>
 
         try {
           final batContent =
-              '@echo off\r\ncd /d "$workingDir"\r\nstart "" "$appPath" --overlay --startup-trigger=$startupTrigger\r\n';
+              '@echo off\r\ncd /d "$workingDir"\r\nstart "" "$appPath" --overlay --startup-trigger=$startupTrigger --template-id=$templateId\r\n';
           final taskCreateStopwatch = Stopwatch()..start();
           await File(batPath).writeAsString(batContent, flush: true);
 
@@ -3591,6 +3822,7 @@ class _DashboardViewState extends State<DashboardView>
                   appPath,
                   '--overlay',
                   '--startup-trigger=$startupTrigger',
+                  '--template-id=$templateId',
                 ],
                 workingDirectory: workingDir,
                 mode: ProcessStartMode.detached,
@@ -3623,6 +3855,7 @@ class _DashboardViewState extends State<DashboardView>
           return record;
         },
         inspectProcess: inspectWindowsProcess,
+        expectedTemplateId: templateId,
         timeout: const Duration(seconds: 40),
         onStatusChanged: (status, record, inspection, elapsed) {
           logInfo(
@@ -3778,11 +4011,11 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
-  Future<void> _closeOverlay() {
+  Future<void> _closeOverlay({String reason = 'user_requested'}) {
     final pending = _overlayCloseOperation;
     if (pending != null) return pending;
     late final Future<void> operation;
-    operation = _closeOverlayInternal().whenComplete(() {
+    operation = _closeOverlayInternal(reason: reason).whenComplete(() {
       if (identical(_overlayCloseOperation, operation)) {
         _overlayCloseOperation = null;
       }
@@ -3791,7 +4024,7 @@ class _DashboardViewState extends State<DashboardView>
     return operation;
   }
 
-  Future<void> _closeOverlayInternal() async {
+  Future<void> _closeOverlayInternal({required String reason}) async {
     if (_isLaunching) {
       logInfo(
         'DashboardView',
@@ -3805,7 +4038,10 @@ class _DashboardViewState extends State<DashboardView>
     _overlayRecoveryStabilityTimer?.cancel();
     _overlayRecoveryStabilityTimer = null;
     _overlayRecoveryPolicy.reset();
-    logInfo('DashboardView', 'Requesting verified graceful overlay shutdown.');
+    logInfo(
+      'DashboardView',
+      'Requesting verified graceful overlay shutdown (reason=$reason).',
+    );
     try {
       final result = await _overlayLifecycle.close();
       if (result == OverlayCloseResult.stoppedGracefully ||

@@ -177,7 +177,7 @@ void _emitOverlayBootstrapEvent(
   if (instanceId.isNotEmpty) fields.add('instanceId=$instanceId');
   if (operationId != null) fields.add('operationId=$operationId');
   if (overlayType != null && overlayType.isNotEmpty) {
-    fields.add('overlayType=$overlayType');
+    fields.add('templateId=$overlayType');
   }
   if (reason != null && reason.isNotEmpty) {
     fields.add('reason=${reason.replaceAll(RegExp(r'\s+'), ' ')}');
@@ -250,26 +250,59 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
     final instService = SettingsService(instanceId: id);
     final pidFile = await instService.pidFile;
     bool isRunning = false;
-    if (await pidFile.exists()) {
-      try {
-        final record = OverlayProcessRecord.tryParse(
-          await pidFile.readAsString(),
-        );
-        if (record != null) {
-          final inspection = await inspectWindowsProcess(record.pid);
-          if (inspection != null &&
-              inspection.isRunning &&
-              inspection.matches(record)) {
-            isRunning = true;
+    String? pidContents;
+    try {
+      pidContents = await readOverlayPidFileContents(pidFile);
+    } on FileSystemException catch (error, stackTrace) {
+      logError(
+        'OverlayStartup',
+        'Startup restoration deferred for "$id" because its PID record '
+            'could not be read safely.',
+        error,
+        stackTrace,
+      );
+      continue;
+    }
+    if (pidContents != null) {
+      final record = OverlayProcessRecord.tryParse(pidContents);
+      if (record != null) {
+        final inspection = await inspectWindowsProcess(record.pid);
+        if (inspection != null &&
+            inspection.isRunning &&
+            inspection.matches(record)) {
+          if (record.instanceId != null && record.instanceId != id ||
+              record.templateId != null && record.templateId != id) {
+            logError(
+              'OverlayStartup',
+              'Startup restoration skipped "$id" because its PID record '
+                  'belongs to instance=${record.instanceId} '
+                  'template=${record.templateId}.',
+            );
+            continue;
           }
+          isRunning = true;
         }
-      } catch (_) {}
+      } else {
+        logWarning(
+          'OverlayStartup',
+          'Startup restoration found malformed PID state for "$id"; '
+              'the record was left untouched.',
+        );
+        continue;
+      }
     }
     if (!isRunning) {
       try {
         final process = await Process.start(
           executable,
-          ['--overlay', '--startup-trigger=windows-logon', '--instance-id=$id'],
+          [
+            '--overlay',
+            '--startup-trigger=windows-logon',
+            '--instance-id=$id',
+            '--template-id=$id',
+            '--operation-id=${DateTime.now().millisecondsSinceEpoch}',
+            '--config-revision=1',
+          ],
           environment: const {'FLUTTER_ENGINE_SWITCHES': '0'},
           mode: ProcessStartMode.detached,
           workingDirectory: workingDirectory,
@@ -310,6 +343,7 @@ void main(List<String> args) async {
   processDiagnostics.setContext(
     processMode: processArguments.mode.value,
     instanceId: processArguments.instanceId,
+    templateId: processArguments.templateId,
     operationId: processArguments.operationId,
     configurationRevision: processArguments.configurationRevision,
   );
@@ -324,7 +358,7 @@ void main(List<String> args) async {
   if (processArguments.mode.isOverlay) {
     await processDiagnostics.record(
       'overlay_mode_confirmed',
-      'result=success templateId=${processArguments.instanceId ?? 'unknown'}',
+      'result=success templateId=${processArguments.templateId ?? 'not-specified'}',
     );
   }
 
@@ -356,7 +390,7 @@ void main(List<String> args) async {
     operationId: processArguments.operationId,
     configRevision: processArguments.configurationRevision,
     stopwatch: startupArgsStopwatch,
-    overlayType: isOverlayMode ? processArguments.mode.value : null,
+    overlayType: isOverlayMode ? processArguments.templateId : null,
   );
   final wallpaperVideoPath = processArguments.videoPath;
   final initialTab = processArguments.initialTab;
@@ -393,7 +427,7 @@ void main(List<String> args) async {
     operationId: processArguments.operationId,
     configRevision: processArguments.configurationRevision,
     stopwatch: startupStopwatch,
-    overlayType: isOverlayMode ? processArguments.mode.value : null,
+    overlayType: isOverlayMode ? processArguments.templateId : null,
   );
   if (kDebugMode && !isWallpaperMode) {
     assert(() {
@@ -509,12 +543,13 @@ void main(List<String> args) async {
     operationId: processArguments.operationId,
     configRevision: processArguments.configurationRevision,
     stopwatch: startupStopwatch,
-    overlayType: isOverlayMode ? processArguments.mode.value : null,
+    overlayType: isOverlayMode ? processArguments.templateId : null,
   );
 
   final overlayInstanceId = processArguments.instanceId ?? '';
-  final overlayType = isOverlayMode ? processArguments.mode.value : '';
-  final normalizedOverlayType = overlayType;
+  var overlayType = isOverlayMode
+      ? (processArguments.templateId ?? '')
+      : '';
   final overlayOperationId = processArguments.operationId;
   final overlayConfigRevision = processArguments.configurationRevision;
 
@@ -525,7 +560,7 @@ void main(List<String> args) async {
     operationId: overlayOperationId,
     configRevision: overlayConfigRevision,
     stopwatch: startupArgsStopwatch,
-    overlayType: normalizedOverlayType,
+    overlayType: overlayType,
   );
 
   // ── Step 4: Load settings ──
@@ -545,6 +580,57 @@ void main(List<String> args) async {
     'result=${settingsService.settingsLoadSucceeded ? 'success' : 'failed'} '
         'path="${settingsFile.path}" elapsedMs=$settingsLoadMs',
   );
+  if (isOverlayMode) {
+    if (!settingsService.settingsLoadSucceeded) {
+      await _failOverlayStartup(
+        'Could not load the authoritative overlay configuration from '
+        '"${settingsFile.path}".',
+      );
+    }
+    final resolvedTemplateId = settings.widgetTemplate;
+    final supportedTemplateIds = WidgetSettings.templateDefaults.keys
+        .where((id) => !id.startsWith('taskbar_'))
+        .toSet();
+    if (!supportedTemplateIds.contains(resolvedTemplateId)) {
+      await _failOverlayStartup(
+        'Overlay configuration resolved unsupported template '
+        '"$resolvedTemplateId" for instance "$overlayInstanceId".',
+      );
+    }
+    if (processArguments.templateId != null &&
+        processArguments.templateId != resolvedTemplateId) {
+      await _failOverlayStartup(
+        'Requested template "${processArguments.templateId}" does not match '
+        'the authoritative instance configuration "$resolvedTemplateId" '
+        'for instance "$overlayInstanceId".',
+      );
+    }
+    overlayType = resolvedTemplateId;
+    processDiagnostics.setContext(
+      processMode: processArguments.mode.value,
+      instanceId: overlayInstanceId,
+      templateId: resolvedTemplateId,
+      operationId: overlayOperationId,
+      configurationRevision: overlayConfigRevision,
+    );
+    await processDiagnostics.record(
+      'template_resolution',
+      'requestedTemplateId=${processArguments.templateId ?? 'not-specified'} '
+          'resolvedTemplateId=$resolvedTemplateId '
+          'renderedWidgetClass=DesktopWidget '
+          'renderedLayout=${DesktopWidget.layoutForTemplate(resolvedTemplateId).name} '
+          'configurationRevision=$overlayConfigRevision',
+    );
+    logInfo(
+      'OverlayStartup',
+      'Resolved widget template: requested=${processArguments.templateId ?? 'not-specified'}, '
+          'resolved=$resolvedTemplateId, instanceId=$overlayInstanceId, '
+          'processMode=${processArguments.mode.value}, '
+          'renderedWidgetClass=DesktopWidget/'
+          '${DesktopWidget.layoutForTemplate(resolvedTemplateId).name}, '
+          'configurationRevision=$overlayConfigRevision.',
+    );
+  }
   logPerf(
     'OverlayStartup',
     'Settings file load completed in ${settingsLoadMs}ms '
@@ -627,7 +713,7 @@ void main(List<String> args) async {
     operationId: overlayOperationId,
     configRevision: overlayConfigRevision,
     stopwatch: startupStopwatch,
-    overlayType: normalizedOverlayType,
+    overlayType: overlayType,
   );
 
   // ── Step 5: Branch into Overlay, Wallpaper, or Dashboard mode ──
@@ -639,7 +725,7 @@ void main(List<String> args) async {
       operationId: overlayOperationId,
       configRevision: overlayConfigRevision,
       stopwatch: startupStopwatch,
-      overlayType: normalizedOverlayType,
+      overlayType: overlayType,
     );
     _emitOverlayBootstrapEvent(
       'overlay_type_selected',
@@ -648,7 +734,7 @@ void main(List<String> args) async {
       operationId: overlayOperationId,
       configRevision: overlayConfigRevision,
       stopwatch: startupStopwatch,
-      overlayType: normalizedOverlayType,
+      overlayType: overlayType,
     );
     logInfo(
       'OverlayStartup',
@@ -801,6 +887,7 @@ void main(List<String> args) async {
       state: OverlayLifecycleState.processStarted,
       stage: DockReadinessStage.processRunning,
       instanceId: overlayInstanceId,
+      templateId: overlayType,
       processMode: processArguments.mode.value,
       diagnosticLogPath: processDiagnostics.path,
       hwnd: overlayHwnd,
@@ -1074,7 +1161,7 @@ void main(List<String> args) async {
           operationId: overlayOperationId,
           configRevision: overlayConfigRevision,
           stopwatch: startupStopwatch,
-          overlayType: normalizedOverlayType,
+          overlayType: overlayType,
         );
 
         final windowInitMs = DateTime.now().millisecondsSinceEpoch;
@@ -1085,7 +1172,7 @@ void main(List<String> args) async {
           operationId: overlayOperationId,
           configRevision: overlayConfigRevision,
           stopwatch: startupStopwatch,
-          overlayType: normalizedOverlayType,
+          overlayType: overlayType,
           reason: overlayHwnd == null
               ? 'native-hwnd-not-yet-known'
               : 'hwnd=$overlayHwnd',
@@ -1096,6 +1183,7 @@ void main(List<String> args) async {
           stage: DockReadinessStage.windowVisible,
           hwnd: overlayHwnd,
           instanceId: overlayInstanceId,
+          templateId: overlayType,
           processMode: processArguments.mode.value,
           diagnosticLogPath: processDiagnostics.path,
           operationId: overlayOperationId,
@@ -1113,7 +1201,7 @@ void main(List<String> args) async {
           operationId: overlayOperationId,
           configRevision: overlayConfigRevision,
           stopwatch: startupStopwatch,
-          overlayType: normalizedOverlayType,
+          overlayType: overlayType,
           reason: overlayHwnd == null
               ? 'hwnd-not-registered'
               : 'hwnd=$overlayHwnd',
@@ -1175,6 +1263,7 @@ void main(List<String> args) async {
               readyPublishedMs: readyPublishedMs,
               hwnd: overlayHwnd,
               instanceId: overlayInstanceId,
+              templateId: overlayType,
               processMode: processArguments.mode.value,
               diagnosticLogPath: processDiagnostics.path,
               operationId: overlayOperationId,
@@ -1206,7 +1295,7 @@ void main(List<String> args) async {
         operationId: overlayOperationId,
         configRevision: overlayConfigRevision,
         stopwatch: startupStopwatch,
-        overlayType: normalizedOverlayType,
+        overlayType: overlayType,
         reason: 'readyPublishedMs=$readyPublishedMs, hwnd=${overlayHwnd ?? 0}',
       );
       logInfo(
@@ -1227,7 +1316,7 @@ void main(List<String> args) async {
         operationId: overlayOperationId,
         configRevision: overlayConfigRevision,
         stopwatch: startupStopwatch,
-        overlayType: normalizedOverlayType,
+        overlayType: overlayType,
       );
       await processDiagnostics.record('window_ready_to_show', 'result=success');
       logInfo(
