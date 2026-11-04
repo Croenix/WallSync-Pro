@@ -101,6 +101,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
   bool _isRefreshingDockWindows = false;
   final Set<String> _hoveredTaskbarActions = {};
   bool get _isTaskbarWidget => _settings.widgetTemplate.startsWith('taskbar_');
+  bool get _isTaskbarCustomizationRestricted =>
+      _isTaskbarWidget ||
+      _settings.taskbarSettings.customTaskbarEnabled ||
+      _settings.taskbarSettings.nativeTaskbarHideEnabled;
   bool get _isTaskbarReplacement =>
       _settings.widgetTemplate == 'taskbar_dock' &&
       WindowsTaskbarService.supportsFullReplacement &&
@@ -1181,7 +1185,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
     BuildContext context,
     Offset globalPosition,
   ) async {
-    if (_isTaskbarWidget) return;
+    if (_isTaskbarCustomizationRestricted) return;
     final RenderBox? overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;

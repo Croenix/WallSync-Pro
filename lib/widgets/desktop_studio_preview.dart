@@ -173,29 +173,72 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 1. Simulated Virtual Desktop Wallpaper
-                  _buildSimulatedDesktopWallpaper(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const previewRatio = 16.0 / 9.0;
+            const extraPadding = 18.0;
+            final maxWidth = constraints.maxWidth;
+            final maxHeight = constraints.maxHeight;
 
-                  // 2. Simulated Desktop Window & Content
-                  _buildSimulatedDesktopWindow(constraints),
+            final safeWidth = math.max(0.0, maxWidth - extraPadding * 2);
+            final safeHeight = math.max(0.0, maxHeight - extraPadding * 2);
 
-                  // 3. Edit Mode Visual Overlay Guides
-                  if (!widget.isLivePreviewMode)
-                    _buildEditModeGridOverlay(constraints),
+            final fitSize = safeWidth <= 0 || safeHeight <= 0
+                ? Size(maxWidth, maxHeight)
+                : (() {
+                    if ((safeWidth / safeHeight) > previewRatio) {
+                      final height = safeHeight;
+                      final width = height * previewRatio;
+                      return Size(width, height);
+                    }
+                    final width = safeWidth;
+                    final height = width / previewRatio;
+                    return Size(width, height);
+                  })();
 
-                  // 4. Live Dock Anchor & Dock Animation Engine
-                  _buildDockAnchor(constraints),
-                ],
-              );
-            },
-          ),
+            return SizedBox(
+              width: maxWidth,
+              height: maxHeight,
+              child: Center(
+                child: SizedBox(
+                  width: fitSize.width,
+                  height: fitSize.height,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // 1. Simulated Virtual Desktop Wallpaper
+                      _buildSimulatedDesktopWallpaper(),
+
+                      // 2. Simulated Desktop Window & Content
+                      _buildSimulatedDesktopWindow(
+                        BoxConstraints(
+                          maxWidth: fitSize.width,
+                          maxHeight: fitSize.height,
+                        ),
+                      ),
+
+                      // 3. Edit Mode Visual Overlay Guides
+                      if (!widget.isLivePreviewMode)
+                        _buildEditModeGridOverlay(
+                          BoxConstraints(
+                            maxWidth: fitSize.width,
+                            maxHeight: fitSize.height,
+                          ),
+                        ),
+
+                      // 4. Live Dock Anchor & Dock Animation Engine
+                      _buildDockAnchor(
+                        BoxConstraints(
+                          maxWidth: fitSize.width,
+                          maxHeight: fitSize.height,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -207,11 +250,7 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1E1B4B),
-            Color(0xFF0A0F1D),
-          ],
+          colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0A0F1D)],
         ),
       ),
       child: Stack(
@@ -292,7 +331,9 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(9),
+                ),
                 border: Border(
                   bottom: BorderSide(
                     color: Colors.white.withValues(alpha: 0.06),
@@ -520,7 +561,8 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
         child: AnimatedBuilder(
           animation: _autoHideController,
           builder: (context, child) {
-            double translateOffset = (1.0 - _autoHideController.value) *
+            double translateOffset =
+                (1.0 - _autoHideController.value) *
                 (layout.thickness + edgeOffset + 20);
 
             Offset slideOffset;
@@ -563,10 +605,20 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
     final appearance = widget.template.appearance;
 
     final isHorizontal =
-        layout.position == DockPosition.bottom || layout.position == DockPosition.top;
+        layout.position == DockPosition.bottom ||
+        layout.position == DockPosition.top;
 
-    final containerHeight = isHorizontal ? layout.thickness : (layout.length ?? constraints.maxHeight * 0.7);
-    final containerWidth = isHorizontal ? (layout.autoSize ? null : layout.length ?? constraints.maxWidth * 0.95) : layout.thickness;
+    final safeWidth = constraints.maxWidth > 0 ? constraints.maxWidth : 1.0;
+    final safeHeight = constraints.maxHeight > 0 ? constraints.maxHeight : 1.0;
+
+    final containerHeight = isHorizontal
+        ? layout.thickness
+        : (layout.length ?? safeHeight * 0.7).clamp(40.0, safeHeight);
+    final containerWidth = isHorizontal
+        ? (layout.autoSize
+              ? null
+              : (layout.length ?? safeWidth * 0.95).clamp(40.0, safeWidth))
+        : layout.thickness.clamp(40.0, safeWidth);
 
     Decoration decoration;
     switch (appearance.style) {
@@ -682,7 +734,8 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
     );
 
     // Apply acrylic backdrop blur
-    if (appearance.style == DockBackgroundStyle.acrylic && appearance.blurIntensity > 0) {
+    if (appearance.style == DockBackgroundStyle.acrylic &&
+        appearance.blurIntensity > 0) {
       content = ClipRRect(
         borderRadius: BorderRadius.circular(appearance.borderRadius),
         child: BackdropFilter(
@@ -746,7 +799,8 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
         !animConfig.reducedMotion &&
         _hoverGlobalPosition != null) {
       final itemKey = _itemKeys[elem.id];
-      final renderBox = itemKey?.currentContext?.findRenderObject() as RenderBox?;
+      final renderBox =
+          itemKey?.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox != null && renderBox.hasSize) {
         final itemCenterGlobal = renderBox.localToGlobal(
           Offset(renderBox.size.width / 2, renderBox.size.height / 2),
@@ -758,8 +812,11 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
 
         if (distance < animConfig.hoverDistance) {
           // Smooth parabolic falloff factor [0.0 to 1.0]
-          final factor = math.cos((distance / animConfig.hoverDistance) * (math.pi / 2));
-          final targetScale = 1.0 + (animConfig.hoverScaleFactor - 1.0) * factor;
+          final factor = math.cos(
+            (distance / animConfig.hoverDistance) * (math.pi / 2),
+          );
+          final targetScale =
+              1.0 + (animConfig.hoverScaleFactor - 1.0) * factor;
           scale = targetScale;
           lift = animConfig.hoverLift * factor;
         }
@@ -804,7 +861,9 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
       offset: translation,
       child: Transform.scale(
         scale: scale,
-        alignment: isHorizontal ? Alignment.bottomCenter : Alignment.centerRight,
+        alignment: isHorizontal
+            ? Alignment.bottomCenter
+            : Alignment.centerRight,
         child: InkWell(
           key: key,
           onTap: () {
@@ -918,8 +977,18 @@ class _DesktopStudioPreviewState extends State<DesktopStudioPreview>
 
       case DockElementType.date:
         final monthNames = [
-          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
         ];
         return Text(
           '${monthNames[_now.month - 1]} ${_now.day}',

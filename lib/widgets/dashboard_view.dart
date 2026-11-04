@@ -154,6 +154,8 @@ class _DashboardViewState extends State<DashboardView>
   Timer? _hoverDebounceTimer;
   String _currentMainTab =
       'wallpapers'; // 'wallpapers' | 'widgets' | 'bug_report'
+  bool _topNavCollapsed = false;
+  static const double _topNavCollapseThreshold = 24.0;
   String _selectedWidgetCategory = 'All';
   final _wallpaperBetaEmailCtrl = TextEditingController();
   bool _wallpaperBetaRegistered = false;
@@ -1686,7 +1688,7 @@ class _DashboardViewState extends State<DashboardView>
       stage: 'initializing',
     );
 
-    String? lastCompatibilityError;
+    String lastCompatibilityError = 'System tray is unavailable in this build.';
 
     try {
       if (Platform.isWindows) {
@@ -1832,8 +1834,7 @@ class _DashboardViewState extends State<DashboardView>
     }
 
     _trayState = SystemTrayState.unavailable;
-    _trayNativeError =
-        lastCompatibilityError ?? 'System tray is unavailable in this build.';
+    _trayNativeError = lastCompatibilityError;
     if (mounted) setState(() {});
   }
 
@@ -2318,6 +2319,12 @@ class _DashboardViewState extends State<DashboardView>
       final activeIds = List<String>.from(_settings.activeWidgetIds);
       if (!activeIds.contains(widgetId)) {
         activeIds.add(widgetId);
+      }
+      if (_settings.activeWidgetIds.toSet() != activeIds.toSet()) {
+        setState(() {
+          _settings = _settings.copyWith(activeWidgetIds: activeIds);
+        });
+        await _saveSettingsSafely(_settings);
       }
 
       final instService = SettingsService(instanceId: widgetId);
@@ -3787,114 +3794,117 @@ class _DashboardViewState extends State<DashboardView>
                 ),
                 if (_trayState.isUnavailableOrFailed) _buildTrayWarningBanner(),
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 350),
-                    layoutBuilder:
-                        (Widget? currentChild, List<Widget> previousChildren) {
-                          return Stack(
-                            alignment: Alignment.topLeft,
-                            children: <Widget>[
-                              ...previousChildren.map(
-                                (w) => IgnorePointer(
-                                  key: w.key,
-                                  ignoring: true,
-                                  child: w,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _handleDashboardScrollNotification,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+                      layoutBuilder:
+                          (Widget? currentChild, List<Widget> previousChildren) {
+                            return Stack(
+                              alignment: Alignment.topLeft,
+                              children: <Widget>[
+                                ...previousChildren.map(
+                                  (w) => IgnorePointer(
+                                    key: w.key,
+                                    ignoring: true,
+                                    child: w,
+                                  ),
                                 ),
-                              ),
-                              ?currentChild,
-                            ],
-                          );
-                        },
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          transformHitTests: false,
-                          position:
-                              Tween<Offset>(
-                                begin: const Offset(0.0, 0.04),
-                                end: Offset.zero,
-                              ).animate(
-                                CurvedAnimation(
-                                  parent: animation,
-                                  curve: Curves.easeOutCubic,
+                                ?currentChild,
+                              ],
+                            );
+                          },
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            transformHitTests: false,
+                            position:
+                                Tween<Offset>(
+                                  begin: const Offset(0.0, 0.04),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ),
                                 ),
-                              ),
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: _currentMainTab == 'wallpapers'
-                        ? _profileDashboardSection(
-                            'wallpapers.build',
-                            () => _buildWallpaperGallery(
-                              key: const ValueKey('wallpapers'),
-                            ),
-                          )
-                        : _currentMainTab == 'widgets'
-                        ? _profileDashboardSection(
-                            'widgets.build',
-                            () => _buildWidgetCustomizer(
-                              key: const ValueKey('widgets'),
-                            ),
-                          )
-                        : _currentMainTab == 'desktop_studio'
-                        ? _profileDashboardSection(
-                            'desktopStudio.build',
-                            () => DesktopStudioView(
-                              key: const ValueKey('desktop_studio'),
-                              onOpenGallery: () =>
-                                  setState(() => _currentMainTab = 'templates'),
-                            ),
-                          )
-                        : _currentMainTab == 'templates'
-                        ? _profileDashboardSection(
-                            'templates.build',
-                            () => TemplateGalleryView(
-                              key: const ValueKey('templates'),
-                              onEditInStudio: (template) => setState(
-                                () => _currentMainTab = 'desktop_studio',
-                              ),
-                              onCreateNew: () {
-                                DesktopStudioService().selectTemplate(
-                                  DesktopStudioTemplate.customLayout(),
-                                );
-                                setState(
-                                  () => _currentMainTab = 'desktop_studio',
-                                );
-                              },
-                            ),
-                          )
-                        : _currentMainTab == 'device_optimization'
-                        ? _profileDashboardSection(
-                            'deviceOptimization.build',
-                            () => DeviceOptimizationView(
-                              key: const ValueKey('device_optimization'),
-                              settings: _settings,
-                              settingsService: _settingsService,
-                              onSettingsChanged: (updated) {
-                                setState(() => _settings = updated);
-                              },
-                            ),
-                          )
-                        : _currentMainTab == 'diagnostics'
-                        ? _profileDashboardSection(
-                            'diagnostics.build',
-                            () => _buildDiagnosticsTab(
-                              key: const ValueKey('diagnostics'),
-                            ),
-                          )
-                        : _currentMainTab == 'about'
-                        ? _profileDashboardSection(
-                            'about.build',
-                            () => _buildAboutTab(key: const ValueKey('about')),
-                          )
-                        : _profileDashboardSection(
-                            'bugReport.build',
-                            () => _buildBugReportTab(
-                              key: const ValueKey('bug_report'),
-                            ),
+                            child: child,
                           ),
+                        );
+                      },
+                      child: _currentMainTab == 'wallpapers'
+                          ? _profileDashboardSection(
+                              'wallpapers.build',
+                              () => _buildWallpaperGallery(
+                                key: const ValueKey('wallpapers'),
+                              ),
+                            )
+                          : _currentMainTab == 'widgets'
+                          ? _profileDashboardSection(
+                              'widgets.build',
+                              () => _buildWidgetCustomizer(
+                                key: const ValueKey('widgets'),
+                              ),
+                            )
+                          : _currentMainTab == 'desktop_studio'
+                          ? _profileDashboardSection(
+                              'desktopStudio.build',
+                              () => DesktopStudioView(
+                                key: const ValueKey('desktop_studio'),
+                                onOpenGallery: () =>
+                                    setState(() => _currentMainTab = 'templates'),
+                              ),
+                            )
+                          : _currentMainTab == 'templates'
+                          ? _profileDashboardSection(
+                              'templates.build',
+                              () => TemplateGalleryView(
+                                key: const ValueKey('templates'),
+                                onEditInStudio: (template) => setState(
+                                  () => _currentMainTab = 'desktop_studio',
+                                ),
+                                onCreateNew: () {
+                                  DesktopStudioService().selectTemplate(
+                                    DesktopStudioTemplate.customLayout(),
+                                  );
+                                  setState(
+                                    () => _currentMainTab = 'desktop_studio',
+                                  );
+                                },
+                              ),
+                            )
+                          : _currentMainTab == 'device_optimization'
+                          ? _profileDashboardSection(
+                              'deviceOptimization.build',
+                              () => DeviceOptimizationView(
+                                key: const ValueKey('device_optimization'),
+                                settings: _settings,
+                                settingsService: _settingsService,
+                                onSettingsChanged: (updated) {
+                                  setState(() => _settings = updated);
+                                },
+                              ),
+                            )
+                          : _currentMainTab == 'diagnostics'
+                          ? _profileDashboardSection(
+                              'diagnostics.build',
+                              () => _buildDiagnosticsTab(
+                                key: const ValueKey('diagnostics'),
+                              ),
+                            )
+                          : _currentMainTab == 'about'
+                          ? _profileDashboardSection(
+                              'about.build',
+                              () => _buildAboutTab(key: const ValueKey('about')),
+                            )
+                          : _profileDashboardSection(
+                              'bugReport.build',
+                              () => _buildBugReportTab(
+                                key: const ValueKey('bug_report'),
+                              ),
+                            ),
+                    ),
                   ),
                 ),
               ],
@@ -4009,344 +4019,376 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
+  bool _handleDashboardScrollNotification(ScrollNotification notification) {
+    if (!notification.metrics.hasContentDimensions) return false;
+    final shouldCollapse = notification.metrics.pixels > _topNavCollapseThreshold;
+    if (_topNavCollapsed != shouldCollapse && mounted) {
+      setState(() => _topNavCollapsed = shouldCollapse);
+    }
+    return false;
+  }
+
   Widget _buildTopNavBar() {
-    return Container(
-      height: 66,
-      padding: const EdgeInsets.symmetric(horizontal: 22),
-      decoration: BoxDecoration(
-        color: const Color(0xF5080A10),
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.08),
-            width: 1.0,
-          ),
+    return SafeArea(
+      bottom: false,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        margin: EdgeInsets.fromLTRB(
+          18,
+          _topNavCollapsed ? 8 : 12,
+          18,
+          _topNavCollapsed ? 6 : 10,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: const Color(0xFF38BDF8).withValues(alpha: 0.04),
-            blurRadius: 30,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 1180;
-          final ultraCompact = constraints.maxWidth < 900;
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Logo & Brand
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF38BDF8).withValues(alpha: 0.20),
-                          const Color(0xFF818CF8).withValues(alpha: 0.10),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
-                        width: 1.2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(
-                            0xFF38BDF8,
-                          ).withValues(alpha: 0.25),
-                          blurRadius: 12,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(5),
-                    child: Image.asset(
-                      'assets/wallsync_logo.png',
-                      fit: BoxFit.contain,
-                      cacheWidth: 96,
-                      cacheHeight: 96,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.widgets_rounded,
-                        color: Color(0xFF38BDF8),
-                        size: 24,
-                      ),
-                    ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 1180;
+            final ultraCompact = constraints.maxWidth < 900;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              constraints: BoxConstraints(
+                minHeight: compact ? 68 : 64,
+              ),
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 14 : 22,
+                vertical: _topNavCollapsed ? 6 : 8,
+              ),
+              transform: Matrix4.translationValues(0, _topNavCollapsed ? -2 : 0, 0),
+              decoration: BoxDecoration(
+                color: const Color(0xF5080A10),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 1.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
                   ),
-                  if (!ultraCompact) ...[
-                    const SizedBox(width: 12),
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [
-                          Color(0xFFFFFFFF),
-                          Color(0xFFE2E8F0),
-                          Color(0xFF38BDF8),
-                        ],
-                        stops: [0.0, 0.6, 1.0],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(bounds),
-                      child: const Text(
-                        'WALLSYNC',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2.0,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF38BDF8),
-                            Color(0xFF818CF8),
-                            Color(0xFFEC4899),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(7),
-                        boxShadow: [
-                          BoxShadow(
+                  BoxShadow(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.04),
+                    blurRadius: 30,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF38BDF8).withValues(alpha: 0.20),
+                              const Color(0xFF818CF8).withValues(alpha: 0.10),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
                             color: const Color(
                               0xFF38BDF8,
-                            ).withValues(alpha: 0.45),
-                            blurRadius: 10,
-                            offset: const Offset(0, 1),
+                            ).withValues(alpha: 0.35),
+                            width: 1.2,
                           ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.stars_rounded,
-                            size: 10,
-                            color: Color(0xFF070913),
-                          ),
-                          SizedBox(width: 3),
-                          Text(
-                            'PRO EDITION',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF070913),
-                              letterSpacing: 0.9,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-
-              // Central sliding pill-tabs dock (wrapped in Flexible + FittedBox to eliminate right overflow)
-              Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.center,
-                    child: Container(
-                      padding: const EdgeInsets.all(3.5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.035),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.25),
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildMainTabButton(
-                            'Wallpapers',
-                            'wallpapers',
-                            Icons.wallpaper_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Widgets',
-                            'widgets',
-                            Icons.widgets_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Studio',
-                            'desktop_studio',
-                            Icons.tune_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Templates',
-                            'templates',
-                            Icons.grid_view_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Optimization',
-                            'device_optimization',
-                            Icons.speed_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Diagnostics',
-                            'diagnostics',
-                            Icons.analytics_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'Bug Report',
-                            'bug_report',
-                            Icons.bug_report_rounded,
-                            compact: compact,
-                          ),
-                          const SizedBox(width: 3),
-                          _buildMainTabButton(
-                            'About',
-                            'about',
-                            Icons.info_outline_rounded,
-                            compact: compact,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Quick actions & Desktop status
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_currentMainTab == 'wallpapers')
-                    IconButton(
-                      constraints: const BoxConstraints.tightFor(
-                        width: 38,
-                        height: 38,
-                      ),
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(
-                        Icons.refresh_rounded,
-                        size: 18,
-                        color: Colors.white70,
-                      ),
-                      onPressed: _loadWallpapers,
-                      tooltip: 'Refresh Wallpapers',
-                      hoverColor: const Color(
-                        0xFF38BDF8,
-                      ).withValues(alpha: 0.12),
-                    ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: _isOverlayRunning
-                        ? 'Desktop widget active & running'
-                        : 'Desktop widget inactive',
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: compact ? 9 : 13,
-                        vertical: 6.5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _isOverlayRunning
-                            ? const Color(0xFF10B981).withValues(alpha: 0.10)
-                            : Colors.white.withValues(alpha: 0.03),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _isOverlayRunning
-                              ? const Color(0xFF10B981).withValues(alpha: 0.40)
-                              : Colors.white.withValues(alpha: 0.08),
-                          width: 1.0,
-                        ),
-                        boxShadow: _isOverlayRunning
-                            ? [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF10B981,
-                                  ).withValues(alpha: 0.15),
-                                  blurRadius: 10,
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7.5,
-                            height: 7.5,
-                            decoration: BoxDecoration(
-                              color: _isOverlayRunning
-                                  ? const Color(0xFF10B981)
-                                  : Colors.white30,
-                              shape: BoxShape.circle,
-                              boxShadow: _isOverlayRunning
-                                  ? [
-                                      BoxShadow(
-                                        color: const Color(
-                                          0xFF10B981,
-                                        ).withValues(alpha: 0.8),
-                                        blurRadius: 8,
-                                        spreadRadius: 1,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                          ),
-                          if (!compact) ...[
-                            const SizedBox(width: 7.5),
-                            Text(
-                              _isOverlayRunning
-                                  ? 'Desktop Active'
-                                  : 'Desktop Off',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: _isOverlayRunning
-                                    ? const Color(0xFF10B981)
-                                    : Colors.white60,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.25),
+                              blurRadius: 12,
+                              spreadRadius: 1,
                             ),
                           ],
-                        ],
+                        ),
+                        padding: const EdgeInsets.all(5),
+                        child: Image.asset(
+                          'assets/wallsync_logo.png',
+                          fit: BoxFit.contain,
+                          cacheWidth: 96,
+                          cacheHeight: 96,
+                          errorBuilder: (_, _, _) => const Icon(
+                            Icons.widgets_rounded,
+                            color: Color(0xFF38BDF8),
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                      if (!ultraCompact) ...[
+                        const SizedBox(width: 12),
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [
+                              Color(0xFFFFFFFF),
+                              Color(0xFFE2E8F0),
+                              Color(0xFF38BDF8),
+                            ],
+                            stops: [0.0, 0.6, 1.0],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ).createShader(bounds),
+                          child: const Text(
+                            'WALLSYNC',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2.0,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF38BDF8),
+                                Color(0xFF818CF8),
+                                Color(0xFFEC4899),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(7),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF38BDF8,
+                                ).withValues(alpha: 0.45),
+                                blurRadius: 10,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.stars_rounded,
+                                size: 10,
+                                color: Color(0xFF070913),
+                              ),
+                              SizedBox(width: 3),
+                              Text(
+                                'PRO EDITION',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF070913),
+                                  letterSpacing: 0.9,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.all(3.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.035),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildMainTabButton(
+                                'Wallpapers',
+                                'wallpapers',
+                                Icons.wallpaper_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'Widgets',
+                                'widgets',
+                                Icons.widgets_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'Studio',
+                                'desktop_studio',
+                                Icons.tune_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'Templates',
+                                'templates',
+                                Icons.grid_view_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'Optimization',
+                                'device_optimization',
+                                Icons.speed_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'Diagnostics',
+                                'diagnostics',
+                                Icons.analytics_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'Bug Report',
+                                'bug_report',
+                                Icons.bug_report_rounded,
+                                compact: compact,
+                              ),
+                              const SizedBox(width: 3),
+                              _buildMainTabButton(
+                                'About',
+                                'about',
+                                Icons.info_outline_rounded,
+                                compact: compact,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
+
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_currentMainTab == 'wallpapers')
+                        IconButton(
+                          constraints: const BoxConstraints.tightFor(
+                            width: 38,
+                            height: 38,
+                          ),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                            size: 18,
+                            color: Colors.white70,
+                          ),
+                          onPressed: _loadWallpapers,
+                          tooltip: 'Refresh Wallpapers',
+                          hoverColor: const Color(
+                            0xFF38BDF8,
+                          ).withValues(alpha: 0.12),
+                        ),
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: _isOverlayRunning
+                            ? 'Desktop widget active & running'
+                            : 'Desktop widget inactive',
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 9 : 13,
+                            vertical: 6.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _isOverlayRunning
+                                ? const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.10)
+                                : Colors.white.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: _isOverlayRunning
+                                  ? const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.40)
+                                  : Colors.white.withValues(alpha: 0.08),
+                              width: 1.0,
+                            ),
+                            boxShadow: _isOverlayRunning
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.15),
+                                      blurRadius: 10,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 7.5,
+                                height: 7.5,
+                                decoration: BoxDecoration(
+                                  color: _isOverlayRunning
+                                      ? const Color(0xFF10B981)
+                                      : Colors.white30,
+                                  shape: BoxShape.circle,
+                                  boxShadow: _isOverlayRunning
+                                      ? [
+                                          BoxShadow(
+                                            color: const Color(
+                                              0xFF10B981,
+                                            ).withValues(alpha: 0.8),
+                                            blurRadius: 8,
+                                            spreadRadius: 1,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                              ),
+                              if (!compact) ...[
+                                const SizedBox(width: 7.5),
+                                Text(
+                                  _isOverlayRunning
+                                      ? 'Desktop Active'
+                                      : 'Desktop Off',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _isOverlayRunning
+                                        ? const Color(0xFF10B981)
+                                        : Colors.white60,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
