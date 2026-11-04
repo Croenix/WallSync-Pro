@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
@@ -715,8 +716,26 @@ class _DesktopWidgetState extends State<DesktopWidget>
             'Updating alwaysOnTop constraint to: ${updated.alwaysOnTop}',
           );
           try {
+            final attached =
+                await const MethodChannel(
+                  'wallsync/live_wallpaper',
+                ).invokeMethod<bool>('setWidgetDesktopSurface', {
+                  'attachToDesktop': !updated.alwaysOnTop,
+                });
+            if (attached != true) {
+              throw StateError(
+                'Windows could not update the widget desktop surface.',
+              );
+            }
             await windowManager.setAlwaysOnTop(updated.alwaysOnTop);
-          } catch (_) {}
+          } catch (error, stackTrace) {
+            logError(
+              'DesktopWidget',
+              'Could not update the widget desktop surface.',
+              error,
+              stackTrace,
+            );
+          }
         }
 
         final prevLoc = _settings.weatherLocation;

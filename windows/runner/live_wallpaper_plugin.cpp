@@ -359,6 +359,7 @@ class LiveWallpaperPlugin::Impl {
       const flutter::MethodCall<flutter::EncodableValue>& call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
   bool AttachToDesktop();
+  bool SetWidgetDesktopSurface(bool attach_to_desktop);
   bool IsFullscreenForegroundWindow() const;
   bool IsFullscreenForegroundWindowOnMonitor(
       const std::string& monitor_id) const;
@@ -551,6 +552,21 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
   }
   if (call.method_name() == "attachToDesktop") {
     result->Success(flutter::EncodableValue(AttachToDesktop()));
+    return;
+  }
+  if (call.method_name() == "setWidgetDesktopSurface") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    bool attach_to_desktop = false;
+    if (args != nullptr) {
+      const auto attach_entry =
+          args->find(flutter::EncodableValue("attachToDesktop"));
+      if (attach_entry != args->end()) {
+        attach_to_desktop =
+            GetBoolFromEncodable(attach_entry->second, false);
+      }
+    }
+    result->Success(
+        flutter::EncodableValue(SetWidgetDesktopSurface(attach_to_desktop)));
     return;
   }
   if (call.method_name() == "getPlaybackPolicy") {
@@ -1932,6 +1948,115 @@ bool LiveWallpaperPlugin::Impl::AttachToDesktop() {
   if (root_window_ && root_window_ != window_) {
     ShowWindow(root_window_, SW_HIDE);
   }
+  return true;
+}
+
+bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
+    bool attach_to_desktop) {
+  HWND target = root_window_ ? root_window_ : window_;
+  const auto fail = [target](const char* step) {
+    LogProcessDiagnostic(
+        "widget_desktop_surface",
+        std::string("result=failed step=") + step +
+            " hwnd=" + std::to_string(reinterpret_cast<intptr_t>(target)) +
+            " error=" + std::to_string(GetLastError()));
+    return false;
+  };
+  if (!target || !IsWindow(target)) {
+    return fail("invalid_window");
+  }
+
+  RECT screen_bounds{};
+  if (!GetWindowRect(target, &screen_bounds)) {
+    return fail("get_window_rect");
+  }
+
+  HWND parent = nullptr;
+  HWND insert_after = nullptr;
+  bool raised_desktop = false;
+  bool use_layered_window = false;
+  if (attach_to_desktop) {
+    parent = FindDesktopWallpaperTarget(
+        &insert_after, &raised_desktop, &use_layered_window);
+    if (!parent || !IsWindow(parent)) {
+      return fail("desktop_host_not_found");
+    }
+  }
+
+  POINT corners[2] = {{screen_bounds.left, screen_bounds.top},
+                      {screen_bounds.right, screen_bounds.bottom}};
+  if (attach_to_desktop) {
+    SetLastError(ERROR_SUCCESS);
+    if (MapWindowPoints(HWND_DESKTOP, parent, corners, 2) == 0 &&
+        GetLastError() != ERROR_SUCCESS) {
+      return fail("map_window_points");
+    }
+  }
+
+  LONG_PTR style = GetWindowLongPtrW(target, GWL_STYLE);
+  LONG_PTR extended_style = GetWindowLongPtrW(target, GWL_EXSTYLE);
+  style &= ~(WS_CHILD | WS_POPUP | WS_CAPTION | WS_THICKFRAME |
+             WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+  extended_style &= ~WS_EX_APPWINDOW;
+  extended_style |= WS_EX_TOOLWINDOW;
+
+  if (attach_to_desktop) {
+    style |= WS_CHILD;
+    extended_style &= ~WS_EX_TOPMOST;
+    if (use_layered_window) {
+      extended_style |= WS_EX_LAYERED;
+    }
+  } else {
+    style |= WS_POPUP;
+  }
+
+  SetWindowLongPtrW(target, GWL_STYLE, style);
+  SetWindowLongPtrW(target, GWL_EXSTYLE, extended_style);
+  if (attach_to_desktop && use_layered_window &&
+      !SetLayeredWindowAttributes(target, 0, 255, LWA_ALPHA)) {
+    return fail("set_layered_attributes");
+  }
+
+  SetLastError(ERROR_SUCCESS);
+  const HWND previous_parent = SetParent(target, parent);
+  const DWORD parent_error = GetLastError();
+  const HWND actual_parent = GetParent(target);
+  if ((attach_to_desktop && actual_parent != parent) ||
+      (!attach_to_desktop && actual_parent != nullptr)) {
+    LogProcessDiagnostic(
+        "widget_desktop_surface",
+        "result=failed step=set_parent hwnd=" +
+            std::to_string(reinterpret_cast<intptr_t>(target)) +
+            " requestedParent=" +
+            std::to_string(reinterpret_cast<intptr_t>(parent)) +
+            " previousParent=" +
+            std::to_string(reinterpret_cast<intptr_t>(previous_parent)) +
+            " actualParent=" +
+            std::to_string(reinterpret_cast<intptr_t>(actual_parent)) +
+            " error=" + std::to_string(parent_error));
+    return false;
+  }
+
+  const int left = attach_to_desktop ? corners[0].x : screen_bounds.left;
+  const int top = attach_to_desktop ? corners[0].y : screen_bounds.top;
+  const int width = screen_bounds.right - screen_bounds.left;
+  const int height = screen_bounds.bottom - screen_bounds.top;
+  const UINT flags = SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+  const HWND z_order = attach_to_desktop
+                           ? insert_after
+                           : ((extended_style & WS_EX_TOPMOST) != 0
+                                  ? HWND_TOPMOST
+                                  : HWND_TOP);
+  if (!SetWindowPos(target, z_order, left, top, width, height, flags)) {
+    return fail("set_window_pos");
+  }
+
+  LogProcessDiagnostic(
+      "widget_desktop_surface",
+      std::string("result=success attached=") +
+          (attach_to_desktop ? "true" : "false") +
+          " hwnd=" + std::to_string(reinterpret_cast<intptr_t>(target)) +
+          " parent=" + std::to_string(reinterpret_cast<intptr_t>(parent)));
   return true;
 }
 

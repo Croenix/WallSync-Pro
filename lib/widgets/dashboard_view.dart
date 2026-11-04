@@ -1665,6 +1665,37 @@ class _DashboardViewState extends State<DashboardView>
         text.contains('cnativeapi');
   }
 
+  void _captureOverlayProcessOutput(Process process, String widgetId) {
+    void capture(Stream<List<int>> stream, String streamName, bool isError) {
+      utf8.decoder
+          .bind(stream)
+          .transform(const LineSplitter())
+          .listen(
+            (line) {
+              if (line.trim().isEmpty) return;
+              final message =
+                  'Overlay "$widgetId" ${streamName.toLowerCase()} '
+                  '(PID ${process.pid}): $line';
+              if (isError) {
+                logWarning('DashboardView', message);
+              } else {
+                logInfo('DashboardView', message);
+              }
+            },
+            onError: (Object error, StackTrace stackTrace) {
+              logWarning(
+                'DashboardView',
+                'Could not read overlay "$widgetId" $streamName '
+                    '(PID ${process.pid}): $error',
+              );
+            },
+          );
+    }
+
+    capture(process.stdout, 'stdout', false);
+    capture(process.stderr, 'stderr', true);
+  }
+
   Future<void> _initSystemTray() async {
     if (_trayState == SystemTrayState.initializing ||
         _trayState == SystemTrayState.ready) {
@@ -1694,10 +1725,10 @@ class _DashboardViewState extends State<DashboardView>
       if (Platform.isWindows) {
         final exeDir = File(Platform.resolvedExecutable).parent.path;
         final candidatePaths = [
-          '$exeDir\\resources\\app_icon.ico',
-          '$exeDir\\WallSync.ico',
           '$exeDir\\data\\flutter_assets\\assets\\app_icon.png',
           'assets/app_icon.png',
+          '$exeDir\\resources\\app_icon.ico',
+          '$exeDir\\WallSync.ico',
         ];
         bool trayReady = false;
         for (final path in candidatePaths) {
@@ -2430,28 +2461,30 @@ class _DashboardViewState extends State<DashboardView>
       final settingsPrepMs = stageSettingsStopwatch.elapsedMilliseconds;
 
       final stageSpawnStopwatch = Stopwatch()..start();
-      // Prepare shadow runtime copy so MSBuild / VS debug never locks DLLs
+      // Use a shadow runtime in release builds to avoid locking installed files.
       String appPath = Platform.resolvedExecutable;
       String workingDir = File(appPath).parent.path;
-      try {
-        final runtimeDir = await DiagnosticsService.instance
-            .trackAsyncOperation<Directory>(
-              tag: 'DashboardView',
-              name: 'overlay.prepareRuntime.$widgetId',
-              operation: _wallpaperEngine.prepareOverlayRuntime,
-              warningThreshold: const Duration(milliseconds: 500),
-            );
-        final exeName = File(appPath).uri.pathSegments.last;
-        final runtimeExe = File('${runtimeDir.path}\\$exeName');
-        if (await runtimeExe.exists()) {
-          appPath = runtimeExe.path;
-          workingDir = runtimeDir.path;
+      if (!kDebugMode) {
+        try {
+          final runtimeDir = await DiagnosticsService.instance
+              .trackAsyncOperation<Directory>(
+                tag: 'DashboardView',
+                name: 'overlay.prepareRuntime.$widgetId',
+                operation: _wallpaperEngine.prepareOverlayRuntime,
+                warningThreshold: const Duration(milliseconds: 500),
+              );
+          final exeName = File(appPath).uri.pathSegments.last;
+          final runtimeExe = File('${runtimeDir.path}\\$exeName');
+          if (await runtimeExe.exists()) {
+            appPath = runtimeExe.path;
+            workingDir = runtimeDir.path;
+          }
+        } catch (e) {
+          logWarning(
+            'DashboardView',
+            'Shadow runtime fallback for $widgetId: $e',
+          );
         }
-      } catch (e) {
-        logWarning(
-          'DashboardView',
-          'Shadow runtime fallback for $widgetId: $e',
-        );
       }
 
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
@@ -2476,8 +2509,9 @@ class _DashboardViewState extends State<DashboardView>
             '--instance-id=$widgetId',
           ],
           workingDirectory: workingDir,
-          mode: ProcessStartMode.detached,
+          mode: ProcessStartMode.detachedWithStdio,
         );
+        _captureOverlayProcessOutput(process, widgetId);
         launchedPid = process.pid;
         logInfo(
           'DashboardView',

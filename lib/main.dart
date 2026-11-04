@@ -918,6 +918,28 @@ void main(List<String> args) async {
         await timeWindowOperation('show', windowManager.show);
         await timeWindowOperation('focus', windowManager.focus);
 
+        if (Platform.isWindows && !cleanSettings.alwaysOnTop) {
+          await processDiagnostics.record(
+            'widget_desktop_surface',
+            'result=requested attach=true alwaysOnTop=false',
+          );
+          final attached = await const MethodChannel('wallsync/live_wallpaper')
+              .invokeMethod<bool>('setWidgetDesktopSurface', {
+                'attachToDesktop': true,
+              });
+          await processDiagnostics.record(
+            'widget_desktop_surface',
+            'result=${attached == true ? 'success' : 'failed'} attach=true',
+          );
+          if (attached != true) {
+            logWarning(
+              'OverlayStartup',
+              'Could not attach the widget to the Windows desktop surface; '
+                  'leaving it as a regular visible window.',
+            );
+          }
+        }
+
         final visible = await waitForOverlayWindowVisibility(
           isVisible: windowManager.isVisible,
           retryDelays: const [

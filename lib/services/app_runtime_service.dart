@@ -8,24 +8,10 @@ import 'settings_service.dart';
 import 'system_optimizer_service.dart';
 
 class AppRuntimeService {
-  static final Map<String, Directory> _sessionPreparedRuntimes = {};
   static final Map<String, Future<Directory>> _inFlightPreparations = {};
-  Directory? _cachedRuntimeDir;
 
   Future<Directory> prepareRuntime(String runtimeName) {
-    // 1. Session memory cache check
-    final cached = _sessionPreparedRuntimes[runtimeName] ?? _cachedRuntimeDir;
-    if (cached != null) {
-      final executableName =
-          File(Platform.resolvedExecutable).uri.pathSegments.last;
-      final cachedExe = File('${cached.path}\\$executableName');
-      final manifest = File('${cached.path}\\runtime.manifest');
-      if (cachedExe.existsSync() && manifest.existsSync()) {
-        return Future.value(cached);
-      }
-    }
-
-    // 2. Coalesce concurrent requests to prevent duplicate copies or races
+    // Coalesce concurrent requests to prevent duplicate copies or races.
     final inFlight = _inFlightPreparations[runtimeName];
     if (inFlight != null) {
       logInfo(
@@ -68,7 +54,8 @@ class AppRuntimeService {
     entries.sort((a, b) => a.path.compareTo(b.path));
     final listingMs = listingStopwatch.elapsedMilliseconds;
 
-    // Fast content fingerprinting using relative path, file size, and executable second-level mtime
+    // Include each entry's modification time so same-size Flutter asset changes
+    // cannot reuse a stale overlay runtime.
     final fingerprintStopwatch = Stopwatch()..start();
     final stats = await Future.wait(entries.map((e) => e.stat()));
     final fingerprint = StringBuffer();
@@ -78,18 +65,15 @@ class AppRuntimeService {
       final entity = entries[i];
       final stat = stats[i];
       final relativePath = entity.path.substring(sourceDir.path.length);
-      final isExecutable = entity.path.endsWith(executableName);
       fingerprint
         ..write(relativePath)
         ..write('|')
         ..write(stat.type)
         ..write('|')
-        ..write(stat.size);
-      if (isExecutable) {
-        // Only track executable timestamp at second resolution to remain stable across hot-restarts
-        fingerprint.write('|${stat.modified.millisecondsSinceEpoch ~/ 1000}');
-      }
-      fingerprint.write('\n');
+        ..write(stat.size)
+        ..write('|')
+        ..write(stat.modified.microsecondsSinceEpoch)
+        ..write('\n');
 
       if (entity is File) {
         final rel = relativePath.startsWith('\\') || relativePath.startsWith('/')
@@ -113,7 +97,7 @@ class AppRuntimeService {
     final manifestFile = File('${runtimeDir.path}\\runtime.manifest');
     final runtimeExecutable = File('${runtimeDir.path}\\$executableName');
 
-    // 3. Warm check: verify existing complete runtime via manifest
+    // Reuse a runtime only after its complete manifest matches the source.
     if (await runtimeExecutable.exists() && await manifestFile.exists()) {
       try {
         final manifestContent = await manifestFile.readAsString();
@@ -127,8 +111,6 @@ class AppRuntimeService {
             '(scan=${listingMs}ms, fingerprint=${fingerprintMs}ms, '
             '${sourceFileSizes.length} files verified via manifest).',
           );
-          _sessionPreparedRuntimes[runtimeName] = runtimeDir;
-          _cachedRuntimeDir = runtimeDir;
           return runtimeDir;
         }
       } catch (e) {
@@ -139,7 +121,7 @@ class AppRuntimeService {
       }
     }
 
-    // 4. Incremental preparation: copy only missing or mismatched files directly into runtimeDir
+    // Copy only missing or mismatched files into runtimeDir.
     final copyStopwatch = Stopwatch()..start();
     await runtimeDir.create(recursive: true);
 
@@ -208,9 +190,6 @@ class AppRuntimeService {
         '(total ${stopwatch.elapsedMilliseconds}ms; synced $copiedCount/${files.length} files, '
         '${(copiedBytes / (1024 * 1024)).toStringAsFixed(1)}MB copied).',
       );
-
-      _sessionPreparedRuntimes[runtimeName] = runtimeDir;
-      _cachedRuntimeDir = runtimeDir;
 
       // Auto-prune old runtime versions asynchronously in background
       unawaited(() async {
