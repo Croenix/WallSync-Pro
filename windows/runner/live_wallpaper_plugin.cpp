@@ -352,7 +352,8 @@ std::vector<uint8_t> GetExecutableIconPng(const std::wstring& executable) {
 
 class LiveWallpaperPlugin::Impl {
  public:
-  explicit Impl(flutter::PluginRegistrarWindows* registrar);
+  Impl(flutter::PluginRegistrarWindows* registrar,
+       std::function<void()> force_redraw);
   ~Impl();
 
   void HandleMethodCall(
@@ -429,6 +430,7 @@ class LiveWallpaperPlugin::Impl {
 
  private:
   flutter::PluginRegistrarWindows* registrar_;
+  std::function<void()> force_redraw_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
   HWND window_;
   HWND root_window_;
@@ -478,8 +480,10 @@ class LiveWallpaperPlugin::Impl {
 };
 
 LiveWallpaperPlugin::Impl::Impl(
-    flutter::PluginRegistrarWindows* registrar)
+    flutter::PluginRegistrarWindows* registrar,
+    std::function<void()> force_redraw)
     : registrar_(registrar),
+      force_redraw_(std::move(force_redraw)),
       window_(registrar->GetView()
                   ? registrar->GetView()->GetNativeWindow()
                   : nullptr) {
@@ -2049,6 +2053,9 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
                                   : HWND_TOP);
   if (!SetWindowPos(target, z_order, left, top, width, height, flags)) {
     return fail("set_window_pos");
+  }
+  if (force_redraw_) {
+    force_redraw_();
   }
   if (!RedrawWindow(target, nullptr, nullptr,
                     RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN)) {
@@ -3855,7 +3862,8 @@ void LiveWallpaperPlugin::Impl::StopLowMemoryMonitor() {
 }
 
 LiveWallpaperPlugin::LiveWallpaperPlugin(
-    flutter::PluginRegistrarWindows* registrar)
-    : impl_(std::make_unique<Impl>(registrar)) {}
+    flutter::PluginRegistrarWindows* registrar,
+    std::function<void()> force_redraw)
+    : impl_(std::make_unique<Impl>(registrar, std::move(force_redraw))) {}
 
 LiveWallpaperPlugin::~LiveWallpaperPlugin() = default;

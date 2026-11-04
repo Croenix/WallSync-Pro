@@ -134,7 +134,12 @@ bool FlutterWindow::OnCreate() {
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(
               flutter_controller_->engine()->GetRegistrarForPlugin(
-                  "LiveWallpaperPlugin")));
+                  "LiveWallpaperPlugin")),
+      [this]() {
+        if (flutter_controller_) {
+          flutter_controller_->ForceRedraw();
+        }
+      });
   startup_task_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(), "com.wallsync/startup",

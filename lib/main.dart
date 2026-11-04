@@ -1080,6 +1080,13 @@ void main(List<String> args) async {
               'Could not attach the widget to the Windows desktop surface; '
                   'leaving it as a regular visible window.',
             );
+          } else {
+            WidgetsBinding.instance.scheduleFrame();
+            await WidgetsBinding.instance.endOfFrame;
+            await processDiagnostics.record(
+              'widget_desktop_surface',
+              'result=flutter_frame_presented attached=true',
+            );
           }
         }
 

@@ -1,6 +1,7 @@
 #ifndef RUNNER_LIVE_WALLPAPER_PLUGIN_H_
 #define RUNNER_LIVE_WALLPAPER_PLUGIN_H_
 
+#include <functional>
 #include <memory>
 
 namespace flutter {
@@ -9,7 +10,8 @@ class PluginRegistrarWindows;
 
 class LiveWallpaperPlugin {
  public:
-  explicit LiveWallpaperPlugin(flutter::PluginRegistrarWindows* registrar);
+  LiveWallpaperPlugin(flutter::PluginRegistrarWindows* registrar,
+                      std::function<void()> force_redraw);
   ~LiveWallpaperPlugin();
 
   LiveWallpaperPlugin(const LiveWallpaperPlugin&) = delete;
