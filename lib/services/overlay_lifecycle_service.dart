@@ -264,6 +264,7 @@ Future<String?> readOverlayPidFileContents(
   File pidFile, {
   int maxAttempts = 5,
   Duration lockTimeout = const Duration(milliseconds: 400),
+  Future<void> Function(RandomAccessFile file)? acquireSharedLock,
   Future<String> Function()? readContents,
   Duration Function(int attempt)? retryDelay,
 }) async {
@@ -275,10 +276,14 @@ Future<String?> readOverlayPidFileContents(
   Object? lastError;
   for (var attempt = 1; attempt <= maxAttempts; attempt++) {
     RandomAccessFile? lock;
+    var lockAcquired = false;
     try {
       if (!await pidFile.exists()) return null;
       lock = await lockFile.open(mode: FileMode.append);
-      await lock.lock(FileLock.shared).timeout(lockTimeout);
+      final acquireLock =
+          acquireSharedLock?.call(lock) ?? lock.lock(FileLock.shared);
+      await acquireLock.timeout(lockTimeout);
+      lockAcquired = true;
       if (!await pidFile.exists()) return null;
       return await read();
     } on FileSystemException catch (error) {
@@ -306,7 +311,7 @@ Future<String?> readOverlayPidFileContents(
     } finally {
       if (lock != null) {
         try {
-          await lock.unlock();
+          if (lockAcquired) await lock.unlock();
         } finally {
           await lock.close();
         }

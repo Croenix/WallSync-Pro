@@ -1874,31 +1874,39 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
 
   final lock = File(payload.lockFilePath);
   RandomAccessFile? raf;
-  bool lockAcquired = false;
-
-  // Try to acquire lock with retry on Windows ERROR_LOCK_VIOLATION (errno 33/32)
-  for (int attempt = 0; attempt < 6; attempt++) {
-    try {
-      raf ??= await lock.open(mode: FileMode.append);
-      await raf.lock(FileLock.exclusive).timeout(const Duration(milliseconds: 1200));
-      lockAcquired = true;
-      break;
-    } on PathAccessException catch (e) {
-      if (e.osError?.errorCode == 33 || e.osError?.errorCode == 32) {
-        try {
-          await raf?.close();
-        } catch (_) {}
-        raf = null;
-        await Future.delayed(Duration(milliseconds: 40 + (attempt * 30)));
-        continue;
-      }
-      break;
-    } catch (_) {
-      break;
-    }
-  }
-
+  var lockAcquired = false;
+  Object? lastLockError;
   try {
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        raf ??= await lock.open(mode: FileMode.append);
+        await raf
+            .lock(FileLock.exclusive)
+            .timeout(const Duration(milliseconds: 1200));
+        lockAcquired = true;
+        break;
+      } on FileSystemException catch (error) {
+        lastLockError = error;
+        final code = error.osError?.errorCode;
+        if ((code != 32 && code != 33) || attempt == 5) rethrow;
+      } on TimeoutException catch (error) {
+        lastLockError = error;
+        if (attempt == 5) rethrow;
+      }
+
+      await raf?.close();
+      raf = null;
+      await Future<void>.delayed(Duration(milliseconds: 40 + (attempt * 30)));
+    }
+
+    if (!lockAcquired) {
+      throw FileSystemException(
+        'Could not acquire the settings lock after bounded retries: '
+        '$lastLockError',
+        lock.path,
+      );
+    }
+
     if (await file.exists()) {
       try {
         final existing = await file.readAsString();
@@ -1912,15 +1920,8 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
       '${file.path}.${payload.pid}.${DateTime.now().microsecondsSinceEpoch}.tmp',
     );
     try {
-      await tempFile.writeAsString(payload.jsonStr, flush: false);
-      try {
-        if (await file.exists()) {
-          await file.delete();
-        }
-        await tempFile.rename(file.path);
-      } catch (_) {
-        await tempFile.copy(file.path);
-      }
+      await tempFile.writeAsString(payload.jsonStr, flush: true);
+      await tempFile.rename(file.path);
       return true;
     } finally {
       if (await tempFile.exists()) {
@@ -1931,14 +1932,11 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
     }
   } finally {
     if (raf != null) {
-      if (lockAcquired) {
-        try {
-          await raf.unlock();
-        } catch (_) {}
-      }
       try {
+        if (lockAcquired) await raf.unlock();
+      } finally {
         await raf.close();
-      } catch (_) {}
+      }
     }
   }
 }

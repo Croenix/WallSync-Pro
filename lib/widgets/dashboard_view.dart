@@ -205,6 +205,38 @@ class _DashboardViewState extends State<DashboardView>
     }
   }
 
+  Future<void> _syncSettingsToRunningWidget(
+    WidgetSettings settings, {
+    String? widgetId,
+    bool immediate = false,
+  }) async {
+    final targetWidgetId = widgetId ?? settings.widgetTemplate;
+    if (targetWidgetId.isEmpty ||
+        !_activeRunningWidgetIds.contains(targetWidgetId)) {
+      return;
+    }
+
+    try {
+      await SettingsService(instanceId: targetWidgetId).saveSettings(
+        settings.copyWith(widgetTemplate: targetWidgetId),
+        immediate: immediate,
+      );
+      logInfo(
+        'DashboardView',
+        'Synchronized customization settings to live widget "$targetWidgetId" '
+            '(immediate=$immediate).',
+      );
+    } catch (error, stackTrace) {
+      logError(
+        'DashboardView',
+        'Could not synchronize customization settings to live widget '
+            '"$targetWidgetId".',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
   Widget _buildCustomElementIdentificationDeck() {
     final elements = _settings.customElements;
     return ListView(
@@ -2348,9 +2380,6 @@ class _DashboardViewState extends State<DashboardView>
           runningWidgetIds.add(widgetId);
         }
       }
-      if (isRunning && _settings.widgetTemplate.isNotEmpty) {
-        runningWidgetIds.add(_settings.widgetTemplate);
-      }
       final anyRunning = isRunning || runningWidgetIds.isNotEmpty;
       final wasRunning = _isOverlayRunning;
       if (mounted) {
@@ -2470,6 +2499,7 @@ class _DashboardViewState extends State<DashboardView>
     _widgetRecoveryTimers[widgetId]?.cancel();
     _widgetRecoveryTimers[widgetId] = null;
     final launchStopwatch = Stopwatch()..start();
+    int? launchedPid;
     try {
       final isTaskbar = widgetId.startsWith('taskbar_');
       final activeIds = List<String>.from(_settings.activeWidgetIds);
@@ -2532,6 +2562,13 @@ class _DashboardViewState extends State<DashboardView>
                 _widgetRecoveryPolicies[widgetId]?.reset();
                 _widgetRecoveryTimers[widgetId]?.cancel();
                 _widgetRecoveryTimers[widgetId] = null;
+                if (_settings.widgetTemplate == widgetId) {
+                  await _syncSettingsToRunningWidget(
+                    _settings,
+                    widgetId: widgetId,
+                    immediate: true,
+                  );
+                }
                 unawaited(DiagnosticsService.instance.refreshOverlayPid());
                 return;
               } else {
@@ -2631,7 +2668,10 @@ class _DashboardViewState extends State<DashboardView>
       WidgetSettings instSettings;
       try {
         final loaded = await instService.load();
-        instSettings = loaded.copyWith(
+        final sourceSettings = _settings.widgetTemplate == widgetId
+            ? _settings
+            : loaded;
+        instSettings = sourceSettings.copyWith(
           widgetTemplate: widgetId,
           exitOverlay: false,
           activeWidgetIds: activeIds,
@@ -2703,7 +2743,6 @@ class _DashboardViewState extends State<DashboardView>
       );
 
       // Start the child without inheriting the dashboard's engine/debugger switches.
-      int? launchedPid;
       File? childDiagnosticFile;
       Future<File?> findChildLog() async {
         childDiagnosticFile ??= await ProcessDiagnosticLog.findForProcess(
@@ -2976,6 +3015,45 @@ class _DashboardViewState extends State<DashboardView>
         'failed',
         details: 'Exception: $e',
       );
+      if (launchedPid != null) {
+        try {
+          final inspection = await inspectWindowsProcess(launchedPid);
+          if (inspection != null && !inspection.isRunning) {
+            final revertedActiveIds = List<String>.from(
+              _settings.activeWidgetIds,
+            )..remove(widgetId);
+            _settings = _settings.copyWith(activeWidgetIds: revertedActiveIds);
+            await _saveSettingsSafely(_settings);
+            _widgetLaunchedAt.remove(widgetId);
+          } else {
+            logWarning(
+              'DashboardView',
+              'Widget "$widgetId" launch encountered an error after child '
+                  'PID $launchedPid started; preserving state until the next '
+                  'health check can verify it.',
+            );
+            unawaited(_checkOverlayStatus());
+          }
+        } catch (verificationError, verificationStackTrace) {
+          logError(
+            'DashboardView',
+            'Could not reconcile widget "$widgetId" after a launch error.',
+            verificationError,
+            verificationStackTrace,
+          );
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not verify "${_getWidgetTitle(widgetId)}". '
+              'Its state is preserved while WallSync retries the check.',
+            ),
+            backgroundColor: const Color(0xFF1E293B),
+          ),
+        );
+      }
     } finally {
       _launchingWidgetIds.remove(widgetId);
       DiagnosticsService.instance.clearWidgetLaunchRequest(widgetId);
@@ -3106,6 +3184,17 @@ class _DashboardViewState extends State<DashboardView>
               '(reason=$reason, result=$closeResult); preserving its process '
               'record and active state.',
         );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could not verify that "${_getWidgetTitle(widgetId)}" stopped. '
+                'Its state was left unchanged.',
+              ),
+              backgroundColor: const Color(0xFF1E293B),
+            ),
+          );
+        }
         return;
       }
 
@@ -3140,6 +3229,17 @@ class _DashboardViewState extends State<DashboardView>
       }
     } catch (e, st) {
       logError('DashboardView', 'Error stopping widget $widgetId', e, st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not verify "${_getWidgetTitle(widgetId)}". '
+              'Its state was left unchanged.',
+            ),
+            backgroundColor: const Color(0xFF1E293B),
+          ),
+        );
+      }
     }
   }
 
@@ -3282,6 +3382,7 @@ class _DashboardViewState extends State<DashboardView>
         s.activeWallpaperType != _settings.activeWallpaperType ||
         s.videoWallpaperPaused != _settings.videoWallpaperPaused;
     final templateChanged = s.widgetTemplate != _settings.widgetTemplate;
+    final alwaysOnTopChanged = s.alwaysOnTop != _settings.alwaysOnTop;
     final customElementsChanged =
         s.widgetTemplate == 'custom' &&
         s.customElements != _settings.customElements;
@@ -3298,6 +3399,12 @@ class _DashboardViewState extends State<DashboardView>
     }
     _syncMediaServiceState();
     _syncConnectivityService();
+    unawaited(
+      _syncSettingsToRunningWidget(
+        s,
+        immediate: alwaysOnTopChanged,
+      ),
+    );
 
     if (shouldSaveImmediately) {
       _saveDebounce?.cancel();
@@ -24989,8 +25096,7 @@ class _DashboardViewState extends State<DashboardView>
               final tagColor = item['tagColor'] as Color;
               final isRunning = key == 'taskbar_dock' && Platform.isWindows
                   ? WindowsTaskbarService.instance.isCustomTaskbarActive
-                  : _activeRunningWidgetIds.contains(key) ||
-                        (_isOverlayRunning && _settings.widgetTemplate == key);
+                  : _activeRunningWidgetIds.contains(key);
 
               return SizedBox(
                 width: 320,
@@ -25286,8 +25392,7 @@ class _DashboardViewState extends State<DashboardView>
               final tag = item['tag'] as String;
               final tagColor = item['tagColor'] as Color;
               final isRunning =
-                  _activeRunningWidgetIds.contains(key) ||
-                  (_isOverlayRunning && _settings.widgetTemplate == key);
+                  _activeRunningWidgetIds.contains(key);
 
               return SizedBox(
                 width: 320,

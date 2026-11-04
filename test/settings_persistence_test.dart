@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/services/settings_service.dart';
 
@@ -13,6 +15,15 @@ void main() {
       isFalse,
       reason: 'Older saved settings without the key keep the previous default.',
     );
+  });
+
+  test('Always on Top can be disabled and survives settings round-trip', () {
+    final settings = WidgetSettings(
+      alwaysOnTop: true,
+    ).copyWith(alwaysOnTop: false);
+    final restored = WidgetSettings.fromJson(settings.toJson());
+
+    expect(restored.alwaysOnTop, isFalse);
   });
 
   test(
@@ -302,6 +313,10 @@ void main() {
       await Future.wait([f1, f2]);
 
       expect((await service.loadSettings()).activeWallpaperPath, 'path2');
+      final settingsFile = await service.settingsFile;
+      final persisted =
+          jsonDecode(await settingsFile.readAsString()) as Map<String, dynamic>;
+      expect(persisted['activeWallpaperPath'], 'path2');
     },
   );
 }

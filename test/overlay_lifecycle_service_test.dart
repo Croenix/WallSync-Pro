@@ -778,6 +778,38 @@ void main() {
   });
 
   test(
+    'PID lock retries do not unlock a lock that was never acquired',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'wallsync-pid-lock-test-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final pidFile = File('${directory.path}\\overlay.pid');
+      await pidFile.writeAsString('{"pid":1234}');
+      var lockAttempts = 0;
+
+      final contents = await readOverlayPidFileContents(
+        pidFile,
+        acquireSharedLock: (file) async {
+          lockAttempts++;
+          if (lockAttempts == 1) {
+            throw FileSystemException(
+              'sharing violation',
+              pidFile.path,
+              const OSError('sharing violation', 33),
+            );
+          }
+          await file.lock(FileLock.shared);
+        },
+        retryDelay: (_) => Duration.zero,
+      );
+
+      expect(contents, '{"pid":1234}');
+      expect(lockAttempts, 2);
+    },
+  );
+
+  test(
     'waitForOverlayReadiness reports failed status when overlay initialization fails',
     () async {
       final failedRecord = OverlayProcessRecord(
