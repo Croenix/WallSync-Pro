@@ -10,9 +10,13 @@ import 'system_optimizer_service.dart';
 class AppRuntimeService {
   static final Map<String, Future<Directory>> _inFlightPreparations = {};
 
-  Future<Directory> prepareRuntime(String runtimeName) {
+  Future<Directory> prepareRuntime(
+    String runtimeName, {
+    bool allowHardLinks = true,
+  }) {
+    final preparationKey = '$runtimeName|hardLinks=$allowHardLinks';
     // Coalesce concurrent requests to prevent duplicate copies or races.
-    final inFlight = _inFlightPreparations[runtimeName];
+    final inFlight = _inFlightPreparations[preparationKey];
     if (inFlight != null) {
       logInfo(
         'AppRuntimeService',
@@ -22,16 +26,22 @@ class AppRuntimeService {
     }
 
     late final Future<Directory> operation;
-    operation = _prepareRuntimeInternal(runtimeName).whenComplete(() {
-      if (identical(_inFlightPreparations[runtimeName], operation)) {
-        _inFlightPreparations.remove(runtimeName);
+    operation = _prepareRuntimeInternal(
+      runtimeName,
+      allowHardLinks: allowHardLinks,
+    ).whenComplete(() {
+      if (identical(_inFlightPreparations[preparationKey], operation)) {
+        _inFlightPreparations.remove(preparationKey);
       }
     });
-    _inFlightPreparations[runtimeName] = operation;
+    _inFlightPreparations[preparationKey] = operation;
     return operation;
   }
 
-  Future<Directory> _prepareRuntimeInternal(String runtimeName) async {
+  Future<Directory> _prepareRuntimeInternal(
+    String runtimeName, {
+    required bool allowHardLinks,
+  }) async {
     final stopwatch = Stopwatch()..start();
     final sourceDir = File(Platform.resolvedExecutable).parent;
     final executableName =
@@ -58,7 +68,7 @@ class AppRuntimeService {
     // cannot reuse a stale overlay runtime.
     final fingerprintStopwatch = Stopwatch()..start();
     final stats = await Future.wait(entries.map((e) => e.stat()));
-    final fingerprint = StringBuffer();
+    final fingerprint = StringBuffer('allowHardLinks=$allowHardLinks\n');
     final sourceFileSizes = <String, int>{};
     var totalBytes = 0;
     for (var i = 0; i < entries.length; i++) {
@@ -103,6 +113,7 @@ class AppRuntimeService {
         final manifestContent = await manifestFile.readAsString();
         final manifestData = jsonDecode(manifestContent) as Map<String, dynamic>;
         if (manifestData['version'] == version &&
+            manifestData['allowHardLinks'] == allowHardLinks &&
             manifestData['fileCount'] == sourceFileSizes.length &&
             manifestData['totalBytes'] == totalBytes) {
           logPerf(
@@ -155,13 +166,15 @@ class AppRuntimeService {
             }
             await Directory(destFile.parent.path).create(recursive: true);
             // Attempt zero-copy native NTFS hard link first (0ms, 0 disk space)
-            bool linked = false;
-            try {
-              linked = await SystemOptimizerService.instance.createHardLink(
-                target: destination,
-                existing: entity.path,
-              );
-            } catch (_) {}
+            var linked = false;
+            if (allowHardLinks) {
+              try {
+                linked = await SystemOptimizerService.instance.createHardLink(
+                  target: destination,
+                  existing: entity.path,
+                );
+              } catch (_) {}
+            }
             if (!linked) {
               await entity.copy(destination);
               copiedBytes += sourceSize;
@@ -175,6 +188,7 @@ class AppRuntimeService {
       final manifestPayload = {
         'version': version,
         'executableName': executableName,
+        'allowHardLinks': allowHardLinks,
         'fileCount': sourceFileSizes.length,
         'totalBytes': totalBytes,
         'completedAt': DateTime.now().toIso8601String(),

@@ -526,11 +526,32 @@ class DiagnosticsService {
   void setWindowVisible(bool visible) {
     _isWindowVisible = visible;
   }
+
   int? _overlayPid;
   List<int> _overlayPids = const [];
   Map<int, String> _overlayPidToWidgetId = const {};
   String _overlayProcessStatus = 'not-checked';
   DateTime? _overlayLaunchRequestedAt;
+  final Map<String, DateTime> _widgetLaunchRequests = {};
+
+  void markWidgetLaunchRequested(String widgetId) {
+    _widgetLaunchRequests[widgetId] = DateTime.now();
+    _overlayProcessStatus =
+        'launch-requested (${_widgetLaunchRequests.keys.join(', ')})';
+  }
+
+  void clearWidgetLaunchRequest(String widgetId) {
+    _widgetLaunchRequests.remove(widgetId);
+    if (_widgetLaunchRequests.isNotEmpty &&
+        _overlayPids.isEmpty &&
+        _overlayProcessStatus.startsWith('launch-requested')) {
+      _overlayProcessStatus =
+          'launch-requested (${_widgetLaunchRequests.keys.join(', ')})';
+    } else if (_widgetLaunchRequests.isEmpty &&
+        _overlayProcessStatus.startsWith('launch-requested')) {
+      _overlayProcessStatus = 'pid-file-missing';
+    }
+  }
 
   void markOverlayLaunchRequested() {
     _overlayLaunchRequestedAt = DateTime.now();
@@ -810,7 +831,10 @@ class DiagnosticsService {
         _overlayPids = const [];
         _overlayPidToWidgetId = const {};
         final launchRequestedAt = _overlayLaunchRequestedAt;
-        if (launchRequestedAt != null &&
+        if (_widgetLaunchRequests.isNotEmpty) {
+          _overlayProcessStatus =
+              'launch-requested (${_widgetLaunchRequests.keys.join(', ')})';
+        } else if (launchRequestedAt != null &&
             DateTime.now().difference(launchRequestedAt) <
                 const Duration(seconds: 30)) {
           _overlayProcessStatus = 'launch-requested';
@@ -821,7 +845,9 @@ class DiagnosticsService {
         return;
       }
 
-      final activePids = <int>[];
+      final runningPids = <int>[];
+      final readyWidgetIds = <String>[];
+      final startingWidgetStages = <String>[];
       final newPidToWidgetId = <int, String>{};
       for (final pidFile in pidFiles) {
         final fileName = pidFile.uri.pathSegments.isNotEmpty
@@ -844,9 +870,12 @@ class DiagnosticsService {
             if (inspection != null &&
                 inspection.isRunning &&
                 inspection.matches(record)) {
+              runningPids.add(record.pid);
+              newPidToWidgetId[record.pid] = widgetId;
               if (record.ready) {
-                activePids.add(record.pid);
-                newPidToWidgetId[record.pid] = widgetId;
+                readyWidgetIds.add(widgetId);
+              } else {
+                startingWidgetStages.add('$widgetId:${record.stage.name}');
               }
               // Active process is alive and healthy/starting: NEVER delete PID file!
             } else {
@@ -869,25 +898,36 @@ class DiagnosticsService {
 
       _overlayPidToWidgetId = newPidToWidgetId;
 
-      if (activePids.isNotEmpty) {
+      if (runningPids.isNotEmpty) {
         _overlayLaunchRequestedAt = null;
-        _overlayPids = activePids;
-        _overlayPid = activePids.first;
-        _overlayProcessStatus = activePids.length == 1
-            ? 'running'
-            : 'running (${activePids.length} active)';
+        _overlayPids = runningPids;
+        _overlayPid = runningPids.first;
+        if (startingWidgetStages.isNotEmpty) {
+          _overlayProcessStatus =
+              'starting (${startingWidgetStages.join(', ')})'
+              '${readyWidgetIds.isEmpty ? '' : '; ready=${readyWidgetIds.join(', ')}'}';
+        } else {
+          _overlayProcessStatus = readyWidgetIds.length == 1
+              ? 'running'
+              : 'running (${readyWidgetIds.length} ready)';
+        }
       } else {
         _overlayPids = const [];
         _overlayPid = null;
         _overlayPidToWidgetId = const {};
-        final launchRequestedAt = _overlayLaunchRequestedAt;
-        if (launchRequestedAt != null &&
-            DateTime.now().difference(launchRequestedAt) <
-                const Duration(seconds: 30)) {
-          _overlayProcessStatus = 'launch-requested';
+        if (_widgetLaunchRequests.isNotEmpty) {
+          _overlayProcessStatus =
+              'launch-requested (${_widgetLaunchRequests.keys.join(', ')})';
         } else {
-          _overlayLaunchRequestedAt = null;
-          _overlayProcessStatus = 'stopped';
+          final launchRequestedAt = _overlayLaunchRequestedAt;
+          if (launchRequestedAt != null &&
+              DateTime.now().difference(launchRequestedAt) <
+                  const Duration(seconds: 30)) {
+            _overlayProcessStatus = 'launch-requested';
+          } else {
+            _overlayLaunchRequestedAt = null;
+            _overlayProcessStatus = 'stopped';
+          }
         }
       }
     } catch (error, stackTrace) {

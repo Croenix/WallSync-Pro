@@ -26,6 +26,7 @@ import '../services/media_session_service.dart';
 import '../services/diagnostics_service.dart';
 import '../services/launch_popup_service.dart';
 import '../services/overlay_lifecycle_service.dart';
+import '../services/process_diagnostics.dart';
 import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
 import '../services/system_optimizer_service.dart';
@@ -1665,14 +1666,41 @@ class _DashboardViewState extends State<DashboardView>
         text.contains('cnativeapi');
   }
 
-  void _captureOverlayProcessOutput(Process process, String widgetId) {
+  void _captureOverlayProcessOutput(
+    Process process,
+    String widgetId,
+    Future<File?> Function() findChildLog,
+    void Function(File file) onChildLogFound,
+  ) {
     void capture(Stream<List<int>> stream, String streamName, bool isError) {
-      utf8.decoder
+      const Utf8Decoder(allowMalformed: true)
           .bind(stream)
           .transform(const LineSplitter())
           .listen(
             (line) {
               if (line.trim().isEmpty) return;
+              unawaited(() async {
+                try {
+                  final file = await findChildLog();
+                  if (file != null) {
+                    onChildLogFound(file);
+                    await ProcessDiagnosticLog.appendToFile(
+                      file,
+                      'child_$streamName',
+                      'parentPid=$pid childPid=${process.pid} '
+                          'templateId=$widgetId output="$line"',
+                    );
+                  }
+                } catch (error, stackTrace) {
+                  logError(
+                    'DashboardView',
+                    'Could not persist overlay "$widgetId" $streamName '
+                        'output (PID ${process.pid}).',
+                    error,
+                    stackTrace,
+                  );
+                }
+              }());
               final message =
                   'Overlay "$widgetId" ${streamName.toLowerCase()} '
                   '(PID ${process.pid}): $line';
@@ -2340,6 +2368,7 @@ class _DashboardViewState extends State<DashboardView>
     }
     _launchingWidgetIds.add(widgetId);
     _widgetLaunchedAt[widgetId] = DateTime.now();
+    DiagnosticsService.instance.markWidgetLaunchRequested(widgetId);
     final generation = (_widgetGenerations[widgetId] ?? 0) + 1;
     _widgetGenerations[widgetId] = generation;
     _widgetRecoveryTimers[widgetId]?.cancel();
@@ -2461,30 +2490,28 @@ class _DashboardViewState extends State<DashboardView>
       final settingsPrepMs = stageSettingsStopwatch.elapsedMilliseconds;
 
       final stageSpawnStopwatch = Stopwatch()..start();
-      // Use a shadow runtime in release builds to avoid locking installed files.
+      // Run overlays from independent copies so Windows builds can replace DLLs.
       String appPath = Platform.resolvedExecutable;
       String workingDir = File(appPath).parent.path;
-      if (!kDebugMode) {
-        try {
-          final runtimeDir = await DiagnosticsService.instance
-              .trackAsyncOperation<Directory>(
-                tag: 'DashboardView',
-                name: 'overlay.prepareRuntime.$widgetId',
-                operation: _wallpaperEngine.prepareOverlayRuntime,
-                warningThreshold: const Duration(milliseconds: 500),
-              );
-          final exeName = File(appPath).uri.pathSegments.last;
-          final runtimeExe = File('${runtimeDir.path}\\$exeName');
-          if (await runtimeExe.exists()) {
-            appPath = runtimeExe.path;
-            workingDir = runtimeDir.path;
-          }
-        } catch (e) {
-          logWarning(
-            'DashboardView',
-            'Shadow runtime fallback for $widgetId: $e',
-          );
+      try {
+        final runtimeDir = await DiagnosticsService.instance
+            .trackAsyncOperation<Directory>(
+              tag: 'DashboardView',
+              name: 'overlay.prepareRuntime.$widgetId',
+              operation: _wallpaperEngine.prepareOverlayRuntime,
+              warningThreshold: const Duration(milliseconds: 500),
+            );
+        final exeName = File(appPath).uri.pathSegments.last;
+        final runtimeExe = File('${runtimeDir.path}\\$exeName');
+        if (await runtimeExe.exists()) {
+          appPath = runtimeExe.path;
+          workingDir = runtimeDir.path;
         }
+      } catch (e) {
+        logWarning(
+          'DashboardView',
+          'Shadow runtime fallback for $widgetId: $e',
+        );
       }
 
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
@@ -2498,8 +2525,16 @@ class _DashboardViewState extends State<DashboardView>
         ],
       );
 
-      // Launch overlay process directly detached (<50ms, no Task Scheduler latency)
+      // Start the child without inheriting the dashboard's engine/debugger switches.
       int? launchedPid;
+      File? childDiagnosticFile;
+      Future<File?> findChildLog() async {
+        childDiagnosticFile ??= await ProcessDiagnosticLog.findForProcess(
+          launchedPid ?? -1,
+        );
+        return childDiagnosticFile;
+      }
+
       try {
         final process = await Process.start(
           appPath,
@@ -2509,73 +2544,65 @@ class _DashboardViewState extends State<DashboardView>
             '--instance-id=$widgetId',
           ],
           workingDirectory: workingDir,
+          environment: const {'FLUTTER_ENGINE_SWITCHES': '0'},
           mode: ProcessStartMode.detachedWithStdio,
         );
-        _captureOverlayProcessOutput(process, widgetId);
         launchedPid = process.pid;
+        _captureOverlayProcessOutput(
+          process,
+          widgetId,
+          findChildLog,
+          (file) => childDiagnosticFile = file,
+        );
         logInfo(
           'DashboardView',
-          'Overlay "$widgetId" spawned directly (PID $launchedPid).',
+          'Overlay "$widgetId" spawned directly (PID $launchedPid) with '
+              'inherited Flutter engine switches disabled.',
         );
+        final childLog = await findChildLog();
+        if (childLog != null) {
+          await ProcessDiagnosticLog.appendToFile(
+            childLog,
+            'child_process_started',
+            'parentPid=$pid childPid=$launchedPid templateId=$widgetId '
+                'workingDirectory="$workingDir" executable="$appPath" '
+                'arguments="--overlay --startup-trigger=dashboard '
+                '--instance-id=$widgetId"',
+          );
+        }
         DiagnosticsService.instance.recordWidgetLifecycleEvent(
           widgetId,
           'spawned',
           pid: launchedPid,
         );
-      } catch (directErr) {
-        logWarning(
+      } catch (spawnError, stackTrace) {
+        logError(
           'DashboardView',
-          'Direct Process.start failed for $widgetId: $directErr; trying cmd.exe fallback',
+          'Could not directly start widget "$widgetId"; no shell fallback '
+              'will be used because it cannot provide a verifiable child PID.',
+          spawnError,
+          stackTrace,
         );
-        try {
-          final process = await Process.start(
-            'cmd.exe',
-            [
-              '/c',
-              'start',
-              '""',
-              appPath,
-              '--overlay',
-              '--startup-trigger=dashboard',
-              '--instance-id=$widgetId',
-            ],
-            workingDirectory: workingDir,
-            mode: ProcessStartMode.detached,
-          );
-          launchedPid = process.pid;
-          logInfo(
-            'DashboardView',
-            'Overlay "$widgetId" spawned via cmd.exe start detached (PID $launchedPid).',
-          );
-          DiagnosticsService.instance.recordWidgetLifecycleEvent(
-            widgetId,
-            'spawned',
-            pid: launchedPid,
-            details: 'via cmd.exe fallback',
-          );
-        } catch (cmdErr) {
-          logError(
-            'DashboardView',
-            'Failed to launch overlay process: $cmdErr',
-          );
-          DiagnosticsService.instance.recordWidgetLifecycleEvent(
-            widgetId,
-            'failed',
-            details: 'Process spawn exception: $cmdErr',
-          );
-        }
+        DiagnosticsService.instance.recordWidgetLifecycleEvent(
+          widgetId,
+          'failed',
+          details: 'Process spawn exception: $spawnError',
+        );
+        final revertedActiveIds = List<String>.from(_settings.activeWidgetIds)
+          ..remove(widgetId);
+        _settings = _settings.copyWith(activeWidgetIds: revertedActiveIds);
+        await _saveSettingsSafely(_settings);
+        return;
       }
       final spawnMs = stageSpawnStopwatch.elapsedMilliseconds;
 
-      if (launchedPid != null) {
-        final inspection = await inspectWindowsProcess(launchedPid);
-        if (inspection != null && inspection.isRunning) {
-          DiagnosticsService.instance.recordWidgetLifecycleEvent(
-            widgetId,
-            'processAlive',
-            pid: launchedPid,
-          );
-        }
+      final inspection = await inspectWindowsProcess(launchedPid);
+      if (inspection != null && inspection.isRunning) {
+        DiagnosticsService.instance.recordWidgetLifecycleEvent(
+          widgetId,
+          'processAlive',
+          pid: launchedPid,
+        );
       }
 
       // Verify visible readiness of spawned overlay
@@ -2590,6 +2617,9 @@ class _DashboardViewState extends State<DashboardView>
         },
         inspectProcess: inspectWindowsProcess,
         expectedPid: launchedPid,
+        expectedInstanceId: widgetId,
+        expectedProcessMode: 'classic',
+        requireWindowHandle: true,
         timeout: overlayStartupReadinessTimeout,
         pollInterval: const Duration(milliseconds: 200),
         onStatusChanged: (status, record, inspection, elapsed) {
@@ -2606,11 +2636,36 @@ class _DashboardViewState extends State<DashboardView>
       final readinessWaitMs = stageReadinessStopwatch.elapsedMilliseconds;
 
       if (!readiness.isReady) {
+        final childLog = await findChildLog();
+        final lastChildStage = await ProcessDiagnosticLog.lastCompletedStage(
+          childLog,
+        );
+        final childLogLines = childLog == null
+            ? const <String>[]
+            : await childLog.readAsLines();
+        final childLogTail = childLogLines.length <= 20
+            ? childLogLines
+            : childLogLines.sublist(childLogLines.length - 20);
+        final childDiagnostics =
+            'lastChildStage=$lastChildStage '
+            'diagnosticLog=${childLog?.path ?? '<not-created>'}\n'
+            '${childLogTail.join('\n')}';
         logError(
           'DashboardView',
           'Widget "$widgetId" failed to reach verified readiness: status=${readiness.status.name}, '
-              'stage=${readiness.stage.name}, elapsed=${readinessWaitMs}ms.',
+              'stage=${readiness.stage.name}, elapsed=${readinessWaitMs}ms.\n'
+              'Child startup diagnostics:\n$childDiagnostics',
         );
+        if (childLog != null) {
+          await ProcessDiagnosticLog.appendToFile(
+            childLog,
+            'parent_readiness_failed',
+            'parentPid=$pid childPid=$launchedPid '
+                'templateId=$widgetId readinessStatus=${readiness.status.name} '
+                'parentStage=${readiness.stage.name} '
+                'lastChildStage=$lastChildStage',
+          );
+        }
         DiagnosticsService.instance.recordWidgetLifecycleEvent(
           widgetId,
           'failed',
@@ -2618,10 +2673,15 @@ class _DashboardViewState extends State<DashboardView>
           details:
               'readiness failed: status=${readiness.status.name}, stage=${readiness.stage.name}',
         );
-        if (launchedPid != null) {
-          try {
-            Process.killPid(launchedPid);
-          } catch (_) {}
+        try {
+          Process.killPid(launchedPid);
+        } catch (error, stackTrace) {
+          logError(
+            'DashboardView',
+            'Could not terminate failed widget "$widgetId" PID $launchedPid.',
+            error,
+            stackTrace,
+          );
         }
         final revertedActiveIds = List<String>.from(_settings.activeWidgetIds)
           ..remove(widgetId);
@@ -2681,6 +2741,17 @@ class _DashboardViewState extends State<DashboardView>
         hwnd: readiness.record?.hwnd,
         details: 'readiness confirmed in ${readinessWaitMs}ms',
       );
+      final childLog = await findChildLog();
+      if (childLog != null) {
+        await ProcessDiagnosticLog.appendToFile(
+          childLog,
+          'parent_readiness_acknowledged',
+          'parentPid=$pid childPid=$launchedPid '
+              'templateId=$widgetId '
+              'readinessStatus=${readiness.status.name} '
+              'readinessMs=$readinessWaitMs hwnd=${readiness.record?.hwnd ?? 0}',
+        );
+      }
 
       logInfo(
         'DashboardView',
@@ -2724,6 +2795,7 @@ class _DashboardViewState extends State<DashboardView>
       );
     } finally {
       _launchingWidgetIds.remove(widgetId);
+      DiagnosticsService.instance.clearWidgetLaunchRequest(widgetId);
     }
   }
 
@@ -3833,7 +3905,10 @@ class _DashboardViewState extends State<DashboardView>
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 350),
                       layoutBuilder:
-                          (Widget? currentChild, List<Widget> previousChildren) {
+                          (
+                            Widget? currentChild,
+                            List<Widget> previousChildren,
+                          ) {
                             return Stack(
                               alignment: Alignment.topLeft,
                               children: <Widget>[
@@ -3886,8 +3961,9 @@ class _DashboardViewState extends State<DashboardView>
                               'desktopStudio.build',
                               () => DesktopStudioView(
                                 key: const ValueKey('desktop_studio'),
-                                onOpenGallery: () =>
-                                    setState(() => _currentMainTab = 'templates'),
+                                onOpenGallery: () => setState(
+                                  () => _currentMainTab = 'templates',
+                                ),
                               ),
                             )
                           : _currentMainTab == 'templates'
@@ -3930,7 +4006,8 @@ class _DashboardViewState extends State<DashboardView>
                           : _currentMainTab == 'about'
                           ? _profileDashboardSection(
                               'about.build',
-                              () => _buildAboutTab(key: const ValueKey('about')),
+                              () =>
+                                  _buildAboutTab(key: const ValueKey('about')),
                             )
                           : _profileDashboardSection(
                               'bugReport.build',
@@ -4055,7 +4132,8 @@ class _DashboardViewState extends State<DashboardView>
 
   bool _handleDashboardScrollNotification(ScrollNotification notification) {
     if (!notification.metrics.hasContentDimensions) return false;
-    final shouldCollapse = notification.metrics.pixels > _topNavCollapseThreshold;
+    final shouldCollapse =
+        notification.metrics.pixels > _topNavCollapseThreshold;
     if (_topNavCollapsed != shouldCollapse && mounted) {
       setState(() => _topNavCollapsed = shouldCollapse);
     }
@@ -4081,14 +4159,16 @@ class _DashboardViewState extends State<DashboardView>
             return AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              constraints: BoxConstraints(
-                minHeight: compact ? 68 : 64,
-              ),
+              constraints: BoxConstraints(minHeight: compact ? 68 : 64),
               padding: EdgeInsets.symmetric(
                 horizontal: compact ? 14 : 22,
                 vertical: _topNavCollapsed ? 6 : 8,
               ),
-              transform: Matrix4.translationValues(0, _topNavCollapsed ? -2 : 0, 0),
+              transform: Matrix4.translationValues(
+                0,
+                _topNavCollapsed ? -2 : 0,
+                0,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xF5080A10),
                 borderRadius: BorderRadius.circular(18),
@@ -22315,65 +22395,7 @@ class _DashboardViewState extends State<DashboardView>
                       );
 
                     case 'atomic_clock':
-                      return const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            'SATURDAY',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              fontFamily: 'Anurati',
-                              letterSpacing: 2.2,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black87,
-                                  blurRadius: 4,
-                                  offset: Offset(0.5, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            '27 MARCH, 2026.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 7.5,
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Anurati',
-                              letterSpacing: 1.2,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black87,
-                                  blurRadius: 3,
-                                  offset: Offset(0.5, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            '- 00:15 -',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 7,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'Anurati',
-                              letterSpacing: 1.0,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black87,
-                                  blurRadius: 3,
-                                  offset: Offset(0.5, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
+                      return _buildAtomicClockPreview();
 
                     case 'taskbar_dock':
                       return Container(
@@ -25448,6 +25470,90 @@ class _DashboardViewState extends State<DashboardView>
     );
   }
 
+  Widget _buildAtomicClockPreview() {
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: _previewDateTimeNotifier,
+      builder: (context, now, _) {
+        final hour = _settings.use24HourFormat
+            ? now.hour.toString().padLeft(2, '0')
+            : (now.hour % 12 == 0 ? 12 : now.hour % 12).toString().padLeft(
+                2,
+                '0',
+              );
+        final minute = now.minute.toString().padLeft(2, '0');
+        final second = now.second.toString().padLeft(2, '0');
+        final time = _settings.showSeconds
+            ? '$hour:$minute:$second'
+            : '$hour:$minute';
+        final period = _settings.use24HourFormat
+            ? ''
+            : now.hour < 12
+            ? ' AM'
+            : ' PM';
+
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              DateFormat('EEEE').format(now).toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'Anurati',
+                letterSpacing: 2.2,
+                shadows: [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 4,
+                    offset: Offset(0.5, 1),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              '${DateFormat('d MMMM, yyyy').format(now).toUpperCase()}.',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 7.5,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Anurati',
+                letterSpacing: 1.2,
+                shadows: [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 3,
+                    offset: Offset(0.5, 1),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              '- $time$period -',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 7,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Anurati',
+                letterSpacing: 1.0,
+                shadows: [
+                  Shadow(
+                    color: Colors.black87,
+                    blurRadius: 3,
+                    offset: Offset(0.5, 1),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildRawMiniWidgetPreview(String key) {
     switch (key) {
       case 'classic':
@@ -26428,65 +26534,7 @@ class _DashboardViewState extends State<DashboardView>
         );
 
       case 'atomic_clock':
-        return const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              'SATURDAY',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                fontFamily: 'Anurati',
-                letterSpacing: 2.2,
-                shadows: [
-                  Shadow(
-                    color: Colors.black87,
-                    blurRadius: 4,
-                    offset: Offset(0.5, 1),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 3),
-            Text(
-              '27 MARCH, 2026.',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 7.5,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'Anurati',
-                letterSpacing: 1.2,
-                shadows: [
-                  Shadow(
-                    color: Colors.black87,
-                    blurRadius: 3,
-                    offset: Offset(0.5, 1),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 3),
-            Text(
-              '- 00:15 -',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 7,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Anurati',
-                letterSpacing: 1.0,
-                shadows: [
-                  Shadow(
-                    color: Colors.black87,
-                    blurRadius: 3,
-                    offset: Offset(0.5, 1),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
+        return _buildAtomicClockPreview();
 
       case 'custom':
         return Container(

@@ -206,8 +206,8 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
         '"${Platform.resolvedExecutable}".',
   );
 
-  final executable = Platform.resolvedExecutable;
-  final workingDirectory = File(executable).parent.path;
+  var executable = Platform.resolvedExecutable;
+  var workingDirectory = File(executable).parent.path;
   final activeIds = settings.activeWidgetIds;
   if (activeIds.isEmpty) {
     logInfo(
@@ -226,6 +226,24 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
       'Saved taskbar dock widgets are no longer supported; skipping widget restoration.',
     );
     return;
+  }
+
+  try {
+    final runtimeDirectory = await WallpaperEngine().prepareOverlayRuntime();
+    final executableName = File(executable).uri.pathSegments.last;
+    final runtimeExecutable = File(
+      '${runtimeDirectory.path}\\$executableName',
+    );
+    if (await runtimeExecutable.exists()) {
+      executable = runtimeExecutable.path;
+      workingDirectory = runtimeDirectory.path;
+    }
+  } catch (error) {
+    logWarning(
+      'OverlayStartup',
+      'Could not prepare an isolated widget runtime; using the application '
+          'executable. Error: $error',
+    );
   }
 
   for (final id in restorableIds) {
@@ -252,6 +270,7 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
         final process = await Process.start(
           executable,
           ['--overlay', '--startup-trigger=windows-logon', '--instance-id=$id'],
+          environment: const {'FLUTTER_ENGINE_SWITCHES': '0'},
           mode: ProcessStartMode.detached,
           workingDirectory: workingDirectory,
         );
@@ -295,9 +314,19 @@ void main(List<String> args) async {
     configurationRevision: processArguments.configurationRevision,
   );
   await processDiagnostics.record(
+    'arguments_received',
+    'arguments=${args.map((argument) => '"$argument"').join(' ')}',
+  );
+  await processDiagnostics.record(
     'process_mode_validation',
     'result=valid mode=${processArguments.mode.value}',
   );
+  if (processArguments.mode.isOverlay) {
+    await processDiagnostics.record(
+      'overlay_mode_confirmed',
+      'result=success templateId=${processArguments.instanceId ?? 'unknown'}',
+    );
+  }
 
   if (Platform.isWindows) {
     try {
@@ -351,6 +380,10 @@ void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await processDiagnostics.record(
     'flutter_engine_initialized',
+    'result=success',
+  );
+  await processDiagnostics.record(
+    'flutter_binding_initialized',
     'result=success',
   );
   _emitOverlayBootstrapEvent(
@@ -518,6 +551,12 @@ void main(List<String> args) async {
         '(startup total ${startupStopwatch.elapsedMilliseconds}ms, '
         'overlay=$isOverlayMode, wallpaper=$isWallpaperMode).',
   );
+  if (isOverlayMode) {
+    await processDiagnostics.record(
+      'overlay_services_initialized',
+      'result=success settingsLoadedMs=$settingsLoadMs',
+    );
+  }
   if (!isOverlayMode && !isWallpaperMode) {
     final registrationStopwatch = Stopwatch()..start();
     var startupRegistrationFailed = false;
@@ -777,6 +816,11 @@ void main(List<String> args) async {
       'result=success path="${overlayPidFile.path}" hwnd=$overlayHwnd',
     );
     await processDiagnostics.record(
+      'ipc_connected',
+      'transport=atomic-process-record instanceId=$overlayInstanceId '
+          'pid=$pid hwnd=$overlayHwnd',
+    );
+    await processDiagnostics.record(
       'readiness_channel_started',
       'transport=atomic-process-record path="${overlayPidFile.path}"',
     );
@@ -999,9 +1043,23 @@ void main(List<String> args) async {
           );
         }
         await processDiagnostics.record(
+          'native_window_created',
+          'result=success hwnd=$nativeHwnd ownerPid=$ownerPid',
+        );
+        await processDiagnostics.record(
           'native_window_initialization',
           'result=verified hwnd=$nativeHwnd ownerPid=$ownerPid '
               'visible=true bounds=${boundsWidth}x$boundsHeight',
+        );
+        await processDiagnostics.record(
+          'window_bounds_verified',
+          'hwnd=$nativeHwnd ownerPid=$ownerPid bounds=${windowInfo['left']},'
+              '${windowInfo['top']},${windowInfo['right']},'
+              '${windowInfo['bottom']} onMonitor=true',
+        );
+        await processDiagnostics.record(
+          'window_shown',
+          'result=success hwnd=$nativeHwnd visible=true',
         );
 
         logInfo(
@@ -1043,6 +1101,10 @@ void main(List<String> args) async {
           operationId: overlayOperationId,
           configurationRevision: overlayConfigRevision,
           windowInitMs: windowInitMs,
+        );
+        await processDiagnostics.record(
+          'hwnd_registered',
+          'result=success hwnd=${overlayHwnd ?? 0} ownerPid=$pid',
         );
         _emitOverlayBootstrapEvent(
           'hwnd_registered',
@@ -1131,6 +1193,11 @@ void main(List<String> args) async {
         'result=ready hwnd=${overlayHwnd ?? 0} '
             'operationId=${overlayOperationId ?? 'none'} '
             'configRevision=$overlayConfigRevision',
+      );
+      await processDiagnostics.record(
+        'ready',
+        'result=success instanceId=$overlayInstanceId '
+            'hwnd=${overlayHwnd ?? 0}',
       );
       _emitOverlayBootstrapEvent(
         'readiness_acknowledged',
@@ -1229,6 +1296,11 @@ void main(List<String> args) async {
         hwnd: overlayHwnd,
         instanceId: overlayInstanceId,
         firstFrameMs: firstFrameMs,
+      );
+      await processDiagnostics.record(
+        'flutter_first_frame_presented',
+        'result=success hwnd=${overlayHwnd ?? 0} '
+            'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
       );
 
       if (!firstFrameTimingLogged) {

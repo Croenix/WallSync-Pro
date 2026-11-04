@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -24,4 +25,19 @@ void main() {
     final secondDir = await service.prepareRuntime('OverlayRuntime');
     expect(secondDir.path, dir.path);
   }, timeout: const Timeout(Duration(seconds: 90)));
+
+  test('AppRuntimeService isolates runtimes that must not use hard links', () async {
+    final service = AppRuntimeService();
+    final linkedRuntime = await service.prepareRuntime('OverlayRuntime');
+    final copiedRuntime = await service.prepareRuntime(
+      'OverlayRuntime',
+      allowHardLinks: false,
+    );
+    final manifest = jsonDecode(
+      await File('${copiedRuntime.path}\\runtime.manifest').readAsString(),
+    ) as Map<String, dynamic>;
+
+    expect(copiedRuntime.path, isNot(linkedRuntime.path));
+    expect(manifest['allowHardLinks'], isFalse);
+  }, timeout: const Timeout(Duration(seconds: 180)));
 }

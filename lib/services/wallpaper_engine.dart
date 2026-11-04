@@ -255,12 +255,11 @@ class WallpaperEngine {
     await readyFile.writeAsString(pid.toString(), flush: true);
   }
 
-  Future<Directory> _prepareRuntime(String runtimeName) async {
-    return _appRuntimeService.prepareRuntime(runtimeName);
-  }
-
   Future<Directory> prepareOverlayRuntime() =>
-      _prepareRuntime('OverlayRuntime');
+      _appRuntimeService.prepareRuntime(
+        'OverlayRuntime',
+        allowHardLinks: false,
+      );
 
   /// Sets a static high-resolution image as the Windows desktop wallpaper.
   Future<bool> setStaticWallpaper(
