@@ -2050,6 +2050,19 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
   if (!SetWindowPos(target, z_order, left, top, width, height, flags)) {
     return fail("set_window_pos");
   }
+  if (!RedrawWindow(target, nullptr, nullptr,
+                    RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN)) {
+    return fail("redraw_window");
+  }
+  const HRESULT composition_result = DwmFlush();
+  if (FAILED(composition_result)) {
+    LogProcessDiagnostic(
+        "widget_desktop_surface",
+        "result=failed step=dwm_flush hwnd=" +
+            std::to_string(reinterpret_cast<intptr_t>(target)) +
+            " hresult=" + std::to_string(composition_result));
+    return false;
+  }
 
   LogProcessDiagnostic(
       "widget_desktop_surface",
