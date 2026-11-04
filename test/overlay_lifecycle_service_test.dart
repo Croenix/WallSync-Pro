@@ -385,6 +385,33 @@ void main() {
   });
 
   test(
+    'readiness polling survives a transient PID lock error',
+    () async {
+      var reads = 0;
+      final result = await waitForOverlayReadiness(
+        readRecord: () async {
+          reads++;
+          if (reads == 1) {
+            throw FileSystemException(
+              'sharing violation',
+              'overlay.pid',
+              const OSError('sharing violation', 33),
+            );
+          }
+          return record;
+        },
+        inspectProcess: (_) async => _inspection(true),
+        expectedPid: record.pid,
+        timeout: const Duration(seconds: 1),
+        pollInterval: Duration.zero,
+      );
+
+      expect(result.status, OverlayReadinessStatus.ready);
+      expect(reads, 2);
+    },
+  );
+
+  test(
     'does not accept a stale PID record with mismatched creation time',
     () async {
       final result = await waitForOverlayReadiness(

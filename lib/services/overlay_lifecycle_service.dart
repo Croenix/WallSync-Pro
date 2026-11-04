@@ -634,6 +634,36 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
       status = OverlayReadinessStatus.malformed;
       latestRecord = null;
       latestInspection = null;
+    } on FileSystemException catch (error) {
+      logWarning(
+        'OverlayLifecycleService',
+        'PID record is temporarily unavailable during readiness polling; '
+            'preserving the last verified process state: $error',
+      );
+      if (expectedPid != null) {
+        final inspection = await inspectProcess(expectedPid);
+        if (inspection != null) {
+          latestInspection = inspection;
+          status = inspection.isRunning
+              ? OverlayReadinessStatus.processRunning
+              : OverlayReadinessStatus.processExited;
+        }
+      }
+    } on TimeoutException catch (error) {
+      logWarning(
+        'OverlayLifecycleService',
+        'PID record read timed out during readiness polling; '
+            'preserving the last verified process state: $error',
+      );
+      if (expectedPid != null) {
+        final inspection = await inspectProcess(expectedPid);
+        if (inspection != null) {
+          latestInspection = inspection;
+          status = inspection.isRunning
+              ? OverlayReadinessStatus.processRunning
+              : OverlayReadinessStatus.processExited;
+        }
+      }
     }
     if (status != previousStatus || latestRecord?.pid != previousPid) {
       onStatusChanged?.call(

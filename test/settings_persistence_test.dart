@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/services/settings_service.dart';
@@ -375,6 +376,46 @@ void main() {
       final persisted =
           jsonDecode(await settingsFile.readAsString()) as Map<String, dynamic>;
       expect(persisted['activeWallpaperPath'], 'path2');
+    },
+  );
+
+  test(
+    'concurrent settings updates preserve independent customization and bounds changes',
+    () async {
+      const instanceId = 'test_atomic_settings_update';
+      final settingsService = SettingsService(instanceId: instanceId);
+      final customizationWriter = SettingsService(instanceId: instanceId);
+      final overlayWriter = SettingsService(instanceId: instanceId);
+      final settingsFile = await settingsService.settingsFile;
+      final settingsLockFile = File(
+        '${settingsFile.parent.path}\\overlay_settings_$instanceId.lock',
+      );
+      try {
+        await settingsService.saveSettings(
+          WidgetSettings(widgetTemplate: 'robik'),
+          immediate: true,
+        );
+
+        await Future.wait([
+          customizationWriter.updateSettings(
+            (current) =>
+                current.copyWith(elementColors: {ElementKey.hours: 0xFF123456}),
+          ),
+          overlayWriter.updateSettings(
+            (current) => current.copyWith(posX: 321.0, posY: 123.0),
+          ),
+        ]);
+
+        final restored = WidgetSettings.fromJson(
+          jsonDecode(await settingsFile.readAsString()) as Map<String, dynamic>,
+        );
+        expect(restored.elementColors[ElementKey.hours], 0xFF123456);
+        expect(restored.posX, 321.0);
+        expect(restored.posY, 123.0);
+      } finally {
+        if (await settingsFile.exists()) await settingsFile.delete();
+        if (await settingsLockFile.exists()) await settingsLockFile.delete();
+      }
     },
   );
 }

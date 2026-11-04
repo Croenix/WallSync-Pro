@@ -780,7 +780,8 @@ class WidgetSettings {
   bool editorMode;
   double sizeFactor;
   bool autoSizing;
-  String performanceProfile; // 'balanced' | 'performance' | 'power_saver' | 'high_quality' | 'custom'
+  String
+  performanceProfile; // 'balanced' | 'performance' | 'power_saver' | 'high_quality' | 'custom'
   int wallpaperFpsLimit;
   int widgetRefreshIntervalMs;
   bool pauseInactiveAnimations;
@@ -869,7 +870,7 @@ class WidgetSettings {
     'arc_clock': {'width': 280.0, 'height': 300.0, 'sizeFactor': 1.0},
     'flip_clock': {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0},
     'station_weather': {'width': 420.0, 'height': 180.0, 'sizeFactor': 1.0},
-'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
+    'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
     'taskbar_media': {'width': 340.0, 'height': 44.0, 'sizeFactor': 1.0},
     'taskbar_system': {'width': 260.0, 'height': 44.0, 'sizeFactor': 1.0},
     'taskbar_steam': {'width': 280.0, 'height': 44.0, 'sizeFactor': 1.0},
@@ -1188,7 +1189,8 @@ class WidgetSettings {
         if (key == 'neon_box') return 0x00000000;
         return 0xFF00E5FF;
       case 'flip_clock':
-        if (key == 'hours' || key == 'minutes' || key == 'seconds') return 0xFFEFEEDB;
+        if (key == 'hours' || key == 'minutes' || key == 'seconds')
+          return 0xFFEFEEDB;
         if (key == 'day' || key == 'date' || key == 'year') return 0xFFE2E8F0;
         if (key == 'separator') return 0xFF000000;
         if (key == 'inner_background') return 0xFF1E2229;
@@ -1465,9 +1467,9 @@ class WidgetSettings {
       imageCacheLimitMb: json['imageCacheLimitMb'] ?? 24,
       optimizationHistory: (json['optimizationHistory'] is List)
           ? (json['optimizationHistory'] as List)
-              .whereType<Map>()
-              .map((m) => Map<String, dynamic>.from(m))
-              .toList()
+                .whereType<Map>()
+                .map((m) => Map<String, dynamic>.from(m))
+                .toList()
           : [],
       elementTranslateX: parseDoubleMap(json['elementTranslateX']),
       elementTranslateY: parseDoubleMap(json['elementTranslateY']),
@@ -1527,10 +1529,13 @@ class WidgetSettings {
       taskbarShowTime: json['taskbarShowTime'] ?? true,
       taskbarShowWeather: json['taskbarShowWeather'] ?? true,
       taskbarShowMedia: json['taskbarShowMedia'] ?? true,
-      activeDockTemplateId: json['activeDockTemplateId'] ?? 'wallsync.preset.centered_dock',
+      activeDockTemplateId:
+          json['activeDockTemplateId'] ?? 'wallsync.preset.centered_dock',
       activeDockTemplateJson: json['activeDockTemplateJson'] as String?,
       taskbarSettings: json['taskbarSettings'] != null
-          ? TaskbarSettings.fromJson(json['taskbarSettings'] as Map<String, dynamic>)
+          ? TaskbarSettings.fromJson(
+              json['taskbarSettings'] as Map<String, dynamic>,
+            )
           : const TaskbarSettings(),
     );
   }
@@ -1804,8 +1809,11 @@ class WidgetSettings {
       pauseInactiveAnimations:
           pauseInactiveAnimations ?? this.pauseInactiveAnimations,
       imageCacheLimitMb: imageCacheLimitMb ?? this.imageCacheLimitMb,
-      optimizationHistory: optimizationHistory ??
-          this.optimizationHistory.map((m) => Map<String, dynamic>.from(m)).toList(),
+      optimizationHistory:
+          optimizationHistory ??
+          this.optimizationHistory
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList(),
       elementTranslateX: elementTranslateX ?? Map.from(this.elementTranslateX),
       elementTranslateY: elementTranslateY ?? Map.from(this.elementTranslateY),
       elementTranslateZ: elementTranslateZ ?? Map.from(this.elementTranslateZ),
@@ -1819,8 +1827,7 @@ class WidgetSettings {
       weatherStatus: weatherStatus ?? this.weatherStatus,
       weatherLocationResolved:
           weatherLocationResolved ?? this.weatherLocationResolved,
-      weatherForecastJson:
-          weatherForecastJson ?? this.weatherForecastJson,
+      weatherForecastJson: weatherForecastJson ?? this.weatherForecastJson,
       showWifi: showWifi ?? this.showWifi,
       wifiEnabled: wifiEnabled ?? this.wifiEnabled,
       showBluetooth: showBluetooth ?? this.showBluetooth,
@@ -1833,7 +1840,8 @@ class WidgetSettings {
       showRam: showRam ?? this.showRam,
       showNeonBadge: showNeonBadge ?? this.showNeonBadge,
       activeWidgetIds: activeWidgetIds ?? List.from(this.activeWidgetIds),
-      widgetConfigurations: widgetConfigurations ?? Map.from(this.widgetConfigurations),
+      widgetConfigurations:
+          widgetConfigurations ?? Map.from(this.widgetConfigurations),
       taskbarIconSize: taskbarIconSize ?? this.taskbarIconSize,
       taskbarFontSize: taskbarFontSize ?? this.taskbarFontSize,
       taskbarBgColor: taskbarBgColor ?? this.taskbarBgColor,
@@ -1849,7 +1857,8 @@ class WidgetSettings {
       taskbarShowWeather: taskbarShowWeather ?? this.taskbarShowWeather,
       taskbarShowMedia: taskbarShowMedia ?? this.taskbarShowMedia,
       activeDockTemplateId: activeDockTemplateId ?? this.activeDockTemplateId,
-      activeDockTemplateJson: activeDockTemplateJson ?? this.activeDockTemplateJson,
+      activeDockTemplateJson:
+          activeDockTemplateJson ?? this.activeDockTemplateJson,
       taskbarSettings: taskbarSettings ?? this.taskbarSettings,
       recentWallpapers: recentWallpapers ?? List.from(this.recentWallpapers),
       customElements:
@@ -1876,7 +1885,9 @@ class _SettingsFileWritePayload {
   });
 }
 
-Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async {
+Future<bool> _executeSettingsFileWrite(
+  _SettingsFileWritePayload payload,
+) async {
   final file = File(payload.settingsFilePath);
 
   // Fast check: if the settings file already has the exact same content, skip lock & write completely
@@ -1890,40 +1901,8 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
   }
 
   final lock = File(payload.lockFilePath);
-  RandomAccessFile? raf;
-  var lockAcquired = false;
-  Object? lastLockError;
+  final raf = await _acquireSettingsFileLock(lock);
   try {
-    for (var attempt = 0; attempt < 6; attempt++) {
-      try {
-        raf ??= await lock.open(mode: FileMode.append);
-        await raf
-            .lock(FileLock.exclusive)
-            .timeout(const Duration(milliseconds: 1200));
-        lockAcquired = true;
-        break;
-      } on FileSystemException catch (error) {
-        lastLockError = error;
-        final code = error.osError?.errorCode;
-        if ((code != 32 && code != 33) || attempt == 5) rethrow;
-      } on TimeoutException catch (error) {
-        lastLockError = error;
-        if (attempt == 5) rethrow;
-      }
-
-      await raf?.close();
-      raf = null;
-      await Future<void>.delayed(Duration(milliseconds: 40 + (attempt * 30)));
-    }
-
-    if (!lockAcquired) {
-      throw FileSystemException(
-        'Could not acquire the settings lock after bounded retries: '
-        '$lastLockError',
-        lock.path,
-      );
-    }
-
     if (await file.exists()) {
       try {
         final existing = await file.readAsString();
@@ -1933,27 +1912,74 @@ Future<bool> _executeSettingsFileWrite(_SettingsFileWritePayload payload) async 
       } catch (_) {}
     }
 
-    final tempFile = File(
-      '${file.path}.${payload.pid}.${DateTime.now().microsecondsSinceEpoch}.tmp',
-    );
+    await _writeSettingsFileAtomically(file, payload.jsonStr, payload.pid);
+    return true;
+  } finally {
+    await _releaseSettingsFileLock(raf);
+  }
+}
+
+Future<RandomAccessFile> _acquireSettingsFileLock(File lock) async {
+  RandomAccessFile? raf;
+  Object? lastLockError;
+  for (var attempt = 0; attempt < 6; attempt++) {
     try {
-      await tempFile.writeAsString(payload.jsonStr, flush: true);
-      await tempFile.rename(file.path);
-      return true;
-    } finally {
-      if (await tempFile.exists()) {
-        try {
-          await tempFile.delete();
-        } catch (_) {}
+      raf ??= await lock.open(mode: FileMode.append);
+      await raf
+          .lock(FileLock.exclusive)
+          .timeout(const Duration(milliseconds: 1200));
+      return raf;
+    } on FileSystemException catch (error) {
+      lastLockError = error;
+      final code = error.osError?.errorCode;
+      if ((code != 32 && code != 33) || attempt == 5) {
+        await raf?.close();
+        rethrow;
+      }
+    } on TimeoutException catch (error) {
+      lastLockError = error;
+      if (attempt == 5) {
+        await raf?.close();
+        rethrow;
       }
     }
+
+    await raf?.close();
+    raf = null;
+    await Future<void>.delayed(Duration(milliseconds: 40 + (attempt * 30)));
+  }
+
+  throw FileSystemException(
+    'Could not acquire the settings lock after bounded retries: '
+    '$lastLockError',
+    lock.path,
+  );
+}
+
+Future<void> _releaseSettingsFileLock(RandomAccessFile raf) async {
+  try {
+    await raf.unlock();
   } finally {
-    if (raf != null) {
+    await raf.close();
+  }
+}
+
+Future<void> _writeSettingsFileAtomically(
+  File file,
+  String jsonStr,
+  int writerPid,
+) async {
+  final tempFile = File(
+    '${file.path}.$writerPid.${DateTime.now().microsecondsSinceEpoch}.tmp',
+  );
+  try {
+    await tempFile.writeAsString(jsonStr, flush: true);
+    await tempFile.rename(file.path);
+  } finally {
+    if (await tempFile.exists()) {
       try {
-        if (lockAcquired) await raf.unlock();
-      } finally {
-        await raf.close();
-      }
+        await tempFile.delete();
+      } catch (_) {}
     }
   }
 }
@@ -1990,7 +2016,11 @@ class SettingsService {
       final settings = _pendingSettingsMap.remove(key);
       if (settings != null) {
         final instanceId = key == '__global__' ? null : key;
-        futures.add(SettingsService(instanceId: instanceId)._writeSettingsDirect(settings));
+        futures.add(
+          SettingsService(
+            instanceId: instanceId,
+          )._writeSettingsDirect(settings),
+        );
       }
       if (completer != null && !completer.isCompleted) {
         completer.complete();
@@ -2076,6 +2106,7 @@ class SettingsService {
   set _cachedSettings(WidgetSettings val) {
     _globalCachedSettings[instanceId ?? '__global__'] = val;
   }
+
   WidgetSettings get settings => _cachedSettings;
   WidgetSettings get cachedSettings => _cachedSettings;
   String? _lastPersistedJsonStr;
@@ -2154,7 +2185,9 @@ class SettingsService {
       _pendingDebounceTimers[key]?.cancel();
       _pendingDebounceTimers.remove(key);
       final completer = _pendingSaveCompleters.remove(key);
-      final future = _serializeSettingsWrite(() => _writeSettingsDirect(settings));
+      final future = _serializeSettingsWrite(
+        () => _writeSettingsDirect(settings),
+      );
       if (completer != null && !completer.isCompleted) {
         future.whenComplete(completer.complete);
       }
@@ -2238,11 +2271,27 @@ class SettingsService {
   Future<WidgetSettings> updateSettings(
     WidgetSettings Function(WidgetSettings current) update,
   ) async {
-    final current = await loadSettings();
-    final updated = update(current);
-    _cachedSettings = updated;
-    await saveSettings(updated, immediate: true);
-    return updated;
+    return _serializeSettingsWrite(() async {
+      final file = await settingsFile;
+      final lock = await _settingsLockFile;
+      final raf = await _acquireSettingsFileLock(lock);
+      try {
+        final current = await file.exists()
+            ? WidgetSettings.fromJson(
+                jsonDecode(await file.readAsString()) as Map<String, dynamic>,
+              )
+            : _cachedSettings;
+        final updated = update(current);
+        final jsonStr = jsonEncode(updated.toJson());
+        await _writeSettingsFileAtomically(file, jsonStr, pid);
+        _cachedSettings = updated;
+        _lastPersistedJsonStr = jsonStr;
+        _settingsLoadSucceeded = true;
+        return updated;
+      } finally {
+        await _releaseSettingsFileLock(raf);
+      }
+    });
   }
 
   Future<void> _updateStartupShortcut(bool startOnBoot) async {

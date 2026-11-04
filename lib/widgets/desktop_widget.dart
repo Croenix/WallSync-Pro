@@ -6770,15 +6770,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
     await SystemConnectivityService.instance.refresh();
     if (!mounted) return;
     final snapshot = SystemConnectivityService.instance.current;
-    final updated = _settings.copyWith(
-      wifiEnabled: snapshot.wifiEnabled ?? _settings.wifiEnabled,
-      bluetoothEnabled: snapshot.bluetoothEnabled ?? _settings.bluetoothEnabled,
+    final updated = await _settingsService.updateSettings(
+      (current) => current.copyWith(
+        wifiEnabled: snapshot.wifiEnabled ?? current.wifiEnabled,
+        bluetoothEnabled:
+            snapshot.bluetoothEnabled ?? current.bluetoothEnabled,
+      ),
     );
+    if (!mounted) return;
     setState(() {
       _connectivity = snapshot;
       _settings = updated;
     });
-    await _settingsService.saveSettings(updated);
   }
 
   void _showConnectivityError(String adapterName, Object error) {
@@ -6975,13 +6978,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
                         return;
                       }
                       if (!mounted) return;
-                      final updated = _settings.copyWith(
-                        wifiEnabled: targetState,
+                      final updated = await _settingsService.updateSettings(
+                        (current) =>
+                            current.copyWith(wifiEnabled: targetState),
                       );
+                      if (!mounted) return;
                       setState(() {
                         _settings = updated;
                       });
-                      await _settingsService.saveSettings(updated);
                     },
                     child: _apply3D(
                       ElementKey.wifiIcon,
@@ -7043,13 +7047,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
                         return;
                       }
                       if (!mounted) return;
-                      final updated = _settings.copyWith(
-                        bluetoothEnabled: targetState,
+                      final updated = await _settingsService.updateSettings(
+                        (current) =>
+                            current.copyWith(bluetoothEnabled: targetState),
                       );
+                      if (!mounted) return;
                       setState(() {
                         _settings = updated;
                       });
-                      await _settingsService.saveSettings(updated);
                     },
                     child: _apply3D(
                       ElementKey.bluetoothIcon,
@@ -7635,14 +7640,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
             resolvedName,
           );
           if (info != null && mounted) {
-            final updated = _settings.copyWith(
-              weatherTemp: info.temperature.toStringAsFixed(1),
-              weatherStatus: info.status,
-              weatherLocationResolved: info.locationName,
-              weatherForecastJson: info.forecastJson,
+            final updated = await _settingsService.updateSettings(
+              (current) => current.copyWith(
+                weatherTemp: info.temperature.toStringAsFixed(1),
+                weatherStatus: info.status,
+                weatherLocationResolved: info.locationName,
+                weatherForecastJson: info.forecastJson,
+              ),
             );
+            if (!mounted) return;
             setState(() => _settings = updated);
-            await _settingsService.saveSettings(updated);
           }
         }
       } else {
@@ -7657,14 +7664,16 @@ class _DesktopWidgetState extends State<DesktopWidget>
             resolvedName,
           );
           if (info != null && mounted) {
-            final updated = _settings.copyWith(
-              weatherTemp: info.temperature.toStringAsFixed(1),
-              weatherStatus: info.status,
-              weatherLocationResolved: info.locationName,
-              weatherForecastJson: info.forecastJson,
+            final updated = await _settingsService.updateSettings(
+              (current) => current.copyWith(
+                weatherTemp: info.temperature.toStringAsFixed(1),
+                weatherStatus: info.status,
+                weatherLocationResolved: info.locationName,
+                weatherForecastJson: info.forecastJson,
+              ),
             );
+            if (!mounted) return;
             setState(() => _settings = updated);
-            await _settingsService.saveSettings(updated);
           }
         }
       }
@@ -7690,18 +7699,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
         final info = await WeatherService().fetchWeather(lat, lon, name);
         if (!mounted) return;
         if (info != null && mounted) {
-          final updated = _settings.copyWith(
-            weatherLocation: val,
-            weatherTemp: info.temperature.toStringAsFixed(1),
-            weatherStatus: info.status,
-            weatherLocationResolved: info.locationName,
-            weatherForecastJson: info.forecastJson,
+          final updated = await _settingsService.updateSettings(
+            (current) => current.copyWith(
+              weatherLocation: val,
+              weatherTemp: info.temperature.toStringAsFixed(1),
+              weatherStatus: info.status,
+              weatherLocationResolved: info.locationName,
+              weatherForecastJson: info.forecastJson,
+            ),
           );
+          if (!mounted) return;
           setState(() {
             _settings = updated;
             _showWeatherSearchOverlay = false;
           });
-          await _settingsService.saveSettings(updated);
         } else {
           setState(() {
             _weatherSearchError = 'Could not fetch weather data.';
@@ -7740,18 +7751,20 @@ class _DesktopWidgetState extends State<DesktopWidget>
         );
         if (!mounted) return;
         if (info != null && mounted) {
-          final updated = _settings.copyWith(
-            weatherLocation: '',
-            weatherTemp: info.temperature.toStringAsFixed(1),
-            weatherStatus: info.status,
-            weatherLocationResolved: info.locationName,
-            weatherForecastJson: info.forecastJson,
+          final updated = await _settingsService.updateSettings(
+            (current) => current.copyWith(
+              weatherLocation: '',
+              weatherTemp: info.temperature.toStringAsFixed(1),
+              weatherStatus: info.status,
+              weatherLocationResolved: info.locationName,
+              weatherForecastJson: info.forecastJson,
+            ),
           );
+          if (!mounted) return;
           setState(() {
             _settings = updated;
             _showWeatherSearchOverlay = false;
           });
-          await _settingsService.saveSettings(updated);
         } else {
           setState(() {
             _weatherSearchError =
