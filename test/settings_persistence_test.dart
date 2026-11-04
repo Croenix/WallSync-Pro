@@ -164,9 +164,24 @@ void main() {
     expect(settings.fontFor(ElementKey.date), 'Anurati');
     expect(settings.fontFor(ElementKey.hours), 'Anurati');
 
-    final json = settings.toJson();
+    final customized = settings.copyWith(
+      elementColors: {
+        ElementKey.hours: 0xFF123456,
+        ElementKey.minutes: 0xFF654321,
+      },
+      elementFonts: {ElementKey.hours: 'Segoe UI'},
+      elementSizes: {ElementKey.minutes: 1.4},
+    );
+    expect(customized.fontFor(ElementKey.hours), 'Segoe UI');
+    expect(customized.sizeFor(ElementKey.minutes, 16), 22.4);
+    expect(customized.colorFor(ElementKey.hours), 0xFF123456);
+
+    final json = customized.toJson();
     final restored = WidgetSettings.fromJson(json);
     expect(restored.widgetTemplate, 'atomic_clock');
+    expect(restored.colorFor(ElementKey.minutes), 0xFF654321);
+    expect(restored.fontFor(ElementKey.hours), 'Segoe UI');
+    expect(restored.sizeFor(ElementKey.minutes, 16), 22.4);
   });
 
   test('retired taskbar widgets migrate to standard widget state', () {
@@ -232,41 +247,61 @@ void main() {
     expect(identical(dir1, dir2), isTrue);
   });
 
-  test('widget template defaults contain valid dimensions for all templates', () {
-    final defaults = WidgetSettings.templateDefaults;
+  test(
+    'widget template defaults contain valid dimensions for all templates',
+    () {
+      final defaults = WidgetSettings.templateDefaults;
 
-    for (final entry in defaults.entries) {
-      final key = entry.key;
-      final val = entry.value;
-      expect(val['width'], isNotNull, reason: '$key has width');
-      expect(val['height'], isNotNull, reason: '$key has height');
-      expect(val['sizeFactor'], isNotNull, reason: '$key has sizeFactor');
-      expect(val['width']! > 0, isTrue);
-      expect(val['height']! > 0, isTrue);
+      for (final entry in defaults.entries) {
+        final key = entry.key;
+        final val = entry.value;
+        expect(val['width'], isNotNull, reason: '$key has width');
+        expect(val['height'], isNotNull, reason: '$key has height');
+        expect(val['sizeFactor'], isNotNull, reason: '$key has sizeFactor');
+        expect(val['width']! > 0, isTrue);
+        expect(val['height']! > 0, isTrue);
 
-      if (key.startsWith('taskbar_')) {
-        expect(val['height']! <= 50.0, isTrue, reason: '$key compact taskbar height');
-        expect(val['height']! >= 36.0, isTrue, reason: '$key taskbar height minimum');
+        if (key.startsWith('taskbar_')) {
+          expect(
+            val['height']! <= 50.0,
+            isTrue,
+            reason: '$key compact taskbar height',
+          );
+          expect(
+            val['height']! >= 36.0,
+            isTrue,
+            reason: '$key taskbar height minimum',
+          );
+        }
       }
-    }
-  });
+    },
+  );
 
-  test('SettingsService saveSettings updates in-memory cache immediately and coalesces debounced writes', () async {
-    final service = SettingsService(instanceId: 'test_debounce_coalesce');
-    final s1 = WidgetSettings(startOnBoot: false, activeWallpaperPath: 'path1');
-    final s2 = WidgetSettings(startOnBoot: false, activeWallpaperPath: 'path2');
+  test(
+    'SettingsService saveSettings updates in-memory cache immediately and coalesces debounced writes',
+    () async {
+      final service = SettingsService(instanceId: 'test_debounce_coalesce');
+      final s1 = WidgetSettings(
+        startOnBoot: false,
+        activeWallpaperPath: 'path1',
+      );
+      final s2 = WidgetSettings(
+        startOnBoot: false,
+        activeWallpaperPath: 'path2',
+      );
 
-    // Calling saveSettings updates cache synchronously in memory
-    final f1 = service.saveSettings(s1);
-    expect((await service.loadSettings()).activeWallpaperPath, 'path1');
+      // Calling saveSettings updates cache synchronously in memory
+      final f1 = service.saveSettings(s1);
+      expect((await service.loadSettings()).activeWallpaperPath, 'path1');
 
-    final f2 = service.saveSettings(s2);
-    expect((await service.loadSettings()).activeWallpaperPath, 'path2');
+      final f2 = service.saveSettings(s2);
+      expect((await service.loadSettings()).activeWallpaperPath, 'path2');
 
-    // Flush pending saves immediately
-    await SettingsService.flushPendingSaves();
-    await Future.wait([f1, f2]);
+      // Flush pending saves immediately
+      await SettingsService.flushPendingSaves();
+      await Future.wait([f1, f2]);
 
-    expect((await service.loadSettings()).activeWallpaperPath, 'path2');
-  });
+      expect((await service.loadSettings()).activeWallpaperPath, 'path2');
+    },
+  );
 }

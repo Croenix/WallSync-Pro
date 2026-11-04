@@ -12581,6 +12581,85 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               );
 
+            case 'atomic_clock':
+              Widget atomicSeparator(String value, {double size = 8}) {
+                return _applyPreview3D(
+                  ElementKey.separator,
+                  tappable(
+                    ElementKey.separator,
+                    Text(
+                      value,
+                      style: styleFor(
+                        ElementKey.separator,
+                        size,
+                        FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _applyPreview3D(
+                      ElementKey.day,
+                      tappable(
+                        ElementKey.day,
+                        Text(
+                          dayStr,
+                          style: styleFor(
+                            ElementKey.day,
+                            13,
+                            FontWeight.w900,
+                          ).copyWith(letterSpacing: 2.2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    _applyPreview3D(
+                      ElementKey.date,
+                      tappable(
+                        ElementKey.date,
+                        Text(
+                          '${DateFormat('d MMMM, yyyy').format(now).toUpperCase()}.',
+                          style: styleFor(
+                            ElementKey.date,
+                            7.5,
+                            FontWeight.w700,
+                          ).copyWith(letterSpacing: 1.2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        atomicSeparator('-'),
+                        const SizedBox(width: 4),
+                        buildHoursPart(size: 8),
+                        atomicSeparator(':'),
+                        buildMinutesPart(size: 8),
+                        if (showSec) ...[
+                          atomicSeparator(':'),
+                          buildSecondsPart(size: 8),
+                        ],
+                        if (!use24h) ...[
+                          const SizedBox(width: 3),
+                          buildAmPmPart(size: 5),
+                        ],
+                        const SizedBox(width: 4),
+                        atomicSeparator('-'),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+
             case 'atomic_clean':
               final dayColor = Color(_settings.colorFor(ElementKey.day));
               final dateColor = Color(_settings.colorFor(ElementKey.date));
@@ -13993,6 +14072,7 @@ class _DashboardViewState extends State<DashboardView>
           ElementKey.day,
           ElementKey.date,
           ElementKey.hours,
+          ElementKey.separator,
           ElementKey.minutes,
           ElementKey.seconds,
           ElementKey.ampm,

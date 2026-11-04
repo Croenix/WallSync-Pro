@@ -3322,17 +3322,6 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final monthName = DateFormat('MMMM').format(_dateTime).toUpperCase();
     final dateStr = '${_dateTime.day} $monthName, ${_dateTime.year}.';
 
-    String timeStr;
-    if (_settings.use24HourFormat) {
-      timeStr = _settings.showSeconds
-          ? '- $_hours:$_minutes:$_seconds -'
-          : '- $_hours:$_minutes -';
-    } else {
-      timeStr = _settings.showSeconds
-          ? '- $_hours:$_minutes:$_seconds $_ampm -'
-          : '- $_hours:$_minutes $_ampm -';
-    }
-
     Widget buildAtomicText({
       required String text,
       required String elementKey,
@@ -3343,21 +3332,15 @@ class _DesktopWidgetState extends State<DesktopWidget>
       final size =
           _settings.sizeFor(elementKey, baseSize) *
           _settings.fontSizeMultiplier;
-      final font = _settings.fontFor(elementKey);
-      final hasOverride = _settings.elementColors.containsKey(elementKey);
-      final col = Color(_settings.colorFor(elementKey));
-
-      final textWidget = Text(
+      return Text(
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          fontFamily: font == 'Segoe UI' ? 'Anurati' : font,
+          fontFamily: _settings.fontFor(elementKey),
           fontSize: size,
           fontWeight: weight,
           letterSpacing: letterSpacing,
-          color: hasOverride || _settings.customGradientColors.length < 2
-              ? col
-              : Colors.white,
+          color: Color(_settings.colorFor(elementKey)),
           shadows: [
             Shadow(
               color: Colors.black.withValues(alpha: 0.75),
@@ -3367,22 +3350,25 @@ class _DesktopWidgetState extends State<DesktopWidget>
           ],
         ),
       );
+    }
 
-      if (!hasOverride && _settings.customGradientColors.length >= 2) {
-        return ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) => LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: _settings.customGradientColors
-                .map((c) => Color(c))
-                .toList(),
-          ).createShader(bounds),
-          child: textWidget,
-        );
-      }
-
-      return textWidget;
+    Widget atomicPart({
+      required String text,
+      required String elementKey,
+      required double baseSize,
+      required double letterSpacing,
+      required FontWeight weight,
+    }) {
+      return _apply3D(
+        elementKey,
+        buildAtomicText(
+          text: text,
+          elementKey: elementKey,
+          baseSize: baseSize,
+          letterSpacing: letterSpacing,
+          weight: weight,
+        ),
+      );
     }
 
     return FittedBox(
@@ -3394,37 +3380,91 @@ class _DesktopWidgetState extends State<DesktopWidget>
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _apply3D(
-              ElementKey.day,
-              buildAtomicText(
-                text: dayStr,
-                elementKey: ElementKey.day,
-                baseSize: 46,
-                letterSpacing: 4.5,
-                weight: FontWeight.w900,
-              ),
+            atomicPart(
+              text: dayStr,
+              elementKey: ElementKey.day,
+              baseSize: 46,
+              letterSpacing: 4.5,
+              weight: FontWeight.w900,
             ),
             const SizedBox(height: 10),
-            _apply3D(
-              ElementKey.date,
-              buildAtomicText(
-                text: dateStr,
-                elementKey: ElementKey.date,
-                baseSize: 21,
-                letterSpacing: 2.2,
-                weight: FontWeight.w700,
-              ),
+            atomicPart(
+              text: dateStr,
+              elementKey: ElementKey.date,
+              baseSize: 21,
+              letterSpacing: 2.2,
+              weight: FontWeight.w700,
             ),
             const SizedBox(height: 10),
-            _apply3D(
-              ElementKey.hours,
-              buildAtomicText(
-                text: timeStr,
-                elementKey: ElementKey.hours,
-                baseSize: 16,
-                letterSpacing: 2.0,
-                weight: FontWeight.w600,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                atomicPart(
+                  text: '-',
+                  elementKey: ElementKey.separator,
+                  baseSize: 16,
+                  letterSpacing: 1.0,
+                  weight: FontWeight.w600,
+                ),
+                const SizedBox(width: 8),
+                atomicPart(
+                  text: _hours,
+                  elementKey: ElementKey.hours,
+                  baseSize: 16,
+                  letterSpacing: 2.0,
+                  weight: FontWeight.w600,
+                ),
+                atomicPart(
+                  text: ':',
+                  elementKey: ElementKey.separator,
+                  baseSize: 16,
+                  letterSpacing: 1.0,
+                  weight: FontWeight.w600,
+                ),
+                atomicPart(
+                  text: _minutes,
+                  elementKey: ElementKey.minutes,
+                  baseSize: 16,
+                  letterSpacing: 2.0,
+                  weight: FontWeight.w600,
+                ),
+                if (_settings.showSeconds) ...[
+                  atomicPart(
+                    text: ':',
+                    elementKey: ElementKey.separator,
+                    baseSize: 16,
+                    letterSpacing: 1.0,
+                    weight: FontWeight.w600,
+                  ),
+                  atomicPart(
+                    text: _seconds,
+                    elementKey: ElementKey.seconds,
+                    baseSize: 16,
+                    letterSpacing: 2.0,
+                    weight: FontWeight.w600,
+                  ),
+                ],
+                if (!_settings.use24HourFormat) ...[
+                  const SizedBox(width: 6),
+                  atomicPart(
+                    text: _ampm,
+                    elementKey: ElementKey.ampm,
+                    baseSize: 12,
+                    letterSpacing: 1.0,
+                    weight: FontWeight.w600,
+                  ),
+                ],
+                const SizedBox(width: 8),
+                atomicPart(
+                  text: '-',
+                  elementKey: ElementKey.separator,
+                  baseSize: 16,
+                  letterSpacing: 1.0,
+                  weight: FontWeight.w600,
+                ),
+              ],
             ),
           ],
         ),
