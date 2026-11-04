@@ -231,9 +231,7 @@ Future<void> _restoreStartupOverlay(WidgetSettings settings) async {
   try {
     final runtimeDirectory = await WallpaperEngine().prepareOverlayRuntime();
     final executableName = File(executable).uri.pathSegments.last;
-    final runtimeExecutable = File(
-      '${runtimeDirectory.path}\\$executableName',
-    );
+    final runtimeExecutable = File('${runtimeDirectory.path}\\$executableName');
     if (await runtimeExecutable.exists()) {
       executable = runtimeExecutable.path;
       workingDirectory = runtimeDirectory.path;
@@ -455,9 +453,19 @@ void main(List<String> args) async {
 
   // Capture unhandled Flutter framework errors
   FlutterError.onError = (FlutterErrorDetails details) {
+    final message = details.exceptionAsString();
+    final isRenderFlexOverflow = message.contains('A RenderFlex overflowed');
+    final diagnosticContext = isRenderFlexOverflow
+        ? details.informationCollector
+              ?.call()
+              .map((diagnostic) => diagnostic.toString())
+              .join('\n')
+        : null;
     logError(
       'FlutterError',
-      details.exceptionAsString(),
+      diagnosticContext == null || diagnosticContext.isEmpty
+          ? message
+          : '$message\n$diagnosticContext',
       details.exception,
       details.stack,
     );
@@ -547,9 +555,7 @@ void main(List<String> args) async {
   );
 
   final overlayInstanceId = processArguments.instanceId ?? '';
-  var overlayType = isOverlayMode
-      ? (processArguments.templateId ?? '')
-      : '';
+  var overlayType = isOverlayMode ? (processArguments.templateId ?? '') : '';
   final overlayOperationId = processArguments.operationId;
   final overlayConfigRevision = processArguments.configurationRevision;
 
@@ -857,6 +863,7 @@ void main(List<String> args) async {
     }
 
     int? overlayHwnd;
+    final nativeWindowCreatedMs = DateTime.now().millisecondsSinceEpoch;
     try {
       final rawWindowInfo = await const MethodChannel(
         'wallsync/live_wallpaper',
@@ -880,6 +887,16 @@ void main(List<String> args) async {
         'hwnd_ownership_verification',
         'result=verified hwnd=$overlayHwnd ownerPid=$ownerPid '
             'threadId=${windowInfo['threadId']}',
+      );
+      _emitOverlayBootstrapEvent(
+        'hwnd_created',
+        pid: pid,
+        instanceId: overlayInstanceId,
+        operationId: overlayOperationId,
+        configRevision: overlayConfigRevision,
+        stopwatch: startupStopwatch,
+        overlayType: overlayType,
+        reason: 'hwnd=$overlayHwnd',
       );
     } catch (error, stackTrace) {
       await processDiagnostics.record(
@@ -908,6 +925,7 @@ void main(List<String> args) async {
       startupTimestamp: overlayEntryPointMs,
       entryPointMs: overlayEntryPointMs,
       settingsLoadedMs: settingsLoadMs,
+      windowInitMs: nativeWindowCreatedMs,
     );
     final overlayPidFile = await settingsService.pidFile;
     await processDiagnostics.record(
@@ -924,6 +942,41 @@ void main(List<String> args) async {
       'transport=atomic-process-record path="${overlayPidFile.path}"',
     );
     final processRegistrationStopwatch = Stopwatch()..start();
+    await OverlayLifecycleService.updateCurrentProcessState(
+      settingsService,
+      state: OverlayLifecycleState.engineInitialized,
+      stage: DockReadinessStage.processRunning,
+      hwnd: overlayHwnd,
+      instanceId: overlayInstanceId,
+      templateId: overlayType,
+      processMode: processArguments.mode.value,
+      operationId: overlayOperationId,
+      configurationRevision: overlayConfigRevision,
+      windowInitMs: nativeWindowCreatedMs,
+    );
+    await processDiagnostics.record(
+      'engine_initialized',
+      'pid=$pid hwnd=$overlayHwnd instanceId=$overlayInstanceId '
+          'templateId=$overlayType operationId=${overlayOperationId ?? 'none'} '
+          'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
+    );
+    await OverlayLifecycleService.updateCurrentProcessState(
+      settingsService,
+      state: OverlayLifecycleState.hwndCreated,
+      stage: DockReadinessStage.processRunning,
+      hwnd: overlayHwnd,
+      instanceId: overlayInstanceId,
+      templateId: overlayType,
+      processMode: processArguments.mode.value,
+      operationId: overlayOperationId,
+      configurationRevision: overlayConfigRevision,
+    );
+    await processDiagnostics.record(
+      'hwnd_created',
+      'pid=$pid hwnd=$overlayHwnd instanceId=$overlayInstanceId '
+          'templateId=$overlayType operationId=${overlayOperationId ?? 'none'} '
+          'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
+    );
     logInfo(
       'OverlayStartup',
       'Process identity verified and registered; pid=$pid, instanceId=$overlayInstanceId, type=$overlayType, opId=$overlayOperationId, configRev=$overlayConfigRevision, state=processStarted, stage=processRunning, hwnd=$overlayHwnd.',
@@ -947,7 +1000,9 @@ void main(List<String> args) async {
     );
 
     bool overlayConfigurationComplete = false;
+    bool overlayPresentationVerified = false;
     Future<void>? overlayConfigurationInProgress;
+    final nativeWindowReady = Completer<void>();
 
     Future<void> configureAndShowOverlay() async {
       final overlayWindowStopwatch = Stopwatch()..start();
@@ -971,8 +1026,7 @@ void main(List<String> args) async {
         }
 
         Offset? requestedPosition;
-        if (cleanSettings.posX != null &&
-            cleanSettings.posY != null) {
+        if (cleanSettings.posX != null && cleanSettings.posY != null) {
           requestedPosition = Offset(cleanSettings.posX!, cleanSettings.posY!);
           try {
             final results = await Future.wait([
@@ -1058,9 +1112,26 @@ void main(List<String> args) async {
           'setHasShadow',
           () => windowManager.setHasShadow(false),
         );
-        await timeWindowOperation('show', windowManager.show);
-        await timeWindowOperation('focus', windowManager.focus);
-
+        await OverlayLifecycleService.updateCurrentProcessState(
+          settingsService,
+          state: OverlayLifecycleState.windowConfigured,
+          stage: DockReadinessStage.windowInteractive,
+          hwnd: overlayHwnd,
+          instanceId: overlayInstanceId,
+          templateId: overlayType,
+          processMode: processArguments.mode.value,
+          operationId: overlayOperationId,
+          configurationRevision: overlayConfigRevision,
+        );
+        await processDiagnostics.record(
+          'window_configured',
+          'pid=$pid hwnd=$overlayHwnd instanceId=$overlayInstanceId '
+              'templateId=$overlayType operationId=${overlayOperationId ?? 'none'} '
+              'bounds=${requestedPosition ?? 'center'},'
+              '${cleanSettings.width}x${cleanSettings.height} '
+              'alwaysOnTop=${cleanSettings.alwaysOnTop} '
+              'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
+        );
         if (Platform.isWindows && !cleanSettings.alwaysOnTop) {
           await processDiagnostics.record(
             'widget_desktop_surface',
@@ -1075,21 +1146,24 @@ void main(List<String> args) async {
             'result=${attached == true ? 'success' : 'failed'} attach=true',
           );
           if (attached != true) {
-            logWarning(
-              'OverlayStartup',
-              'Could not attach the widget to the Windows desktop surface; '
-                  'leaving it as a regular visible window.',
-            );
-          } else {
-            WidgetsBinding.instance.scheduleFrame();
-            await WidgetsBinding.instance.endOfFrame;
-            await processDiagnostics.record(
-              'widget_desktop_surface',
-              'result=flutter_frame_presented attached=true',
+            throw StateError(
+              'Windows could not attach the widget to its desktop surface.',
             );
           }
         }
 
+        if (Platform.isWindows) {
+          final showRequested = await const MethodChannel(
+            'wallsync/live_wallpaper',
+          ).invokeMethod<bool>('showWidgetWindow');
+          if (showRequested != true) {
+            throw StateError(
+              'The native runner could not show the widget without activation.',
+            );
+          }
+        } else {
+          await timeWindowOperation('show', windowManager.show);
+        }
         final visible = await waitForOverlayWindowVisibility(
           isVisible: windowManager.isVisible,
           retryDelays: const [
@@ -1103,31 +1177,109 @@ void main(List<String> args) async {
           onRetry: (attempt, delay) {
             logWarning(
               'OverlayStartup',
-              'Overlay window is not visible yet; retry=$attempt, '
+              'Overlay window is not visible yet; hwnd=$overlayHwnd '
+                  'instanceId=$overlayInstanceId templateId=$overlayType '
+                  'operationId=${overlayOperationId ?? 'none'} retry=$attempt, '
                   'delay=${delay.inMilliseconds}ms.',
             );
           },
         );
         if (!visible) {
+          await processDiagnostics.record(
+            'window_visibility_failure',
+            'pid=$pid hwnd=$overlayHwnd instanceId=$overlayInstanceId '
+                'templateId=$overlayType operationId=${overlayOperationId ?? 'none'} '
+                'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
+          );
           throw StateError(
             'Overlay window did not become visible after bounded retries.',
+          );
+        }
+        await OverlayLifecycleService.updateCurrentProcessState(
+          settingsService,
+          state: OverlayLifecycleState.windowShown,
+          stage: DockReadinessStage.windowVisible,
+          hwnd: overlayHwnd,
+          instanceId: overlayInstanceId,
+          templateId: overlayType,
+          processMode: processArguments.mode.value,
+          operationId: overlayOperationId,
+          configurationRevision: overlayConfigRevision,
+        );
+        await processDiagnostics.record(
+          'window_shown',
+          'result=success pid=$pid hwnd=$overlayHwnd '
+              'instanceId=$overlayInstanceId templateId=$overlayType '
+              'operationId=${overlayOperationId ?? 'none'} '
+              'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
+        );
+
+        WidgetsBinding.instance.scheduleFrame();
+        await WidgetsBinding.instance.endOfFrame;
+        final presentationStopwatch = Stopwatch()..start();
+        Map<String, dynamic>? windowInfo;
+        var presentationVerified = false;
+        for (var attempt = 1; attempt <= 3; attempt++) {
+          final rawWindowInfo =
+              await const MethodChannel(
+                'wallsync/live_wallpaper',
+              ).invokeMethod<Map>('verifyWidgetPresentation', {
+                'alwaysOnTop': cleanSettings.alwaysOnTop,
+              });
+          if (rawWindowInfo == null) {
+            throw StateError(
+              'The native runner returned no presentation diagnostics.',
+            );
+          }
+          windowInfo = Map<String, dynamic>.from(rawWindowInfo);
+          final expectedParenting =
+              cleanSettings.alwaysOnTop ||
+              windowInfo['desktopAttached'] == true;
+          final expectedZOrder =
+              windowInfo['isTopmost'] == cleanSettings.alwaysOnTop;
+          presentationVerified =
+              windowInfo['presentationVerified'] == true &&
+              expectedParenting &&
+              expectedZOrder;
+          final classification = presentationVerified
+              ? 'presentation_success'
+              : !expectedZOrder || !expectedParenting
+              ? 'z_order_failure'
+              : windowInfo['classification'] ?? 'presentation_failure';
+          await processDiagnostics.record(
+            classification,
+            'attempt=$attempt pid=$pid hwnd=$overlayHwnd '
+            'instanceId=$overlayInstanceId templateId=$overlayType '
+            'operationId=${overlayOperationId ?? 'none'} '
+            'elapsedMs=${presentationStopwatch.elapsedMilliseconds} '
+            'expectedAlwaysOnTop=${cleanSettings.alwaysOnTop} '
+            'actual=${windowInfo.toString()}',
+          );
+          if (presentationVerified) break;
+          if (classification != 'presentation_failure') break;
+          if (attempt < 3) {
+            await Future<void>.delayed(Duration(milliseconds: 40 * attempt));
+          }
+        }
+        if (!presentationVerified || windowInfo == null) {
+          throw StateError(
+            'The desktop widget did not pass native presentation verification: '
+            '${windowInfo ?? 'no window data'}.',
           );
         }
 
         final actualWindowSize = await windowManager.getSize();
         if (actualWindowSize.width <= 0 || actualWindowSize.height <= 0) {
+          await processDiagnostics.record(
+            'window_bounds_failure',
+            'pid=$pid hwnd=$overlayHwnd windowSize=$actualWindowSize '
+                'elapsedMs=${presentationStopwatch.elapsedMilliseconds}',
+          );
           throw StateError(
             'Visible overlay window has unusable size '
             '${actualWindowSize.width}x${actualWindowSize.height}.',
           );
         }
-        final rawWindowInfo = await const MethodChannel(
-          'wallsync/live_wallpaper',
-        ).invokeMethod<Map>('getNativeWindowInfo');
-        if (rawWindowInfo == null) {
-          throw StateError('The native runner returned no visible HWND data.');
-        }
-        final windowInfo = Map<String, dynamic>.from(rawWindowInfo);
         final nativeHwnd = windowInfo['hwnd'] as int?;
         final ownerPid = windowInfo['ownerPid'] as int?;
         final boundsWidth =
@@ -1142,7 +1294,15 @@ void main(List<String> args) async {
             ownerPid != pid ||
             boundsWidth <= 0 ||
             boundsHeight <= 0 ||
-            windowInfo['onMonitor'] != true) {
+            windowInfo['onMonitor'] != true ||
+            windowInfo['isIconic'] == true ||
+            windowInfo['isCloaked'] == true) {
+          await processDiagnostics.record(
+            'window_visibility_failure',
+            'pid=$pid hwnd=$nativeHwnd ownerPid=$ownerPid '
+                'instanceId=$overlayInstanceId templateId=$overlayType '
+                'operationId=${overlayOperationId ?? 'none'} nativeInfo=$windowInfo',
+          );
           throw StateError(
             'The visible native HWND failed ownership or bounds verification: '
             'recordedHwnd=$overlayHwnd nativeInfo=$windowInfo',
@@ -1150,7 +1310,9 @@ void main(List<String> args) async {
         }
         await processDiagnostics.record(
           'native_window_created',
-          'result=success hwnd=$nativeHwnd ownerPid=$ownerPid',
+          'result=success hwnd=$nativeHwnd ownerPid=$ownerPid '
+              'instanceId=$overlayInstanceId templateId=$overlayType '
+              'operationId=${overlayOperationId ?? 'none'}',
         );
         await processDiagnostics.record(
           'native_window_initialization',
@@ -1165,49 +1327,30 @@ void main(List<String> args) async {
         );
         await processDiagnostics.record(
           'window_shown',
-          'result=success hwnd=$nativeHwnd visible=true',
+          'result=verified hwnd=$nativeHwnd visible=true '
+              'bounds=${windowInfo['left']},${windowInfo['top']},'
+              '${windowInfo['right']},${windowInfo['bottom']} '
+              'onMonitor=${windowInfo['onMonitor']} '
+              'isIconic=${windowInfo['isIconic']} '
+              'isCloaked=${windowInfo['isCloaked']}',
         );
+        await OverlayLifecycleService.updateCurrentProcessState(
+          settingsService,
+          state: OverlayLifecycleState.presentationVerified,
+          stage: DockReadinessStage.windowInteractive,
+          hwnd: overlayHwnd,
+          instanceId: overlayInstanceId,
+          templateId: overlayType,
+          processMode: processArguments.mode.value,
+          operationId: overlayOperationId,
+          configurationRevision: overlayConfigRevision,
+        );
+        overlayPresentationVerified = true;
 
         logInfo(
           'OverlayStartup',
           'Overlay window is visible and usable '
               '(${actualWindowSize.width}x${actualWindowSize.height}).',
-        );
-        _emitOverlayBootstrapEvent(
-          'window_creation_started',
-          pid: pid,
-          instanceId: overlayInstanceId,
-          operationId: overlayOperationId,
-          configRevision: overlayConfigRevision,
-          stopwatch: startupStopwatch,
-          overlayType: overlayType,
-        );
-
-        final windowInitMs = DateTime.now().millisecondsSinceEpoch;
-        _emitOverlayBootstrapEvent(
-          'hwnd_created',
-          pid: pid,
-          instanceId: overlayInstanceId,
-          operationId: overlayOperationId,
-          configRevision: overlayConfigRevision,
-          stopwatch: startupStopwatch,
-          overlayType: overlayType,
-          reason: overlayHwnd == null
-              ? 'native-hwnd-not-yet-known'
-              : 'hwnd=$overlayHwnd',
-        );
-        await OverlayLifecycleService.updateCurrentProcessState(
-          settingsService,
-          state: OverlayLifecycleState.windowInitialized,
-          stage: DockReadinessStage.windowVisible,
-          hwnd: overlayHwnd,
-          instanceId: overlayInstanceId,
-          templateId: overlayType,
-          processMode: processArguments.mode.value,
-          diagnosticLogPath: processDiagnostics.path,
-          operationId: overlayOperationId,
-          configurationRevision: overlayConfigRevision,
-          windowInitMs: windowInitMs,
         );
         await processDiagnostics.record(
           'hwnd_registered',
@@ -1268,7 +1411,8 @@ void main(List<String> args) async {
     Future<void> markOverlayReady() async {
       if (readinessRegistered ||
           !overlayConfigurationComplete ||
-          !firstFlutterFrameRendered) {
+          !firstFlutterFrameRendered ||
+          !overlayPresentationVerified) {
         return;
       }
       final pending = readinessRegistration;
@@ -1319,8 +1463,9 @@ void main(List<String> args) async {
       );
       logInfo(
         'OverlayStartup',
-        'Overlay visible and ready; startup completed after native window configuration '
-            'and first Flutter frame (${startupStopwatch.elapsedMilliseconds}ms '
+        'Overlay native presentation checks passed and widget ready; startup '
+            'completed after window configuration and first Flutter frame '
+            '(${startupStopwatch.elapsedMilliseconds}ms '
             'from process startup; since PID registration '
             '${processRegistrationStopwatch.elapsedMilliseconds}ms, '
             'readyPublishedMs=$readyPublishedMs).',
@@ -1338,33 +1483,8 @@ void main(List<String> args) async {
         overlayType: overlayType,
       );
       await processDiagnostics.record('window_ready_to_show', 'result=success');
-      logInfo(
-        'OverlayStartup',
-        'Overlay window created and ready; applying position and visibility.',
-      );
-      await showAndPositionOverlay();
-      try {
-        await markOverlayReady();
-      } catch (error, stackTrace) {
-        await processDiagnostics.record(
-          'child_readiness_acknowledgement',
-          'result=failed error="$error"',
-        );
-        logError(
-          'Main',
-          'Could not acknowledge overlay readiness after window setup.',
-          error,
-          stackTrace,
-        );
-        await OverlayLifecycleService.markCurrentProcessFailed(
-          settingsService,
-          reason: 'Readiness acknowledgement failed: $error',
-        );
-        await _failOverlayStartup(
-          'Overlay readiness acknowledgement failed: $error',
-          error,
-          stackTrace,
-        );
+      if (!nativeWindowReady.isCompleted) {
+        nativeWindowReady.complete();
       }
     });
 
@@ -1382,6 +1502,17 @@ void main(List<String> args) async {
     Timer(const Duration(seconds: 28), () {
       if (!readinessRegistered) {
         unawaited(() async {
+          final failureClass = firstFlutterFrameRendered
+              ? 'window_visibility_failure'
+              : 'flutter_frame_failure';
+          await processDiagnostics.record(
+            failureClass,
+            'pid=$pid hwnd=${overlayHwnd ?? 0} '
+            'instanceId=$overlayInstanceId templateId=$overlayType '
+            'operationId=${overlayOperationId ?? 'none'} '
+            'elapsedMs=${startupStopwatch.elapsedMilliseconds} '
+            'reason=readiness_deadline_exceeded',
+          );
           await OverlayLifecycleService.markCurrentProcessFailed(
             settingsService,
             reason: 'Readiness not confirmed within 28s startup deadline',
@@ -1397,18 +1528,25 @@ void main(List<String> args) async {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       firstFlutterFrameRendered = true;
       final firstFrameMs = DateTime.now().millisecondsSinceEpoch;
+      await processDiagnostics.record(
+        'flutter_first_frame_rendered',
+        'result=success hwnd=${overlayHwnd ?? 0} '
+            'pid=$pid instanceId=$overlayInstanceId templateId=$overlayType '
+            'operationId=${overlayOperationId ?? 'none'} '
+            'frameTimestampMs=$firstFrameMs '
+            'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
+      );
       await OverlayLifecycleService.updateCurrentProcessState(
         settingsService,
         state: OverlayLifecycleState.firstFrameRendered,
         stage: DockReadinessStage.windowInteractive,
         hwnd: overlayHwnd,
         instanceId: overlayInstanceId,
+        templateId: overlayType,
+        processMode: processArguments.mode.value,
+        operationId: overlayOperationId,
+        configurationRevision: overlayConfigRevision,
         firstFrameMs: firstFrameMs,
-      );
-      await processDiagnostics.record(
-        'flutter_first_frame_presented',
-        'result=success hwnd=${overlayHwnd ?? 0} '
-            'elapsedMs=${startupStopwatch.elapsedMilliseconds}',
       );
 
       if (!firstFrameTimingLogged) {
@@ -1422,12 +1560,37 @@ void main(List<String> args) async {
         );
       }
       try {
+        await nativeWindowReady.future.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException(
+            'Native widget window was not ready after the first Flutter frame.',
+          ),
+        );
+        logInfo(
+          'OverlayStartup',
+          'Flutter first frame and native window are ready; configuring and '
+              'showing widget hwnd=$overlayHwnd.',
+        );
         await showAndPositionOverlay();
         await markOverlayReady();
       } catch (error, stackTrace) {
-        logError(
-          'Main',
-          'Could not complete overlay startup readiness handshake.',
+        final failureClass = error is TimeoutException
+            ? 'window_visibility_failure'
+            : 'presentation_failure';
+        await processDiagnostics.record(
+          failureClass,
+          'pid=$pid hwnd=$overlayHwnd instanceId=$overlayInstanceId '
+          'templateId=$overlayType operationId=${overlayOperationId ?? 'none'} '
+          'elapsedMs=${startupStopwatch.elapsedMilliseconds} error="$error"',
+        );
+        await OverlayLifecycleService.markCurrentProcessFailed(
+          settingsService,
+          reason: 'Widget initial presentation failed: $error',
+          hwnd: overlayHwnd,
+          instanceId: overlayInstanceId,
+        );
+        await _failOverlayStartup(
+          'Widget failed to reach verified initial presentation: $error',
           error,
           stackTrace,
         );

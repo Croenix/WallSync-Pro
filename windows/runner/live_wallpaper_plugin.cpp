@@ -361,6 +361,8 @@ class LiveWallpaperPlugin::Impl {
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
   bool AttachToDesktop();
   bool SetWidgetDesktopSurface(bool attach_to_desktop);
+  bool ShowWidgetWindow();
+  flutter::EncodableMap VerifyWidgetPresentation(bool expected_topmost);
   bool IsFullscreenForegroundWindow() const;
   bool IsFullscreenForegroundWindowOnMonitor(
       const std::string& monitor_id) const;
@@ -437,6 +439,8 @@ class LiveWallpaperPlugin::Impl {
   HPOWERNOTIFY power_notification_ = nullptr;
   int window_proc_delegate_id_ = 0;
   bool battery_saver_enabled_ = false;
+  bool widget_desktop_attached_ = false;
+  HWND widget_desktop_parent_ = nullptr;
 
   HANDLE mpv_process_handle_ = nullptr;
   DWORD mpv_pid_ = 0;
@@ -571,6 +575,25 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
     }
     result->Success(
         flutter::EncodableValue(SetWidgetDesktopSurface(attach_to_desktop)));
+    return;
+  }
+  if (call.method_name() == "showWidgetWindow") {
+    result->Success(flutter::EncodableValue(ShowWidgetWindow()));
+    return;
+  }
+  if (call.method_name() == "verifyWidgetPresentation") {
+    const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+    bool expected_topmost = false;
+    if (args != nullptr) {
+      const auto topmost_entry =
+          args->find(flutter::EncodableValue("alwaysOnTop"));
+      if (topmost_entry != args->end()) {
+        expected_topmost = GetBoolFromEncodable(topmost_entry->second, false);
+      }
+    }
+    result->Success(
+        flutter::EncodableValue(
+            VerifyWidgetPresentation(expected_topmost)));
     return;
   }
   if (call.method_name() == "getPlaybackPolicy") {
@@ -2045,7 +2068,7 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
   const int top = attach_to_desktop ? corners[0].y : screen_bounds.top;
   const int width = screen_bounds.right - screen_bounds.left;
   const int height = screen_bounds.bottom - screen_bounds.top;
-  const UINT flags = SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+  const UINT flags = SWP_NOACTIVATE | SWP_FRAMECHANGED;
   const HWND z_order = attach_to_desktop
                            ? (raised_desktop ? HWND_TOP : insert_after)
                            : ((extended_style & WS_EX_TOPMOST) != 0
@@ -2054,22 +2077,8 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
   if (!SetWindowPos(target, z_order, left, top, width, height, flags)) {
     return fail("set_window_pos");
   }
-  if (force_redraw_) {
-    force_redraw_();
-  }
-  if (!RedrawWindow(target, nullptr, nullptr,
-                    RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN)) {
-    return fail("redraw_window");
-  }
-  const HRESULT composition_result = DwmFlush();
-  if (FAILED(composition_result)) {
-    LogProcessDiagnostic(
-        "widget_desktop_surface",
-        "result=failed step=dwm_flush hwnd=" +
-            std::to_string(reinterpret_cast<intptr_t>(target)) +
-            " hresult=" + std::to_string(composition_result));
-    return false;
-  }
+  widget_desktop_attached_ = attach_to_desktop;
+  widget_desktop_parent_ = attach_to_desktop ? parent : nullptr;
 
   LogProcessDiagnostic(
       "widget_desktop_surface",
@@ -2082,6 +2091,144 @@ bool LiveWallpaperPlugin::Impl::SetWidgetDesktopSurface(
           (attach_to_desktop && raised_desktop ? "above_desktop_view"
                                                : "desktop_default"));
   return true;
+}
+
+bool LiveWallpaperPlugin::Impl::ShowWidgetWindow() {
+  HWND target = root_window_ ? root_window_ : window_;
+  if (!target || !IsWindow(target)) {
+    LogProcessDiagnostic(
+        "window_visibility_failure",
+        "result=failed reason=invalid_window hwnd=" +
+            std::to_string(reinterpret_cast<intptr_t>(target)));
+    return false;
+  }
+
+  ShowWindow(target, SW_SHOWNOACTIVATE);
+  const bool visible = IsWindowVisible(target) != FALSE;
+  LogProcessDiagnostic(
+      "window_shown",
+      std::string("request=SW_SHOWNOACTIVATE hwnd=") +
+          std::to_string(reinterpret_cast<intptr_t>(target)) +
+          " isWindow=" + (IsWindow(target) ? "true" : "false") +
+          " isVisible=" + (visible ? "true" : "false") +
+          " iconic=" + (IsIconic(target) ? "true" : "false"));
+  return true;
+}
+
+flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyWidgetPresentation(
+    bool expected_topmost) {
+  HWND target = root_window_ ? root_window_ : window_;
+  const auto fail = [target](const char* classification,
+                             const char* reason) {
+    LogProcessDiagnostic(
+        classification,
+        std::string("result=failed reason=") + reason +
+            " hwnd=" + std::to_string(reinterpret_cast<intptr_t>(target)));
+    flutter::EncodableMap failure;
+    failure[flutter::EncodableValue("presentationVerified")] =
+        flutter::EncodableValue(false);
+    failure[flutter::EncodableValue("classification")] =
+        flutter::EncodableValue(classification);
+    failure[flutter::EncodableValue("reason")] =
+        flutter::EncodableValue(reason);
+    return failure;
+  };
+
+  if (!target || !IsWindow(target)) {
+    return fail("hwnd_creation_failure", "invalid_window");
+  }
+  if (force_redraw_) {
+    force_redraw_();
+  }
+  if (!RedrawWindow(target, nullptr, nullptr,
+                    RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN)) {
+    return fail("presentation_failure", "redraw_window_failed");
+  }
+
+  const HRESULT flush_result = DwmFlush();
+  if (FAILED(flush_result)) {
+    LogProcessDiagnostic(
+        "presentation_failure",
+        "result=failed reason=dwm_flush_failed hwnd=" +
+            std::to_string(reinterpret_cast<intptr_t>(target)) +
+            " hresult=" + std::to_string(flush_result));
+    flutter::EncodableMap failure;
+    failure[flutter::EncodableValue("presentationVerified")] =
+        flutter::EncodableValue(false);
+    failure[flutter::EncodableValue("classification")] =
+        flutter::EncodableValue("presentation_failure");
+    failure[flutter::EncodableValue("reason")] =
+        flutter::EncodableValue("dwm_flush_failed");
+    return failure;
+  }
+
+  auto result = GetNativeWindowInfo();
+  const bool valid =
+      std::get<bool>(result[flutter::EncodableValue("isValid")]);
+  const bool visible =
+      std::get<bool>(result[flutter::EncodableValue("isVisible")]);
+  const bool on_monitor =
+      std::get<bool>(result[flutter::EncodableValue("onMonitor")]);
+  const bool iconic =
+      std::get<bool>(result[flutter::EncodableValue("isIconic")]);
+  const bool cloaked_available =
+      std::get<bool>(result[flutter::EncodableValue("cloakedAvailable")]);
+  const bool cloaked =
+      std::get<bool>(result[flutter::EncodableValue("isCloaked")]);
+  const auto actual_parent =
+      std::get<int64_t>(result[flutter::EncodableValue("parentHwnd")]);
+  const auto extended_style =
+      std::get<int64_t>(result[flutter::EncodableValue("extendedStyle")]);
+  const auto width =
+      std::get<int64_t>(result[flutter::EncodableValue("width")]);
+  const auto height =
+      std::get<int64_t>(result[flutter::EncodableValue("height")]);
+  const bool parent_valid =
+      widget_desktop_attached_
+          ? actual_parent ==
+                reinterpret_cast<int64_t>(widget_desktop_parent_)
+          : actual_parent == 0;
+  const bool topmost = (extended_style & WS_EX_TOPMOST) != 0;
+  const bool z_order_valid = parent_valid && topmost == expected_topmost;
+  const bool presented =
+      valid && visible && on_monitor && !iconic &&
+      (!cloaked_available || !cloaked) && z_order_valid && width > 0 &&
+      height > 0;
+  const char* classification =
+      !valid ? "hwnd_creation_failure"
+      : !visible || iconic ? "window_visibility_failure"
+      : !on_monitor || width <= 0 || height <= 0 ? "window_bounds_failure"
+      : !z_order_valid ? "z_order_failure"
+                       : "presentation_failure";
+  result[flutter::EncodableValue("presentationVerified")] =
+      flutter::EncodableValue(presented);
+  result[flutter::EncodableValue("classification")] =
+      flutter::EncodableValue(presented ? "presentation_success"
+                                        : classification);
+  result[flutter::EncodableValue("dwmFlushHresult")] =
+      flutter::EncodableValue(static_cast<int64_t>(flush_result));
+  result[flutter::EncodableValue("desktopAttached")] =
+      flutter::EncodableValue(widget_desktop_attached_);
+  result[flutter::EncodableValue("isTopmost")] =
+      flutter::EncodableValue(topmost);
+
+  std::ostringstream details;
+  details << "result=" << (presented ? "verified" : "failed")
+          << " hwnd=" << reinterpret_cast<intptr_t>(target)
+          << " valid=" << valid << " visible=" << visible
+          << " onMonitor=" << on_monitor << " iconic=" << iconic
+          << " cloakedAvailable=" << cloaked_available
+          << " cloaked=" << cloaked << " parent=" << actual_parent
+          << " desktopAttached=" << widget_desktop_attached_
+          << " expectedParent="
+          << reinterpret_cast<intptr_t>(widget_desktop_parent_)
+          << " width=" << width << " height=" << height
+          << " topmost=" << topmost
+          << " expectedTopmost=" << expected_topmost
+          << " dwmFlushHresult=" << flush_result;
+  LogProcessDiagnostic(presented ? "presentation_success" : classification,
+                       details.str());
+  return result;
 }
 
 bool LiveWallpaperPlugin::Impl::IsFullscreenForegroundWindow() const {
@@ -2987,9 +3134,42 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetNativeWindowInfo() {
           ? GetWindowThreadProcessId(target, &owner_pid)
           : 0;
   RECT bounds{};
+  RECT client_bounds{};
   const bool valid = target != nullptr && IsWindow(target) &&
                      owner_pid == GetCurrentProcessId() && thread_id != 0;
-  if (valid) GetWindowRect(target, &bounds);
+  const bool bounds_valid = valid && GetWindowRect(target, &bounds);
+  const bool client_bounds_valid =
+      valid && GetClientRect(target, &client_bounds);
+  const LONG_PTR style = valid ? GetWindowLongPtrW(target, GWL_STYLE) : 0;
+  const LONG_PTR extended_style =
+      valid ? GetWindowLongPtrW(target, GWL_EXSTYLE) : 0;
+  WINDOWPLACEMENT placement{};
+  placement.length = sizeof(placement);
+  const bool placement_valid =
+      valid && GetWindowPlacement(target, &placement) != FALSE;
+  DWORD cloaked = 0;
+  const HRESULT cloaked_result =
+      valid ? DwmGetWindowAttribute(target, DWMWA_CLOAKED, &cloaked,
+                                    sizeof(cloaked))
+            : E_INVALIDARG;
+  const bool cloaked_available = SUCCEEDED(cloaked_result);
+  const HMONITOR monitor =
+      valid ? MonitorFromWindow(target, MONITOR_DEFAULTTONULL) : nullptr;
+  MONITORINFO monitor_info{};
+  monitor_info.cbSize = sizeof(monitor_info);
+  const bool monitor_info_valid =
+      monitor != nullptr && GetMonitorInfoW(monitor, &monitor_info) != FALSE;
+  const int width = bounds.right - bounds.left;
+  const int height = bounds.bottom - bounds.top;
+  const bool intersects_monitor =
+      monitor_info_valid && bounds_valid && width > 0 && height > 0 &&
+      bounds.right > monitor_info.rcMonitor.left &&
+      bounds.left < monitor_info.rcMonitor.right &&
+      bounds.bottom > monitor_info.rcMonitor.top &&
+      bounds.top < monitor_info.rcMonitor.bottom;
+  const HWND parent = valid ? GetParent(target) : nullptr;
+  const HWND owner = valid ? GetWindow(target, GW_OWNER) : nullptr;
+  const HWND previous_sibling = valid ? GetWindow(target, GW_HWNDPREV) : nullptr;
   result[flutter::EncodableValue("hwnd")] =
       flutter::EncodableValue(reinterpret_cast<int64_t>(target));
   result[flutter::EncodableValue("ownerPid")] =
@@ -3001,9 +3181,25 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetNativeWindowInfo() {
   result[flutter::EncodableValue("isVisible")] =
       flutter::EncodableValue(valid && IsWindowVisible(target));
   result[flutter::EncodableValue("onMonitor")] =
-      flutter::EncodableValue(valid &&
-                              MonitorFromWindow(target, MONITOR_DEFAULTTONULL) !=
-                                  nullptr);
+      flutter::EncodableValue(intersects_monitor);
+  result[flutter::EncodableValue("isIconic")] =
+      flutter::EncodableValue(valid && IsIconic(target));
+  result[flutter::EncodableValue("isCloaked")] =
+      flutter::EncodableValue(cloaked_available && cloaked != 0);
+  result[flutter::EncodableValue("cloakedAvailable")] =
+      flutter::EncodableValue(cloaked_available);
+  result[flutter::EncodableValue("style")] =
+      flutter::EncodableValue(static_cast<int64_t>(style));
+  result[flutter::EncodableValue("extendedStyle")] =
+      flutter::EncodableValue(static_cast<int64_t>(extended_style));
+  result[flutter::EncodableValue("showCmd")] =
+      flutter::EncodableValue(placement_valid ? placement.showCmd : 0);
+  result[flutter::EncodableValue("parentHwnd")] =
+      flutter::EncodableValue(reinterpret_cast<int64_t>(parent));
+  result[flutter::EncodableValue("ownerHwnd")] =
+      flutter::EncodableValue(reinterpret_cast<int64_t>(owner));
+  result[flutter::EncodableValue("previousSiblingHwnd")] =
+      flutter::EncodableValue(reinterpret_cast<int64_t>(previous_sibling));
   result[flutter::EncodableValue("left")] =
       flutter::EncodableValue(static_cast<int64_t>(bounds.left));
   result[flutter::EncodableValue("top")] =
@@ -3012,6 +3208,28 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetNativeWindowInfo() {
       flutter::EncodableValue(static_cast<int64_t>(bounds.right));
   result[flutter::EncodableValue("bottom")] =
       flutter::EncodableValue(static_cast<int64_t>(bounds.bottom));
+  result[flutter::EncodableValue("width")] =
+      flutter::EncodableValue(static_cast<int64_t>(width));
+  result[flutter::EncodableValue("height")] =
+      flutter::EncodableValue(static_cast<int64_t>(height));
+  result[flutter::EncodableValue("clientWidth")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          client_bounds_valid ? client_bounds.right - client_bounds.left : 0));
+  result[flutter::EncodableValue("clientHeight")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          client_bounds_valid ? client_bounds.bottom - client_bounds.top : 0));
+  result[flutter::EncodableValue("monitorLeft")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          monitor_info_valid ? monitor_info.rcMonitor.left : 0));
+  result[flutter::EncodableValue("monitorTop")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          monitor_info_valid ? monitor_info.rcMonitor.top : 0));
+  result[flutter::EncodableValue("monitorRight")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          monitor_info_valid ? monitor_info.rcMonitor.right : 0));
+  result[flutter::EncodableValue("monitorBottom")] =
+      flutter::EncodableValue(static_cast<int64_t>(
+          monitor_info_valid ? monitor_info.rcMonitor.bottom : 0));
   LogProcessDiagnostic(
       "hwnd_ownership_verification",
       std::string("result=") + (valid ? "verified" : "failed") +
@@ -3019,7 +3237,23 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::GetNativeWindowInfo() {
           std::to_string(reinterpret_cast<intptr_t>(target)) +
           " ownerPid=" + std::to_string(owner_pid) +
           " currentPid=" + std::to_string(GetCurrentProcessId()) +
-          " threadId=" + std::to_string(thread_id));
+          " threadId=" + std::to_string(thread_id) +
+          " visible=" + (valid && IsWindowVisible(target) ? "true" : "false") +
+          " iconic=" + (valid && IsIconic(target) ? "true" : "false") +
+          " bounds=" + std::to_string(bounds.left) + "," +
+          std::to_string(bounds.top) + "," + std::to_string(bounds.right) +
+          "," + std::to_string(bounds.bottom) +
+          " onMonitor=" + (intersects_monitor ? "true" : "false") +
+          " style=" + std::to_string(style) +
+          " exStyle=" + std::to_string(extended_style) +
+          " parent=" + std::to_string(reinterpret_cast<intptr_t>(parent)) +
+          " owner=" + std::to_string(reinterpret_cast<intptr_t>(owner)) +
+          " previousSibling=" +
+          std::to_string(reinterpret_cast<intptr_t>(previous_sibling)) +
+          " showCmd=" +
+          std::to_string(placement_valid ? placement.showCmd : 0) +
+          " cloakedAvailable=" + (cloaked_available ? "true" : "false") +
+          " cloaked=" + (cloaked_available && cloaked ? "true" : "false"));
   return result;
 }
 

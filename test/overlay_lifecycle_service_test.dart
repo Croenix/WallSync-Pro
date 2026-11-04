@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wall_sync/models/taskbar_settings.dart';
 import 'package:wall_sync/services/overlay_lifecycle_service.dart';
 import 'package:wall_sync/services/overlay_startup_service.dart';
 
@@ -384,32 +385,29 @@ void main() {
     expect(reads, 3);
   });
 
-  test(
-    'readiness polling survives a transient PID lock error',
-    () async {
-      var reads = 0;
-      final result = await waitForOverlayReadiness(
-        readRecord: () async {
-          reads++;
-          if (reads == 1) {
-            throw FileSystemException(
-              'sharing violation',
-              'overlay.pid',
-              const OSError('sharing violation', 33),
-            );
-          }
-          return record;
-        },
-        inspectProcess: (_) async => _inspection(true),
-        expectedPid: record.pid,
-        timeout: const Duration(seconds: 1),
-        pollInterval: Duration.zero,
-      );
+  test('readiness polling survives a transient PID lock error', () async {
+    var reads = 0;
+    final result = await waitForOverlayReadiness(
+      readRecord: () async {
+        reads++;
+        if (reads == 1) {
+          throw FileSystemException(
+            'sharing violation',
+            'overlay.pid',
+            const OSError('sharing violation', 33),
+          );
+        }
+        return record;
+      },
+      inspectProcess: (_) async => _inspection(true),
+      expectedPid: record.pid,
+      timeout: const Duration(seconds: 1),
+      pollInterval: Duration.zero,
+    );
 
-      expect(result.status, OverlayReadinessStatus.ready);
-      expect(reads, 2);
-    },
-  );
+    expect(result.status, OverlayReadinessStatus.ready);
+    expect(reads, 2);
+  });
 
   test(
     'does not accept a stale PID record with mismatched creation time',
@@ -775,6 +773,39 @@ void main() {
     expect(updated.entryPointMs, 1000);
   });
 
+  test('tracks each native widget presentation stage before ready', () {
+    const presentationStages = [
+      OverlayLifecycleState.processStarted,
+      OverlayLifecycleState.engineInitialized,
+      OverlayLifecycleState.hwndCreated,
+      OverlayLifecycleState.firstFrameRendered,
+      OverlayLifecycleState.windowConfigured,
+      OverlayLifecycleState.windowShown,
+      OverlayLifecycleState.presentationVerified,
+    ];
+
+    expect(presentationStages.map((state) => state.name), [
+      'processStarted',
+      'engineInitialized',
+      'hwndCreated',
+      'firstFrameRendered',
+      'windowConfigured',
+      'windowShown',
+      'presentationVerified',
+    ]);
+    for (final state in presentationStages) {
+      final record = const OverlayProcessRecord(
+        pid: 1234,
+        creationTime: 987654,
+        executablePath: 'C:\\WallSync\\wallsync.exe',
+        ready: false,
+        state: OverlayLifecycleState.processStarted,
+      ).copyWith(state: state);
+      expect(record.ready, isFalse);
+      expect(record.state, state);
+    }
+  });
+
   test('PID file reads retry a temporary Windows sharing violation', () async {
     final directory = await Directory.systemTemp.createTemp(
       'wallsync-pid-read-test-',
@@ -802,6 +833,36 @@ void main() {
 
     expect(contents, '{"pid":1234}');
     expect(reads, 2);
+  });
+
+  test('PID file reads are serialized within the process', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'wallsync-pid-read-concurrency-test-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final pidFile = File('${directory.path}\\overlay.pid');
+    await pidFile.writeAsString('{"pid":1234}');
+    var activeReads = 0;
+    var maximumActiveReads = 0;
+
+    Future<String> readContents() async {
+      activeReads++;
+      if (activeReads > maximumActiveReads) {
+        maximumActiveReads = activeReads;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      activeReads--;
+      return pidFile.readAsString();
+    }
+
+    await Future.wait(
+      List.generate(
+        4,
+        (_) => readOverlayPidFileContents(pidFile, readContents: readContents),
+      ),
+    );
+
+    expect(maximumActiveReads, 1);
   });
 
   test(
@@ -887,6 +948,26 @@ void main() {
 
       expect(result.status, OverlayReadinessStatus.ready);
       expect(result.isReady, isTrue);
+    },
+  );
+
+  test(
+    'does not reconcile ready when lifecycle state and stage disagree',
+    () async {
+      final result = await waitForOverlayReadiness(
+        readRecord: () async => const OverlayProcessRecord(
+          pid: 1234,
+          creationTime: 987654,
+          executablePath: r'C:\WallSync\wallsync.exe',
+          ready: true,
+          state: OverlayLifecycleState.ready,
+          stage: DockReadinessStage.windowInteractive,
+        ),
+        inspectProcess: (_) async => _inspection(true),
+        timeout: Duration.zero,
+      );
+
+      expect(result.isReady, isFalse);
     },
   );
 

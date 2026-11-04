@@ -18,14 +18,131 @@ enum OverlayLifecycleState {
   preparing,
   launching,
   processStarted,
+  engineInitialized,
+  hwndCreated,
+  windowConfigured,
   windowInitialized,
   firstFrameRendered,
+  windowShown,
+  presentationVerified,
   ready,
   failedOrTimedOut,
   stopping;
 
   bool get isTerminal => this == stopped || this == failedOrTimedOut;
   bool get isRunning => this != stopped && this != failedOrTimedOut;
+}
+
+int _overlayLifecycleRank(OverlayLifecycleState state) => switch (state) {
+  OverlayLifecycleState.preparing => 1,
+  OverlayLifecycleState.launching => 2,
+  OverlayLifecycleState.processStarted => 3,
+  OverlayLifecycleState.engineInitialized => 4,
+  OverlayLifecycleState.hwndCreated => 5,
+  OverlayLifecycleState.windowInitialized => 6,
+  OverlayLifecycleState.firstFrameRendered => 7,
+  OverlayLifecycleState.windowConfigured => 8,
+  OverlayLifecycleState.windowShown => 9,
+  OverlayLifecycleState.presentationVerified => 10,
+  OverlayLifecycleState.ready => 11,
+  OverlayLifecycleState.failedOrTimedOut => 12,
+  OverlayLifecycleState.stopping => 13,
+  OverlayLifecycleState.stopped => 14,
+};
+
+bool _isTerminalOverlayState(OverlayLifecycleState state) =>
+    state == OverlayLifecycleState.stopped ||
+    state == OverlayLifecycleState.failedOrTimedOut ||
+    state == OverlayLifecycleState.stopping;
+
+bool _canAdvanceTerminalOverlayState(
+  OverlayLifecycleState current,
+  OverlayLifecycleState next,
+) => switch (current) {
+  OverlayLifecycleState.failedOrTimedOut =>
+    next == OverlayLifecycleState.stopping ||
+        next == OverlayLifecycleState.stopped,
+  OverlayLifecycleState.stopping => next == OverlayLifecycleState.stopped,
+  OverlayLifecycleState.stopped => false,
+  _ => true,
+};
+
+final Map<String, Future<void>> _pidRecordLockTails = {};
+
+bool _isPidRecordLockConflict(FileSystemException error) {
+  final code = error.osError?.errorCode;
+  final message = error.message.toLowerCase();
+  return code == 32 ||
+      code == 33 ||
+      message.contains('sharing violation') ||
+      message.contains('being used by another process') ||
+      message.contains('locked a portion of the file');
+}
+
+Future<T> _withPidRecordLock<T>(
+  File pidFile, {
+  required FileLock mode,
+  required Future<T> Function() action,
+  Future<void> Function(RandomAccessFile file)? acquireLock,
+  int maxAttempts = 6,
+  Duration Function(int attempt)? retryDelay,
+}) async {
+  if (maxAttempts < 1) {
+    throw ArgumentError.value(maxAttempts, 'maxAttempts', 'must be positive');
+  }
+
+  final key = pidFile.absolute.path.toLowerCase();
+  final previous = _pidRecordLockTails[key] ?? Future<void>.value();
+  final release = Completer<void>();
+  _pidRecordLockTails[key] = release.future;
+  await previous;
+
+  try {
+    final lockFile = File('${pidFile.path}.lock');
+    final lock = await lockFile.open(mode: FileMode.append);
+    var lockAcquired = false;
+    var retries = 0;
+    try {
+      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          final acquire = acquireLock?.call(lock) ?? lock.lock(mode);
+          await acquire;
+          lockAcquired = true;
+          break;
+        } on FileSystemException catch (error) {
+          if (!_isPidRecordLockConflict(error) || attempt == maxAttempts) {
+            rethrow;
+          }
+          retries++;
+          final delay =
+              retryDelay?.call(attempt) ??
+              Duration(milliseconds: 20 * (1 << (attempt - 1)));
+          await Future<void>.delayed(delay);
+        }
+      }
+
+      final result = await action();
+      if (retries > 0) {
+        logInfo(
+          'OverlayLifecycleService',
+          'PID record lock acquired after $retries retry(s); '
+              'path="${pidFile.path}".',
+        );
+      }
+      return result;
+    } finally {
+      try {
+        if (lockAcquired) await lock.unlock();
+      } finally {
+        await lock.close();
+      }
+    }
+  } finally {
+    release.complete();
+    if (identical(_pidRecordLockTails[key], release.future)) {
+      _pidRecordLockTails.remove(key);
+    }
+  }
 }
 
 class OverlayProcessRecord {
@@ -262,71 +379,47 @@ class OverlayProcessRecord {
 
 Future<String?> readOverlayPidFileContents(
   File pidFile, {
-  int maxAttempts = 5,
-  Duration lockTimeout = const Duration(milliseconds: 400),
+  int maxAttempts = 6,
   Future<void> Function(RandomAccessFile file)? acquireSharedLock,
   Future<String> Function()? readContents,
   Duration Function(int attempt)? retryDelay,
 }) async {
-  if (maxAttempts < 1) {
-    throw ArgumentError.value(maxAttempts, 'maxAttempts', 'must be positive');
-  }
-  final lockFile = File('${pidFile.path}.lock');
   final read = readContents ?? pidFile.readAsString;
-  Object? lastError;
-  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-    RandomAccessFile? lock;
-    var lockAcquired = false;
-    try {
-      if (!await pidFile.exists()) return null;
-      lock = await lockFile.open(mode: FileMode.append);
-      final acquireLock =
-          acquireSharedLock?.call(lock) ?? lock.lock(FileLock.shared);
-      await acquireLock.timeout(lockTimeout);
-      lockAcquired = true;
-      if (!await pidFile.exists()) return null;
-      return await read();
-    } on FileSystemException catch (error) {
-      lastError = error;
-      final code = error.osError?.errorCode;
-      final isSharingViolation =
-          code == 32 ||
-          code == 33 ||
-          error.message.toLowerCase().contains('sharing violation') ||
-          error.message.toLowerCase().contains('being used by another process');
-      if (!isSharingViolation || attempt == maxAttempts) rethrow;
-      logWarning(
-        'OverlayLifecycleService',
-        'PID read sharing violation; retry $attempt/$maxAttempts '
-            'for "${pidFile.path}" (errorCode=${code ?? 'unknown'}).',
-      );
-    } on TimeoutException catch (error) {
-      lastError = error;
-      if (attempt == maxAttempts) rethrow;
-      logWarning(
-        'OverlayLifecycleService',
-        'PID lock acquisition timed out; retry $attempt/$maxAttempts '
-            'for "${pidFile.path}".',
-      );
-    } finally {
-      if (lock != null) {
-        try {
-          if (lockAcquired) await lock.unlock();
-        } finally {
-          await lock.close();
+  try {
+    return await _withPidRecordLock(
+      pidFile,
+      mode: FileLock.shared,
+      acquireLock: acquireSharedLock,
+      maxAttempts: maxAttempts,
+      retryDelay: retryDelay,
+      action: () async {
+        if (!await pidFile.exists()) return null;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            return await read();
+          } on FileSystemException catch (error) {
+            if (!_isPidRecordLockConflict(error) || attempt == maxAttempts) {
+              rethrow;
+            }
+            final delay =
+                retryDelay?.call(attempt) ??
+                Duration(milliseconds: 20 * (1 << (attempt - 1)));
+            await Future<void>.delayed(delay);
+          }
         }
-      }
+        throw StateError('PID record read exhausted its retry loop.');
+      },
+    );
+  } on FileSystemException catch (error) {
+    if (_isPidRecordLockConflict(error)) {
+      logWarning(
+        'OverlayLifecycleService',
+        'PID record read failed after $maxAttempts lock attempts; '
+            'error="$error" path="${pidFile.path}".',
+      );
     }
-
-    final delay =
-        retryDelay?.call(attempt) ??
-        Duration(milliseconds: 20 * (1 << (attempt - 1)));
-    await Future<void>.delayed(delay);
+    rethrow;
   }
-  throw FileSystemException(
-    'Could not read PID record after bounded retries: $lastError',
-    pidFile.path,
-  );
 }
 
 class OverlayProcessInspection {
@@ -608,8 +701,8 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
             latestRecord.stage == DockReadinessStage.failed) {
           status = OverlayReadinessStatus.failed;
         } else if (latestRecord.ready &&
-            (latestRecord.stage == DockReadinessStage.dockReady ||
-                latestRecord.state == OverlayLifecycleState.ready)) {
+            latestRecord.stage == DockReadinessStage.dockReady &&
+            latestRecord.state == OverlayLifecycleState.ready) {
           status =
               (latestRecord.instanceId?.startsWith('taskbar_dock') ?? false)
               ? OverlayReadinessStatus.dockReady
@@ -696,6 +789,8 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
       final finalRecord = await readRecord();
       if (finalRecord != null &&
           finalRecord.ready &&
+          finalRecord.state == OverlayLifecycleState.ready &&
+          finalRecord.stage == DockReadinessStage.dockReady &&
           matchesExpectedIdentity(finalRecord)) {
         final finalInspection = await inspectProcess(finalRecord.pid);
         if (finalInspection != null &&
@@ -846,18 +941,11 @@ class OverlayLifecycleService {
       Future<void> Function(File pidFile) action,
     ) async {
       final pidFile = await pidFileFuture;
-      final lockFile = File('${pidFile.path}.lock');
-      final lock = await lockFile.open(mode: FileMode.append);
-      try {
-        await lock.lock(FileLock.exclusive).timeout(const Duration(seconds: 2));
-        await action(pidFile);
-      } finally {
-        try {
-          await lock.unlock();
-        } finally {
-          await lock.close();
-        }
-      }
+      await _withPidRecordLock(
+        pidFile,
+        mode: FileLock.exclusive,
+        action: () => action(pidFile),
+      );
     }
 
     Future<void> removeRecordIfMatches(OverlayProcessRecord expected) =>
@@ -915,114 +1003,213 @@ class OverlayLifecycleService {
     final record = await currentWindowsProcessRecord();
     final identityMs = identityStopwatch.elapsedMilliseconds;
     final pidFile = await settingsService.pidFile;
-    final lockFile = File('${pidFile.path}.lock');
-    final lock = await lockFile.open(mode: FileMode.append);
     try {
-      final lockStopwatch = Stopwatch()..start();
-      await lock.lock(FileLock.exclusive).timeout(const Duration(seconds: 2));
-      final lockWaitMs = lockStopwatch.elapsedMilliseconds;
-      final writeStopwatch = Stopwatch()..start();
-
-      OverlayProcessRecord? existingRecord;
-      if (await pidFile.exists()) {
-        try {
-          existingRecord = OverlayProcessRecord.tryParse(
-            await pidFile.readAsString(),
-          );
-        } catch (_) {}
-      }
-
-      if (ready && existingRecord != null) {
-        if (!existingRecord.matches(record)) {
-          throw StateError(
-            'Overlay PID record changed before readiness acknowledgement.',
-          );
-        }
-      }
-
-      final registered = OverlayProcessRecord(
-        pid: record.pid,
-        creationTime: record.creationTime,
-        executablePath: record.executablePath,
-        ready: ready,
-        state: state,
-        instanceId: instanceId ?? existingRecord?.instanceId,
-        templateId: templateId ?? existingRecord?.templateId,
-        processMode: processMode ?? existingRecord?.processMode,
-        diagnosticLogPath:
-            diagnosticLogPath ?? existingRecord?.diagnosticLogPath,
-        hwnd: hwnd ?? existingRecord?.hwnd,
-        configurationRevision:
-            configurationRevision ?? existingRecord?.configurationRevision ?? 1,
-        stage: stage,
-        operationId: operationId ?? existingRecord?.operationId,
-        startupTimestamp: startupTimestamp ?? existingRecord?.startupTimestamp,
-        healthCheck: healthCheck,
-        entryPointMs: entryPointMs ?? existingRecord?.entryPointMs,
-        settingsLoadedMs: settingsLoadedMs ?? existingRecord?.settingsLoadedMs,
-        windowInitMs: windowInitMs ?? existingRecord?.windowInitMs,
-        firstFrameMs: firstFrameMs ?? existingRecord?.firstFrameMs,
-        readyPublishedMs:
-            readyPublishedMs ??
-            (ready
-                ? DateTime.now().millisecondsSinceEpoch
-                : existingRecord?.readyPublishedMs),
-        acknowledgedMs: acknowledgedMs ?? existingRecord?.acknowledgedMs,
-        failureReason: failureReason ?? existingRecord?.failureReason,
-      );
-      final temporaryFile = File(
-        '${pidFile.path}.$pid.${DateTime.now().microsecondsSinceEpoch}.tmp',
-      );
-      try {
-        await temporaryFile.writeAsString(
-          jsonEncode(registered.toJson()),
-          flush: true,
-        );
-        var replaced = false;
-        for (var attempt = 0; attempt < 3; attempt++) {
-          try {
-            await temporaryFile.rename(pidFile.path);
-            replaced = true;
-            break;
-          } on FileSystemException {
-            if (attempt < 2) {
-              await Future<void>.delayed(const Duration(milliseconds: 40));
+      await _withPidRecordLock(
+        pidFile,
+        mode: FileLock.exclusive,
+        action: () async {
+          final lockWaitMs = stopwatch.elapsedMilliseconds - identityMs;
+          final writeStopwatch = Stopwatch()..start();
+          OverlayProcessRecord? existingRecord;
+          if (await pidFile.exists()) {
+            final contents = await pidFile.readAsString();
+            if (contents.trim().isNotEmpty) {
+              existingRecord = OverlayProcessRecord.tryParse(contents);
+              if (existingRecord == null) {
+                throw const FormatException(
+                  'Existing overlay PID record is malformed; refusing to replace it.',
+                );
+              }
+            } else {
+              throw const FormatException(
+                'Existing overlay PID record is empty; refusing to replace it.',
+              );
             }
           }
-        }
-        if (!replaced) {
-          throw FileSystemException(
-            'Could not atomically replace the overlay PID record',
-            pidFile.path,
-          );
-        }
-      } finally {
-        if (await temporaryFile.exists()) {
-          try {
-            await temporaryFile.delete();
-          } on FileSystemException catch (error) {
-            logWarning(
-              'OverlayLifecycleService',
-              'Could not remove temporary PID record ${temporaryFile.path}: '
-                  '$error',
+
+          final sameGeneration =
+              existingRecord != null && existingRecord.matches(record);
+          if (existingRecord != null && !sameGeneration) {
+            if (existingRecord.pid == record.pid) {
+              throw StateError(
+                'Overlay PID $pid belongs to a different process generation.',
+              );
+            }
+            final existingInspection = await inspectWindowsProcess(
+              existingRecord.pid,
+            );
+            if (existingInspection == null ||
+                (existingInspection.isRunning &&
+                    (existingRecord.creationTime == null ||
+                        existingInspection.matches(existingRecord)))) {
+              throw StateError(
+                'Refusing to replace PID record for live or unverifiable '
+                'process ${existingRecord.pid} with PID $pid.',
+              );
+            }
+          }
+
+          if (sameGeneration) {
+            final current = existingRecord;
+            if ((instanceId != null &&
+                    current.instanceId != null &&
+                    current.instanceId != instanceId) ||
+                (templateId != null &&
+                    current.templateId != null &&
+                    current.templateId != templateId) ||
+                (processMode != null &&
+                    current.processMode != null &&
+                    current.processMode != processMode) ||
+                (operationId != null &&
+                    current.operationId != null &&
+                    current.operationId != operationId) ||
+                (configurationRevision != null &&
+                    current.configurationRevision != configurationRevision)) {
+              throw StateError(
+                'Overlay PID record generation metadata does not match the '
+                'current launch (pid=$pid, instanceId=$instanceId, '
+                'operationId=$operationId, configRevision=$configurationRevision).',
+              );
+            }
+            if ((_isTerminalOverlayState(current.state) &&
+                    state != current.state &&
+                    !_canAdvanceTerminalOverlayState(current.state, state)) ||
+                (current.state == OverlayLifecycleState.ready &&
+                    state != OverlayLifecycleState.ready &&
+                    state != OverlayLifecycleState.stopping)) {
+              logWarning(
+                'OverlayLifecycleService',
+                'Ignoring lifecycle update after terminal state '
+                    '${current.state.name} (requested=${state.name}, pid=$pid, '
+                    'instanceId=${instanceId ?? current.instanceId}, '
+                    'operationId=${operationId ?? current.operationId}).',
+              );
+              return;
+            }
+            if (_overlayLifecycleRank(state) <
+                _overlayLifecycleRank(current.state)) {
+              logWarning(
+                'OverlayLifecycleService',
+                'Ignoring stale lifecycle transition ${current.state.name} -> '
+                    '${state.name} (pid=$pid, '
+                    'instanceId=${instanceId ?? current.instanceId}, '
+                    'operationId=${operationId ?? current.operationId}).',
+              );
+              return;
+            }
+          }
+
+          if (ready &&
+              (state != OverlayLifecycleState.ready ||
+                  stage != DockReadinessStage.dockReady ||
+                  !sameGeneration)) {
+            throw StateError(
+              'Readiness cannot be published without a matching startup record '
+              '(pid=$pid, instanceId=$instanceId, operationId=$operationId).',
             );
           }
-        }
-      }
-      logInfo(
-        'OverlayLifecycleService',
-        'Registered overlay process identity: PID ${record.pid}, '
-            'state=${state.name}, stage=${stage.displayName}, ready=$ready, executable=${record.executablePath ?? '<inaccessible>'} '
-            '(identity ${identityMs}ms, PID-file lock ${lockWaitMs}ms, '
-            'write ${writeStopwatch.elapsedMilliseconds}ms, '
-            'total ${stopwatch.elapsedMilliseconds}ms).',
+
+          final registered = OverlayProcessRecord(
+            pid: record.pid,
+            creationTime: record.creationTime,
+            executablePath: record.executablePath,
+            ready: ready,
+            state: state,
+            instanceId: instanceId ?? existingRecord?.instanceId,
+            templateId: templateId ?? existingRecord?.templateId,
+            processMode: processMode ?? existingRecord?.processMode,
+            diagnosticLogPath:
+                diagnosticLogPath ?? existingRecord?.diagnosticLogPath,
+            hwnd: hwnd ?? existingRecord?.hwnd,
+            configurationRevision:
+                configurationRevision ??
+                existingRecord?.configurationRevision ??
+                1,
+            stage: stage,
+            operationId: operationId ?? existingRecord?.operationId,
+            startupTimestamp:
+                startupTimestamp ?? existingRecord?.startupTimestamp,
+            healthCheck: healthCheck,
+            entryPointMs: entryPointMs ?? existingRecord?.entryPointMs,
+            settingsLoadedMs:
+                settingsLoadedMs ?? existingRecord?.settingsLoadedMs,
+            windowInitMs: windowInitMs ?? existingRecord?.windowInitMs,
+            firstFrameMs: firstFrameMs ?? existingRecord?.firstFrameMs,
+            readyPublishedMs:
+                readyPublishedMs ??
+                (ready
+                    ? DateTime.now().millisecondsSinceEpoch
+                    : existingRecord?.readyPublishedMs),
+            acknowledgedMs: acknowledgedMs ?? existingRecord?.acknowledgedMs,
+            failureReason: failureReason ?? existingRecord?.failureReason,
+          );
+          final temporaryFile = File(
+            '${pidFile.path}.$pid.${DateTime.now().microsecondsSinceEpoch}.tmp',
+          );
+          try {
+            await temporaryFile.writeAsString(
+              jsonEncode(registered.toJson()),
+              flush: true,
+            );
+            var replaced = false;
+            Object? replaceError;
+            for (var attempt = 0; attempt < 3; attempt++) {
+              try {
+                await temporaryFile.rename(pidFile.path);
+                replaced = true;
+                break;
+              } on FileSystemException catch (error) {
+                replaceError = error;
+                if (!_isPidRecordLockConflict(error) || attempt == 2) rethrow;
+                await Future<void>.delayed(
+                  Duration(milliseconds: 40 * (attempt + 1)),
+                );
+              }
+            }
+            if (!replaced) {
+              throw FileSystemException(
+                'Could not atomically replace the overlay PID record: '
+                '$replaceError',
+                pidFile.path,
+              );
+            }
+          } finally {
+            if (await temporaryFile.exists()) {
+              try {
+                await temporaryFile.delete();
+              } on FileSystemException catch (error) {
+                logWarning(
+                  'OverlayLifecycleService',
+                  'Could not remove temporary PID record ${temporaryFile.path}: '
+                      '$error',
+                );
+              }
+            }
+          }
+          logInfo(
+            'OverlayLifecycleService',
+            'Registered overlay process identity: PID ${record.pid}, '
+                'state=${state.name}, stage=${stage.displayName}, ready=$ready, '
+                'instanceId=${registered.instanceId}, '
+                'operationId=${registered.operationId}, '
+                'configRevision=${registered.configurationRevision}, '
+                'executable=${record.executablePath ?? '<inaccessible>'} '
+                '(identity ${identityMs}ms, PID-file lock ${lockWaitMs}ms, '
+                'write ${writeStopwatch.elapsedMilliseconds}ms, '
+                'total ${stopwatch.elapsedMilliseconds}ms).',
+          );
+        },
       );
-    } finally {
-      try {
-        await lock.unlock();
-      } finally {
-        await lock.close();
-      }
+    } catch (error, stackTrace) {
+      logError(
+        'OverlayLifecycleService',
+        'PID record update failed (pid=${record.pid}, instanceId=$instanceId, '
+            'operationId=$operationId, configRevision=$configurationRevision, '
+            'state=${state.name}).',
+        error,
+        stackTrace,
+      );
+      rethrow;
     }
   }
 

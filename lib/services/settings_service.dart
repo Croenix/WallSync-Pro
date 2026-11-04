@@ -1189,8 +1189,9 @@ class WidgetSettings {
         if (key == 'neon_box') return 0x00000000;
         return 0xFF00E5FF;
       case 'flip_clock':
-        if (key == 'hours' || key == 'minutes' || key == 'seconds')
+        if (key == 'hours' || key == 'minutes' || key == 'seconds') {
           return 0xFFEFEEDB;
+        }
         if (key == 'day' || key == 'date' || key == 'year') return 0xFFE2E8F0;
         if (key == 'separator') return 0xFF000000;
         if (key == 'inner_background') return 0xFF1E2229;
