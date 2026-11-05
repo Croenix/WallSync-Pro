@@ -2002,7 +2002,7 @@ class SettingsService {
             eventFileName.endsWith('.tmp'));
   }
 
-  static Future<void> _settingsWriteQueue = Future<void>.value();
+  static final Map<String, Future<void>> _settingsWriteQueues = {};
   static final Map<String, Timer> _pendingDebounceTimers = {};
   static final Map<String, Completer<void>> _pendingSaveCompleters = {};
   static final Map<String, WidgetSettings> _pendingSettingsMap = {};
@@ -2017,10 +2017,11 @@ class SettingsService {
       final settings = _pendingSettingsMap.remove(key);
       if (settings != null) {
         final instanceId = key == '__global__' ? null : key;
+        final service = SettingsService(instanceId: instanceId);
         futures.add(
-          SettingsService(
-            instanceId: instanceId,
-          )._writeSettingsDirect(settings),
+          service._serializeSettingsWrite(
+            () => service._writeSettingsDirect(settings),
+          ),
         );
       }
       if (completer != null && !completer.isCompleted) {
@@ -2031,15 +2032,20 @@ class SettingsService {
   }
 
   Future<T> _serializeSettingsWrite<T>(Future<T> Function() operation) {
-    final previous = _settingsWriteQueue;
+    final key = instanceId ?? '__global__';
+    final previous = _settingsWriteQueues[key] ?? Future<void>.value();
     final completion = Completer<void>();
-    _settingsWriteQueue = completion.future;
+    final queuedCompletion = completion.future;
+    _settingsWriteQueues[key] = queuedCompletion;
     return () async {
       try {
         await previous;
         return await operation();
       } finally {
         completion.complete();
+        if (identical(_settingsWriteQueues[key], queuedCompletion)) {
+          _settingsWriteQueues.remove(key);
+        }
       }
     }();
   }
@@ -2185,6 +2191,7 @@ class SettingsService {
     if (immediate) {
       _pendingDebounceTimers[key]?.cancel();
       _pendingDebounceTimers.remove(key);
+      _pendingSettingsMap.remove(key);
       final completer = _pendingSaveCompleters.remove(key);
       final future = _serializeSettingsWrite(
         () => _writeSettingsDirect(settings),

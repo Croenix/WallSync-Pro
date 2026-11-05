@@ -153,7 +153,9 @@ class SystemOptimizerService {
   static final SystemOptimizerService instance = SystemOptimizerService._();
   SystemOptimizerService._();
 
-  static const MethodChannel _channel = MethodChannel('wallsync/live_wallpaper');
+  static const MethodChannel _channel = MethodChannel(
+    'wallsync/live_wallpaper',
+  );
 
   Timer? _idleOptimizerTimer;
   bool _isLowPowerModeActive = false;
@@ -203,11 +205,25 @@ class SystemOptimizerService {
           completer.complete(false);
           return;
         }
+        final before = DiagnosticsService.instance.getMemorySnapshot();
         final res = await _channel.invokeMethod<bool>('optimizeMemory');
         _lastMemoryTrimTime = DateTime.now();
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        final after = DiagnosticsService.instance.getMemorySnapshot();
+        final rssDeltaMb =
+            (after.processRssBytes - before.processRssBytes) / (1024 * 1024);
+        final privateDeltaMb =
+            before.processPrivateBytes == null ||
+                after.processPrivateBytes == null
+            ? null
+            : (after.processPrivateBytes! - before.processPrivateBytes!) /
+                  (1024 * 1024);
         logInfo(
           'SystemOptimizerService',
-          '[$opId] Native process memory trimmed successfully.',
+          '[$opId] Native trim request result=${res ?? false}; observed '
+              'working-set delta=${rssDeltaMb.toStringAsFixed(1)}MB, '
+              'private-memory delta=${privateDeltaMb?.toStringAsFixed(1) ?? 'unavailable'}MB '
+              'after 150ms.',
         );
         completer.complete(res ?? false);
       } catch (e) {
@@ -225,7 +241,10 @@ class SystemOptimizerService {
   }
 
   /// Creates a Windows NTFS hard link (`CreateHardLinkW`) to share read-only binaries/assets with 0 copying and 0 RAM overhead.
-  Future<bool> createHardLink({required String target, required String existing}) async {
+  Future<bool> createHardLink({
+    required String target,
+    required String existing,
+  }) async {
     if (!Platform.isWindows) return false;
     try {
       final res = await _channel.invokeMethod<bool>('createHardLink', {
@@ -248,14 +267,17 @@ class SystemOptimizerService {
     if (_inFlightLowPowerMode != null && _inFlightLowPowerTarget == enable) {
       return _inFlightLowPowerMode!;
     }
-    final opId = 'eco_${++_operationCounter}_${DateTime.now().millisecondsSinceEpoch}';
+    final opId =
+        'eco_${++_operationCounter}_${DateTime.now().millisecondsSinceEpoch}';
     final completer = Completer<bool>();
     _inFlightLowPowerMode = completer.future;
     _inFlightLowPowerTarget = enable;
 
     () async {
       try {
-        final res = await _channel.invokeMethod<bool>('setLowPowerMode', {'enable': enable});
+        final res = await _channel.invokeMethod<bool>('setLowPowerMode', {
+          'enable': enable,
+        });
         _isLowPowerModeActive = enable;
         logInfo(
           'SystemOptimizerService',
@@ -282,11 +304,16 @@ class SystemOptimizerService {
   Future<NativePerformanceMetrics?> getPerformanceMetrics() async {
     if (!Platform.isWindows) return null;
     try {
-      final raw = await _channel.invokeMapMethod<Object?, Object?>('getPerformanceMetrics');
+      final raw = await _channel.invokeMapMethod<Object?, Object?>(
+        'getPerformanceMetrics',
+      );
       if (raw == null) return null;
       return NativePerformanceMetrics.fromMap(raw);
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native getPerformanceMetrics call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native getPerformanceMetrics call failed: $e',
+      );
       return null;
     }
   }
@@ -301,7 +328,10 @@ class SystemOptimizerService {
       });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setStaticWallpaper call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native setStaticWallpaper call failed: $e',
+      );
       return false;
     }
   }
@@ -310,11 +340,16 @@ class SystemOptimizerService {
   Future<NativeGpuAndDisplayInfo?> getGpuAndDisplayInfo() async {
     if (!Platform.isWindows) return null;
     try {
-      final raw = await _channel.invokeMapMethod<Object?, Object?>('getGpuAndDisplayInfo');
+      final raw = await _channel.invokeMapMethod<Object?, Object?>(
+        'getGpuAndDisplayInfo',
+      );
       if (raw == null) return null;
       return NativeGpuAndDisplayInfo.fromMap(raw);
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native getGpuAndDisplayInfo call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native getGpuAndDisplayInfo call failed: $e',
+      );
       return null;
     }
   }
@@ -323,11 +358,16 @@ class SystemOptimizerService {
   Future<Map<String, dynamic>?> getMediaSessionInfo() async {
     if (!Platform.isWindows) return null;
     try {
-      final raw = await _channel.invokeMapMethod<Object?, Object?>('getMediaSessionInfo');
+      final raw = await _channel.invokeMapMethod<Object?, Object?>(
+        'getMediaSessionInfo',
+      );
       if (raw == null) return null;
       return raw.map((k, v) => MapEntry(k.toString(), v));
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native getMediaSessionInfo call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native getMediaSessionInfo call failed: $e',
+      );
       return null;
     }
   }
@@ -336,10 +376,15 @@ class SystemOptimizerService {
   Future<bool> controlMediaSession(String action) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('controlMediaSession', {'action': action});
+      final res = await _channel.invokeMethod<bool>('controlMediaSession', {
+        'action': action,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native controlMediaSession call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native controlMediaSession call failed: $e',
+      );
       return false;
     }
   }
@@ -348,10 +393,15 @@ class SystemOptimizerService {
   Future<bool> setWindowClickThrough(bool enable) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('setWindowClickThrough', {'enable': enable});
+      final res = await _channel.invokeMethod<bool>('setWindowClickThrough', {
+        'enable': enable,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setWindowClickThrough call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native setWindowClickThrough call failed: $e',
+      );
       return false;
     }
   }
@@ -363,7 +413,10 @@ class SystemOptimizerService {
       final res = await _channel.invokeMethod<bool>('pinWindowToBottom');
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native pinWindowToBottom call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native pinWindowToBottom call failed: $e',
+      );
       return false;
     }
   }
@@ -372,10 +425,15 @@ class SystemOptimizerService {
   Future<bool> setDesktopIconsVisible(bool visible) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('setDesktopIconsVisible', {'visible': visible});
+      final res = await _channel.invokeMethod<bool>('setDesktopIconsVisible', {
+        'visible': visible,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setDesktopIconsVisible call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native setDesktopIconsVisible call failed: $e',
+      );
       return false;
     }
   }
@@ -387,7 +445,10 @@ class SystemOptimizerService {
       final res = await _channel.invokeMethod<bool>('getDesktopIconsVisible');
       return res ?? true;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native getDesktopIconsVisible call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native getDesktopIconsVisible call failed: $e',
+      );
       return true;
     }
   }
@@ -397,10 +458,15 @@ class SystemOptimizerService {
   Future<bool> setTaskbarBlur(int mode) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('setTaskbarBlur', {'mode': mode});
+      final res = await _channel.invokeMethod<bool>('setTaskbarBlur', {
+        'mode': mode,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setTaskbarBlur call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native setTaskbarBlur call failed: $e',
+      );
       return false;
     }
   }
@@ -412,7 +478,10 @@ class SystemOptimizerService {
       final res = await _channel.invokeMethod<bool>('isOtherAudioPlaying');
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native isOtherAudioPlaying call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native isOtherAudioPlaying call failed: $e',
+      );
       return false;
     }
   }
@@ -421,11 +490,16 @@ class SystemOptimizerService {
   Future<Map<String, dynamic>?> getWindowsAccentColor() async {
     if (!Platform.isWindows) return null;
     try {
-      final raw = await _channel.invokeMapMethod<Object?, Object?>('getWindowsAccentColor');
+      final raw = await _channel.invokeMapMethod<Object?, Object?>(
+        'getWindowsAccentColor',
+      );
       if (raw == null) return null;
       return raw.map((k, v) => MapEntry(k.toString(), v));
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native getWindowsAccentColor call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native getWindowsAccentColor call failed: $e',
+      );
       return null;
     }
   }
@@ -434,10 +508,15 @@ class SystemOptimizerService {
   Future<bool> isProcessRunning(String processName) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('isProcessRunning', {'name': processName});
+      final res = await _channel.invokeMethod<bool>('isProcessRunning', {
+        'name': processName,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native isProcessRunning call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native isProcessRunning call failed: $e',
+      );
       return false;
     }
   }
@@ -446,10 +525,15 @@ class SystemOptimizerService {
   Future<String?> pickImageFile({String title = 'Select Image'}) async {
     if (!Platform.isWindows) return null;
     try {
-      final res = await _channel.invokeMethod<String>('pickImageFile', {'title': title});
+      final res = await _channel.invokeMethod<String>('pickImageFile', {
+        'title': title,
+      });
       return res?.isNotEmpty == true ? res : null;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native pickImageFile call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native pickImageFile call failed: $e',
+      );
       return null;
     }
   }
@@ -458,10 +542,15 @@ class SystemOptimizerService {
   Future<bool> boostProcessPriority(bool boost) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('boostProcessPriority', {'boost': boost});
+      final res = await _channel.invokeMethod<bool>('boostProcessPriority', {
+        'boost': boost,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native boostProcessPriority call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native boostProcessPriority call failed: $e',
+      );
       return false;
     }
   }
@@ -470,10 +559,15 @@ class SystemOptimizerService {
   Future<bool> setWindowCloaked(bool cloak) async {
     if (!Platform.isWindows) return false;
     try {
-      final res = await _channel.invokeMethod<bool>('setWindowCloaked', {'cloak': cloak});
+      final res = await _channel.invokeMethod<bool>('setWindowCloaked', {
+        'cloak': cloak,
+      });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setWindowCloaked call failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native setWindowCloaked call failed: $e',
+      );
       return false;
     }
   }
@@ -482,11 +576,16 @@ class SystemOptimizerService {
   Future<WindowsVersionInfo?> getWindowsVersionInfo() async {
     if (!Platform.isWindows) return null;
     try {
-      final raw = await _channel.invokeMapMethod<Object?, Object?>('getWindowsVersionInfo');
+      final raw = await _channel.invokeMapMethod<Object?, Object?>(
+        'getWindowsVersionInfo',
+      );
       if (raw == null) return null;
       return WindowsVersionInfo.fromMap(raw);
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native getWindowsVersionInfo failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native getWindowsVersionInfo failed: $e',
+      );
       return null;
     }
   }
@@ -495,7 +594,9 @@ class SystemOptimizerService {
   Future<List<WindowsProcessInfo>> getProcessList() async {
     if (!Platform.isWindows) return const [];
     try {
-      final rawList = await _channel.invokeListMethod<dynamic>('getProcessList');
+      final rawList = await _channel.invokeListMethod<dynamic>(
+        'getProcessList',
+      );
       if (rawList == null) return const [];
       return rawList
           .whereType<Map>()
@@ -517,7 +618,10 @@ class SystemOptimizerService {
       });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native setProcessPriority failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native setProcessPriority failed: $e',
+      );
       return false;
     }
   }
@@ -531,13 +635,18 @@ class SystemOptimizerService {
       });
       return res ?? false;
     } catch (e) {
-      logWarning('SystemOptimizerService', 'Native trimProcessMemory failed: $e');
+      logWarning(
+        'SystemOptimizerService',
+        'Native trimProcessMemory failed: $e',
+      );
       return false;
     }
   }
 
   /// Starts a periodic background memory cleanup to keep RAM overhead under 35MB.
-  void startBackgroundMemoryOptimizer({Duration interval = const Duration(minutes: 3)}) {
+  void startBackgroundMemoryOptimizer({
+    Duration interval = const Duration(minutes: 3),
+  }) {
     _idleOptimizerTimer?.cancel();
     _idleOptimizerTimer = Timer.periodic(interval, (_) async {
       await optimizeMemory();

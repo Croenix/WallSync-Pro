@@ -3872,11 +3872,8 @@ bool LiveWallpaperPlugin::Impl::CreateFileHardLink(
   if (GetFileAttributesW(target_path.c_str()) != INVALID_FILE_ATTRIBUTES) {
     DeleteFileW(target_path.c_str());
   }
-  if (CreateHardLinkW(target_path.c_str(), existing_path.c_str(), nullptr) != 0) {
-    return true;
-  }
-  // Fallback to CopyFileW if filesystem does not support hard links or files reside on different volumes
-  return CopyFileW(existing_path.c_str(), target_path.c_str(), FALSE) != 0;
+  return CreateHardLinkW(target_path.c_str(), existing_path.c_str(), nullptr) !=
+         0;
 }
 
 flutter::EncodableMap LiveWallpaperPlugin::Impl::GetWindowsVersionInfo() {

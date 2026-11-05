@@ -380,6 +380,56 @@ void main() {
   );
 
   test(
+    'settings writes for different widget records do not block each other',
+    () async {
+      final blockedService = SettingsService(instanceId: 'test_blocked_write');
+      final independentService = SettingsService(
+        instanceId: 'test_independent_write',
+      );
+      final blockedFile = await blockedService.settingsFile;
+      final independentFile = await independentService.settingsFile;
+      final blockedLockFile = await blockedService.lockFile;
+      final blockedLock = await blockedLockFile.open(mode: FileMode.append);
+
+      try {
+        await blockedLock.lock(FileLock.exclusive);
+        final blockedWrite = blockedService.saveSettings(
+          WidgetSettings(activeWallpaperPath: 'blocked'),
+          immediate: true,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        await independentService
+            .saveSettings(
+              WidgetSettings(activeWallpaperPath: 'independent'),
+              immediate: true,
+            )
+            .timeout(const Duration(seconds: 1));
+        expect(await independentFile.exists(), isTrue);
+
+        await blockedLock.unlock();
+        await blockedWrite.timeout(const Duration(seconds: 10));
+        expect(await blockedFile.exists(), isTrue);
+      } finally {
+        try {
+          await blockedLock.unlock();
+        } on FileSystemException {
+          // The lock was already released before the pending write completed.
+        }
+        await blockedLock.close();
+        if (await blockedFile.exists()) await blockedFile.delete();
+        if (await blockedLockFile.exists()) await blockedLockFile.delete();
+        if (await independentFile.exists()) await independentFile.delete();
+        final independentLockFile = await independentService.lockFile;
+        if (await independentLockFile.exists()) {
+          await independentLockFile.delete();
+        }
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 15)),
+  );
+
+  test(
     'concurrent settings updates preserve independent customization and bounds changes',
     () async {
       const instanceId = 'test_atomic_settings_update';

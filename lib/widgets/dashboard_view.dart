@@ -186,6 +186,9 @@ class _DashboardViewState extends State<DashboardView>
   String _diagHistoryCategoryFilter = 'ALL';
   Duration? _diagHistoryTimeRangeFilter;
   final Map<String, Future<File?>> _recentThumbnailFutures = {};
+  final Map<String, String> _lastSyncedSettingsJsonByWidget = {};
+  final Map<String, int> _settingsSyncRevisionByWidget = {};
+  int _settingsSyncRevision = 0;
 
   T _profileDashboardSection<T>(String section, T Function() action) {
     final stopwatch = Stopwatch()..start();
@@ -216,16 +219,28 @@ class _DashboardViewState extends State<DashboardView>
       return;
     }
 
+    final settingsForWidget = settings.copyWith(widgetTemplate: targetWidgetId);
+    final settingsJson = jsonEncode(settingsForWidget.toJson());
+    if (!immediate &&
+        _lastSyncedSettingsJsonByWidget[targetWidgetId] == settingsJson) {
+      return;
+    }
+    final syncRevision = ++_settingsSyncRevision;
+    _lastSyncedSettingsJsonByWidget[targetWidgetId] = settingsJson;
+    _settingsSyncRevisionByWidget[targetWidgetId] = syncRevision;
+
     try {
-      await SettingsService(instanceId: targetWidgetId).saveSettings(
-        settings.copyWith(widgetTemplate: targetWidgetId),
-        immediate: immediate,
-      );
+      await SettingsService(
+        instanceId: targetWidgetId,
+      ).saveSettings(settingsForWidget, immediate: immediate);
       logInfo(
         'DashboardView',
         'Synchronized customization settings to live widget "$targetWidgetId" '
             '(immediate=$immediate).',
       );
+      if (_settingsSyncRevisionByWidget[targetWidgetId] == syncRevision) {
+        _settingsSyncRevisionByWidget.remove(targetWidgetId);
+      }
     } catch (error, stackTrace) {
       logError(
         'DashboardView',
@@ -234,6 +249,10 @@ class _DashboardViewState extends State<DashboardView>
         error,
         stackTrace,
       );
+      if (_settingsSyncRevisionByWidget[targetWidgetId] == syncRevision) {
+        _settingsSyncRevisionByWidget.remove(targetWidgetId);
+        _lastSyncedSettingsJsonByWidget.remove(targetWidgetId);
+      }
     }
   }
 
@@ -2088,6 +2107,14 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   void onWindowMinimize() {
+    if (!_isWindowVisible) {
+      logInfo(
+        'DashboardView',
+        'Ignoring duplicate minimize notification while the window is already hidden.',
+      );
+      return;
+    }
+
     DiagnosticsService.instance.recordWindowEvent(
       'minimize_requested',
       reason: canHideToTray ? 'minimize_to_tray' : 'minimize_to_taskbar',
