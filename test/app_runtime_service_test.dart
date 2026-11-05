@@ -41,26 +41,53 @@ void main() {
           allowHardLinks: false,
         );
         final runtimeAsset = File('${runtime.path}\\data.bin');
+        final runtimeExecutable = File('${runtime.path}\\WallSync.exe');
         expect(await runtimeAsset.readAsString(), 'known-good-content');
 
-        await runtimeAsset.writeAsString('corrupted--content');
-        await fixture.service.prepareRuntime(
+        final verifiedRuntime = await fixture.service.prepareRuntime(
           'TestRuntime',
           allowHardLinks: false,
         );
-        expect(await runtimeAsset.readAsString(), 'known-good-content');
+        expect(verifiedRuntime.path, runtime.path);
 
-        await runtimeAsset.delete();
-        await fixture.service.prepareRuntime(
+        await runtimeExecutable.writeAsString('tampered!!');
+        await runtimeExecutable.setLastModified(stableTime);
+        final repairedRuntime = await fixture.service.prepareRuntime(
           'TestRuntime',
           allowHardLinks: false,
         );
-        expect(await runtimeAsset.readAsString(), 'known-good-content');
+        expect(repairedRuntime.path, isNot(runtime.path));
+        expect(await runtimeExecutable.readAsString(), 'tampered!!');
+        expect(
+          await File('${repairedRuntime.path}\\WallSync.exe').readAsString(),
+          'executable',
+        );
+        expect(
+          await File('${repairedRuntime.path}\\data.bin').readAsString(),
+          'known-good-content',
+        );
+        final reusedRepair = await fixture.service.prepareRuntime(
+          'TestRuntime',
+          allowHardLinks: false,
+        );
+        expect(reusedRepair.path, repairedRuntime.path);
+
+        final repairedAsset = File('${repairedRuntime.path}\\data.bin');
+        await repairedAsset.delete();
+        final restoredRuntime = await fixture.service.prepareRuntime(
+          'TestRuntime',
+          allowHardLinks: false,
+        );
+        expect(restoredRuntime.path, isNot(repairedRuntime.path));
+        expect(
+          await File('${restoredRuntime.path}\\data.bin').readAsString(),
+          'known-good-content',
+        );
 
         final manifest =
             jsonDecode(
                   await File(
-                    '${runtime.path}\\runtime.manifest',
+                    '${restoredRuntime.path}\\runtime.manifest',
                   ).readAsString(),
                 )
                 as Map<String, dynamic>;
@@ -77,7 +104,7 @@ void main() {
           'TestRuntime',
           allowHardLinks: false,
         );
-        expect(updatedRuntime.path, isNot(runtime.path));
+        expect(updatedRuntime.path, isNot(restoredRuntime.path));
         expect(await File('${runtime.path}\\WallSync.exe').exists(), isTrue);
       } finally {
         await fixture.root.delete(recursive: true);
@@ -110,6 +137,82 @@ void main() {
       await fixture.root.delete(recursive: true);
     }
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test(
+    'AppRuntimeService invalidates cached source hashes after same-size edits',
+    () async {
+      final fixture = await createRuntimeFixture();
+      final executable = File('${fixture.source.path}\\WallSync.exe');
+      final stableTime = DateTime.utc(2020, 1, 1);
+      await executable.setLastModified(stableTime);
+
+      try {
+        final originalRuntime = await fixture.service.prepareRuntime(
+          'TestRuntime',
+          allowHardLinks: false,
+        );
+        await executable.writeAsString('tampered!!');
+        await executable.setLastModified(stableTime);
+
+        final updatedRuntime = await fixture.service.prepareRuntime(
+          'TestRuntime',
+          allowHardLinks: false,
+        );
+
+        expect(updatedRuntime.path, isNot(originalRuntime.path));
+        expect(
+          await File('${updatedRuntime.path}\\WallSync.exe').readAsString(),
+          'tampered!!',
+        );
+      } finally {
+        await fixture.root.delete(recursive: true);
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test(
+    'AppRuntimeService keeps concurrent source inventories isolated',
+    () async {
+      final fixture = await createRuntimeFixture();
+      final secondSource = Directory('${fixture.root.path}\\second-source');
+      await secondSource.create();
+      await File(
+        '${secondSource.path}\\WallSync.exe',
+      ).writeAsString('second-executable');
+      await File(
+        '${secondSource.path}\\data.bin',
+      ).writeAsString('second-runtime-content');
+      final secondService = AppRuntimeService(
+        sourceDirectory: secondSource,
+        runtimeBaseDirectory: Directory('${fixture.root.path}\\runtime'),
+        executableName: 'WallSync.exe',
+      );
+
+      try {
+        final results = await Future.wait([
+          fixture.service.prepareRuntime(
+            'OverlayRuntime',
+            allowHardLinks: false,
+          ),
+          secondService.prepareRuntime('OverlayRuntime', allowHardLinks: false),
+        ]);
+
+        expect(results[0].path, isNot(results[1].path));
+        expect(
+          await File('${results[0].path}\\data.bin').readAsString(),
+          'known-good-content',
+        );
+        expect(
+          await File('${results[1].path}\\data.bin').readAsString(),
+          'second-runtime-content',
+        );
+      } finally {
+        await fixture.root.delete(recursive: true);
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 
   test('AppRuntimeService reuses prepared runtime via manifest', () async {
     final fixture = await createRuntimeFixture();

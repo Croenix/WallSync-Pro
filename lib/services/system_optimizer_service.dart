@@ -169,14 +169,16 @@ class SystemOptimizerService {
 
   bool get isLowPowerModeActive => _isLowPowerModeActive;
 
-  /// Commands Windows to flush the process working set (`SetProcessWorkingSetSize` and `EmptyWorkingSet`).
-  /// Reclaims unused virtual memory pages across WallSync Pro and background MPV video instances.
-  /// When [force] is false and the dashboard window is visible, avoids evicting live textures
-  /// and working set pages to prevent page fault stalls during active rendering.
+  /// Performs an explicit memory optimization requested by the user.
+  /// Automatic calls do not clear Flutter image caches or trim the working set,
+  /// since both can cause image decoding and page-fault stalls during rendering.
   Future<bool> optimizeMemory({bool force = false}) async {
+    if (!force) {
+      return false;
+    }
+
     final now = DateTime.now();
-    if (!force &&
-        _lastMemoryTrimTime != null &&
+    if (_lastMemoryTrimTime != null &&
         now.difference(_lastMemoryTrimTime!) < _minMemoryTrimInterval) {
       return true; // Throttled duplicate trim
     }
@@ -189,14 +191,6 @@ class SystemOptimizerService {
 
     () async {
       try {
-        if (!force && DiagnosticsService.instance.isWindowVisible) {
-          try {
-            PaintingBinding.instance.imageCache.clear();
-          } catch (_) {}
-          _lastMemoryTrimTime = DateTime.now();
-          completer.complete(true);
-          return;
-        }
         try {
           PaintingBinding.instance.imageCache.clear();
           PaintingBinding.instance.imageCache.clearLiveImages();
@@ -643,14 +637,18 @@ class SystemOptimizerService {
     }
   }
 
-  /// Starts a periodic background memory cleanup to keep RAM overhead under 35MB.
+  /// Kept for API compatibility; automatic memory trimming is disabled because
+  /// it can evict resources used by active Flutter surfaces.
   void startBackgroundMemoryOptimizer({
     Duration interval = const Duration(minutes: 3),
   }) {
     _idleOptimizerTimer?.cancel();
-    _idleOptimizerTimer = Timer.periodic(interval, (_) async {
-      await optimizeMemory();
-    });
+    _idleOptimizerTimer = null;
+    logInfo(
+      'SystemOptimizerService',
+      'Automatic working-set trimming is disabled; memory optimization '
+          'remains available as an explicit user action.',
+    );
   }
 
   void stopBackgroundMemoryOptimizer() {

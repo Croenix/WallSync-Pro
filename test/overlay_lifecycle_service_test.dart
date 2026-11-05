@@ -364,6 +364,7 @@ void main() {
 
   test('waits for delayed overlay PID registration and readiness', () async {
     var reads = 0;
+    var inspections = 0;
     final result = await waitForOverlayReadiness(
       readRecord: () async {
         reads++;
@@ -375,7 +376,10 @@ void main() {
           ready: reads >= 3,
         );
       },
-      inspectProcess: (_) async => _inspection(true),
+      inspectProcess: (_) async {
+        inspections++;
+        return _inspection(true);
+      },
       timeout: const Duration(seconds: 1),
       pollInterval: Duration.zero,
     );
@@ -383,7 +387,34 @@ void main() {
     expect(result.status, OverlayReadinessStatus.ready);
     expect(result.record?.ready, isTrue);
     expect(reads, 3);
+    expect(inspections, 2);
   });
+
+  test(
+    'reads atomic PID snapshots without waiting for the writer lock',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'wallsync-pid-snapshot-',
+      );
+      final pidFile = File('${directory.path}\\overlay.pid');
+      final lockFile = File('${pidFile.path}.lock');
+      final lock = await lockFile.open(mode: FileMode.append);
+
+      try {
+        await pidFile.writeAsString('{"pid":1234}');
+        await lock.lock(FileLock.exclusive);
+
+        expect(
+          await readOverlayPidFileContents(pidFile, useLock: false),
+          '{"pid":1234}',
+        );
+      } finally {
+        await lock.unlock();
+        await lock.close();
+        await directory.delete(recursive: true);
+      }
+    },
+  );
 
   test('readiness polling survives a transient PID lock error', () async {
     var reads = 0;
@@ -408,6 +439,55 @@ void main() {
     expect(result.status, OverlayReadinessStatus.ready);
     expect(reads, 2);
   });
+
+  test(
+    'stage-specific readiness reports do not fall through to starting',
+    () async {
+      OverlayReadinessStatus? runningStatus;
+      await waitForOverlayReadiness(
+        readRecord: () async => OverlayProcessRecord(
+          pid: record.pid,
+          creationTime: record.creationTime,
+          executablePath: record.executablePath,
+          ready: false,
+          state: OverlayLifecycleState.processStarted,
+          stage: DockReadinessStage.processRunning,
+        ),
+        inspectProcess: (_) async => _inspection(true),
+        timeout: const Duration(milliseconds: 15),
+        pollInterval: Duration.zero,
+        onStatusChanged: (status, _, _, _) {
+          if (runningStatus == null &&
+              status != OverlayReadinessStatus.missing) {
+            runningStatus = status;
+          }
+        },
+      );
+      expect(runningStatus, OverlayReadinessStatus.processRunning);
+
+      OverlayReadinessStatus? visibleStatus;
+      await waitForOverlayReadiness(
+        readRecord: () async => OverlayProcessRecord(
+          pid: record.pid,
+          creationTime: record.creationTime,
+          executablePath: record.executablePath,
+          ready: false,
+          state: OverlayLifecycleState.windowShown,
+          stage: DockReadinessStage.windowVisible,
+        ),
+        inspectProcess: (_) async => _inspection(true),
+        timeout: const Duration(milliseconds: 15),
+        pollInterval: Duration.zero,
+        onStatusChanged: (status, _, _, _) {
+          if (visibleStatus == null &&
+              status != OverlayReadinessStatus.missing) {
+            visibleStatus = status;
+          }
+        },
+      );
+      expect(visibleStatus, OverlayReadinessStatus.dockInitializing);
+    },
+  );
 
   test(
     'does not accept a stale PID record with mismatched creation time',

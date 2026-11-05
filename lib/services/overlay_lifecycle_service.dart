@@ -383,8 +383,31 @@ Future<String?> readOverlayPidFileContents(
   Future<void> Function(RandomAccessFile file)? acquireSharedLock,
   Future<String> Function()? readContents,
   Duration Function(int attempt)? retryDelay,
+  bool useLock = true,
 }) async {
   final read = readContents ?? pidFile.readAsString;
+  if (!useLock) {
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (!await pidFile.exists()) return null;
+        return await read();
+      } on FileSystemException catch (error) {
+        final code = error.osError?.errorCode;
+        final message = error.message.toLowerCase();
+        final isMissing =
+            code == 2 ||
+            message.contains('cannot find the file') ||
+            message.contains('no such file');
+        if (isMissing) return null;
+        if (!_isPidRecordLockConflict(error) || attempt == maxAttempts) {
+          rethrow;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 5 * attempt));
+      }
+    }
+    throw StateError('PID record snapshot read exhausted its retry loop.');
+  }
+
   try {
     return await _withPidRecordLock(
       pidFile,
@@ -633,6 +656,8 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
   int? previousPid;
   OverlayProcessRecord? latestRecord;
   OverlayProcessInspection? latestInspection;
+  var lastProcessInspectionAt = Duration.zero;
+  String? lastInspectedProcessIdentity;
 
   bool matchesExpectedIdentity(OverlayProcessRecord record) =>
       (expectedPid == null || record.pid == expectedPid) &&
@@ -652,6 +677,8 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
       final initInsp = await inspectProcess(expectedPid);
       if (initInsp != null) {
         latestInspection = initInsp;
+        lastProcessInspectionAt = stopwatch.elapsed;
+        lastInspectedProcessIdentity = 'pid:$expectedPid';
         if (initInsp.isRunning) {
           status = OverlayReadinessStatus.processRunning;
         } else {
@@ -666,10 +693,15 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
       latestRecord = await readRecord();
       if (latestRecord == null) {
         if (expectedPid != null) {
-          final insp = await inspectProcess(expectedPid);
-          if (insp != null) {
-            latestInspection = insp;
-            if (!insp.isRunning) {
+          if (latestInspection == null ||
+              stopwatch.elapsed - lastProcessInspectionAt >=
+                  const Duration(seconds: 1)) {
+            latestInspection = await inspectProcess(expectedPid);
+            lastProcessInspectionAt = stopwatch.elapsed;
+            lastInspectedProcessIdentity = 'pid:$expectedPid';
+          }
+          if (latestInspection != null) {
+            if (!latestInspection.isRunning) {
               status = OverlayReadinessStatus.processExited;
               break;
             } else {
@@ -686,7 +718,23 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
         if (!matchesExpectedIdentity(latestRecord)) {
           status = OverlayReadinessStatus.identityMismatch;
         } else {
-          latestInspection = await inspectProcess(latestRecord.pid);
+          final processIdentity =
+              'pid:${latestRecord.pid}|creationTime:'
+              '${latestRecord.creationTime}|executable:'
+              '${latestRecord.executablePath}';
+          final mustInspectProcess =
+              latestRecord.ready ||
+              latestRecord.state == OverlayLifecycleState.failedOrTimedOut ||
+              latestRecord.stage == DockReadinessStage.failed ||
+              latestInspection == null ||
+              processIdentity != lastInspectedProcessIdentity ||
+              stopwatch.elapsed - lastProcessInspectionAt >=
+                  const Duration(seconds: 1);
+          if (mustInspectProcess) {
+            latestInspection = await inspectProcess(latestRecord.pid);
+            lastProcessInspectionAt = stopwatch.elapsed;
+            lastInspectedProcessIdentity = processIdentity;
+          }
         }
         if (status == OverlayReadinessStatus.identityMismatch) {
           // A stale or unrelated PID record is never an acknowledgement.
@@ -711,15 +759,20 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
           switch (latestRecord.stage) {
             case DockReadinessStage.processRunning:
               status = OverlayReadinessStatus.processRunning;
+              break;
             case DockReadinessStage.windowNotCreated:
               status = OverlayReadinessStatus.windowNotCreated;
+              break;
             case DockReadinessStage.windowFound:
               status = OverlayReadinessStatus.windowFound;
+              break;
             case DockReadinessStage.windowVisible:
             case DockReadinessStage.windowInteractive:
               status = OverlayReadinessStatus.dockInitializing;
+              break;
             default:
               status = OverlayReadinessStatus.starting;
+              break;
           }
         }
       }
@@ -734,9 +787,16 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
             'preserving the last verified process state: $error',
       );
       if (expectedPid != null) {
-        final inspection = await inspectProcess(expectedPid);
+        final inspection =
+            latestInspection == null ||
+                stopwatch.elapsed - lastProcessInspectionAt >=
+                    const Duration(seconds: 1)
+            ? await inspectProcess(expectedPid)
+            : latestInspection;
         if (inspection != null) {
           latestInspection = inspection;
+          lastProcessInspectionAt = stopwatch.elapsed;
+          lastInspectedProcessIdentity = 'pid:$expectedPid';
           status = inspection.isRunning
               ? OverlayReadinessStatus.processRunning
               : OverlayReadinessStatus.processExited;
@@ -749,9 +809,16 @@ Future<OverlayReadinessResult> waitForOverlayReadiness({
             'preserving the last verified process state: $error',
       );
       if (expectedPid != null) {
-        final inspection = await inspectProcess(expectedPid);
+        final inspection =
+            latestInspection == null ||
+                stopwatch.elapsed - lastProcessInspectionAt >=
+                    const Duration(seconds: 1)
+            ? await inspectProcess(expectedPid)
+            : latestInspection;
         if (inspection != null) {
           latestInspection = inspection;
+          lastProcessInspectionAt = stopwatch.elapsed;
+          lastInspectedProcessIdentity = 'pid:$expectedPid';
           status = inspection.isRunning
               ? OverlayReadinessStatus.processRunning
               : OverlayReadinessStatus.processExited;

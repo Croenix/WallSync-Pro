@@ -9,6 +9,7 @@ import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show FrameTiming;
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:file_picker/file_picker.dart';
@@ -1144,6 +1145,7 @@ class _DashboardViewState extends State<DashboardView>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addTimingsCallback(_recordFrameTimings);
     _tabCtrl = TabController(length: 3, vsync: this);
     _tabCtrl.addListener(_handleTabControllerChanged);
 
@@ -1670,6 +1672,7 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeTimingsCallback(_recordFrameTimings);
     if (_wallpaperTransitionState != 'idle') {
       logInfo(
         'DashboardView',
@@ -2548,15 +2551,17 @@ class _DashboardViewState extends State<DashboardView>
     int? launchedPid;
     try {
       final isTaskbar = widgetId.startsWith('taskbar_');
+      var dashboardSettingsSaveMs = 0;
       final activeIds = List<String>.from(_settings.activeWidgetIds);
       if (!activeIds.contains(widgetId)) {
         activeIds.add(widgetId);
       }
       if (_settings.activeWidgetIds.toSet() != activeIds.toSet()) {
-        setState(() {
-          _settings = _settings.copyWith(activeWidgetIds: activeIds);
-        });
+        _settings = _settings.copyWith(activeWidgetIds: activeIds);
+        final dashboardSettingsSaveStopwatch = Stopwatch()..start();
         await _saveSettingsSafely(_settings);
+        dashboardSettingsSaveMs =
+            dashboardSettingsSaveStopwatch.elapsedMilliseconds;
       }
 
       final instService = SettingsService(instanceId: widgetId);
@@ -2624,7 +2629,13 @@ class _DashboardViewState extends State<DashboardView>
                 );
                 final existingReadiness = await waitForOverlayReadiness(
                   readRecord: () async {
-                    final current = (await _safeReadPidFile(pidFile)).trim();
+                    final current =
+                        (await readOverlayPidFileContents(
+                                  pidFile,
+                                  useLock: false,
+                                ) ??
+                                '')
+                            .trim();
                     return current.isEmpty
                         ? null
                         : OverlayProcessRecord.tryParse(current);
@@ -2702,6 +2713,27 @@ class _DashboardViewState extends State<DashboardView>
         }
       }
 
+      final runtimePreparationStopwatch = Stopwatch()..start();
+      final runtimePreparation = () async {
+        try {
+          return await DiagnosticsService.instance
+              .trackAsyncOperation<Directory>(
+                tag: 'DashboardView',
+                name: 'overlay.prepareRuntime.$widgetId',
+                operation: _wallpaperEngine.prepareOverlayRuntime,
+                warningThreshold: const Duration(milliseconds: 500),
+              );
+        } catch (error) {
+          logWarning(
+            'DashboardView',
+            'Shadow runtime fallback for $widgetId: $error',
+          );
+          return null;
+        } finally {
+          runtimePreparationStopwatch.stop();
+        }
+      }();
+
       final stageSettingsStopwatch = Stopwatch()..start();
       final defaults =
           WidgetSettings.templateDefaults[widgetId] ??
@@ -2761,29 +2793,19 @@ class _DashboardViewState extends State<DashboardView>
 
       final settingsPrepMs = stageSettingsStopwatch.elapsedMilliseconds;
 
-      final stageSpawnStopwatch = Stopwatch()..start();
       // Run overlays from independent copies so Windows builds can replace DLLs.
       String appPath = Platform.resolvedExecutable;
       String workingDir = File(appPath).parent.path;
-      try {
-        final runtimeDir = await DiagnosticsService.instance
-            .trackAsyncOperation<Directory>(
-              tag: 'DashboardView',
-              name: 'overlay.prepareRuntime.$widgetId',
-              operation: _wallpaperEngine.prepareOverlayRuntime,
-              warningThreshold: const Duration(milliseconds: 500),
-            );
+      final runtimeDir = await runtimePreparation;
+      final runtimePreparationMs =
+          runtimePreparationStopwatch.elapsedMilliseconds;
+      if (runtimeDir != null) {
         final exeName = File(appPath).uri.pathSegments.last;
         final runtimeExe = File('${runtimeDir.path}\\$exeName');
         if (await runtimeExe.exists()) {
           appPath = runtimeExe.path;
           workingDir = runtimeDir.path;
         }
-      } catch (e) {
-        logWarning(
-          'DashboardView',
-          'Shadow runtime fallback for $widgetId: $e',
-        );
       }
 
       DiagnosticsService.instance.recordWidgetLifecycleEvent(
@@ -2809,6 +2831,24 @@ class _DashboardViewState extends State<DashboardView>
         return childDiagnosticFile;
       }
 
+      void recordChildDiagnostic(String stage, String detail) {
+        unawaited(() async {
+          try {
+            final childLog = await findChildLog();
+            if (childLog != null) {
+              await ProcessDiagnosticLog.appendToFile(childLog, stage, detail);
+            }
+          } catch (error, stackTrace) {
+            logWarning(
+              'DashboardView',
+              'Could not append child startup diagnostic "$stage" for '
+                  '"$widgetId": $error\n$stackTrace',
+            );
+          }
+        }());
+      }
+
+      final processCreationStopwatch = Stopwatch()..start();
       try {
         final process = await Process.start(
           appPath,
@@ -2824,6 +2864,7 @@ class _DashboardViewState extends State<DashboardView>
           environment: const {'FLUTTER_ENGINE_SWITCHES': '0'},
           mode: ProcessStartMode.detachedWithStdio,
         );
+        final processCreationMs = processCreationStopwatch.elapsedMilliseconds;
         launchedPid = process.pid;
         _captureOverlayProcessOutput(
           process,
@@ -2836,22 +2877,23 @@ class _DashboardViewState extends State<DashboardView>
           'Overlay "$widgetId" spawned directly (PID $launchedPid) with '
               'inherited Flutter engine switches disabled.',
         );
-        final childLog = await findChildLog();
-        if (childLog != null) {
-          await ProcessDiagnosticLog.appendToFile(
-            childLog,
-            'child_process_started',
-            'parentPid=$pid childPid=$launchedPid templateId=$widgetId '
-                'workingDirectory="$workingDir" executable="$appPath" '
-                'arguments="--overlay --startup-trigger=dashboard '
-                '--instance-id=$widgetId --template-id=$widgetId '
-                '--operation-id=$launchId --config-revision=1"',
-          );
-        }
+        recordChildDiagnostic(
+          'child_process_started',
+          'parentPid=$pid childPid=$launchedPid templateId=$widgetId '
+              'workingDirectory="$workingDir" executable="$appPath" '
+              'arguments="--overlay --startup-trigger=dashboard '
+              '--instance-id=$widgetId --template-id=$widgetId '
+              '--operation-id=$launchId --config-revision=1"',
+        );
         DiagnosticsService.instance.recordWidgetLifecycleEvent(
           widgetId,
           'spawned',
           pid: launchedPid,
+        );
+        logInfo(
+          'DashboardView',
+          'Widget "$widgetId" process creation completed in '
+              '${processCreationMs}ms (PID $launchedPid).',
         );
       } catch (spawnError, stackTrace) {
         logError(
@@ -2872,7 +2914,6 @@ class _DashboardViewState extends State<DashboardView>
         await _saveSettingsSafely(_settings);
         return;
       }
-      final spawnMs = stageSpawnStopwatch.elapsedMilliseconds;
 
       final inspection = await inspectWindowsProcess(launchedPid);
       if (inspection != null && inspection.isRunning) {
@@ -2887,8 +2928,9 @@ class _DashboardViewState extends State<DashboardView>
       final stageReadinessStopwatch = Stopwatch()..start();
       final readiness = await waitForOverlayReadiness(
         readRecord: () async {
-          if (!await pidFile.exists()) return null;
-          final content = (await _safeReadPidFile(pidFile)).trim();
+          final content =
+              (await readOverlayPidFileContents(pidFile, useLock: false) ?? '')
+                  .trim();
           return content.isEmpty
               ? null
               : OverlayProcessRecord.tryParse(content);
@@ -3021,23 +3063,22 @@ class _DashboardViewState extends State<DashboardView>
         hwnd: readiness.record?.hwnd,
         details: 'readiness confirmed in ${readinessWaitMs}ms',
       );
-      final childLog = await findChildLog();
-      if (childLog != null) {
-        await ProcessDiagnosticLog.appendToFile(
-          childLog,
-          'parent_readiness_acknowledged',
-          'parentPid=$pid childPid=$launchedPid '
-              'templateId=$widgetId '
-              'readinessStatus=${readiness.status.name} '
-              'readinessMs=$readinessWaitMs hwnd=${readiness.record?.hwnd ?? 0}',
-        );
-      }
+      recordChildDiagnostic(
+        'parent_readiness_acknowledged',
+        'parentPid=$pid childPid=$launchedPid '
+            'templateId=$widgetId '
+            'readinessStatus=${readiness.status.name} '
+            'readinessMs=$readinessWaitMs hwnd=${readiness.record?.hwnd ?? 0}',
+      );
 
       logInfo(
         'DashboardView',
         'Widget "$widgetId" launch confirmed: readiness=${readiness.status.name}, '
-            'settingsPrep=${settingsPrepMs}ms, spawn=${spawnMs}ms, '
-            'readinessWait=${readinessWaitMs}ms, total=${launchStopwatch.elapsedMilliseconds}ms.',
+            'dashboardSettingsSave=${dashboardSettingsSaveMs}ms, '
+            'settingsPrep=${settingsPrepMs}ms, '
+            'runtimePreparation=${runtimePreparationMs}ms, '
+            'readinessWait=${readinessWaitMs}ms, '
+            'total=${launchStopwatch.elapsedMilliseconds}ms.',
       );
 
       if (mounted) {
@@ -4235,6 +4276,21 @@ class _DashboardViewState extends State<DashboardView>
   // ────────────────────────────────────────────────────────────────────────────
   // BUILD
   // ────────────────────────────────────────────────────────────────────────────
+
+  void _recordFrameTimings(List<FrameTiming> timings) {
+    for (final timing in timings) {
+      final buildMs = timing.buildDuration.inMicroseconds / 1000;
+      final rasterMs = timing.rasterDuration.inMicroseconds / 1000;
+      if (buildMs < 32 && rasterMs < 32) continue;
+      logPerf(
+        'DashboardView',
+        '[FRAME] build=${buildMs.toStringAsFixed(1)}ms '
+            'raster=${rasterMs.toStringAsFixed(1)}ms '
+            'total=${timing.totalSpan.inMilliseconds}ms '
+            'tab=$_currentMainTab',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

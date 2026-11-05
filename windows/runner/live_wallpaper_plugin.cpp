@@ -2131,6 +2131,12 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyWidgetPresentation(
         flutter::EncodableValue(classification);
     failure[flutter::EncodableValue("reason")] =
         flutter::EncodableValue(reason);
+    failure[flutter::EncodableValue("presentationEvidence")] =
+        flutter::EncodableValue(
+            "native window validation failed; Flutter pixel presentation "
+            "is not directly observable");
+    failure[flutter::EncodableValue("pixelPresentationVerified")] =
+        flutter::EncodableValue(false);
     return failure;
   };
 
@@ -2159,6 +2165,12 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyWidgetPresentation(
         flutter::EncodableValue("presentation_failure");
     failure[flutter::EncodableValue("reason")] =
         flutter::EncodableValue("dwm_flush_failed");
+    failure[flutter::EncodableValue("presentationEvidence")] =
+        flutter::EncodableValue(
+            "DWM flush failed; Flutter pixel presentation is not directly "
+            "observable");
+    failure[flutter::EncodableValue("pixelPresentationVerified")] =
+        flutter::EncodableValue(false);
     return failure;
   }
 
@@ -2179,25 +2191,38 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyWidgetPresentation(
       std::get<int64_t>(result[flutter::EncodableValue("parentHwnd")]);
   const auto extended_style =
       std::get<int64_t>(result[flutter::EncodableValue("extendedStyle")]);
+  const auto style =
+      std::get<int64_t>(result[flutter::EncodableValue("style")]);
   const auto width =
       std::get<int64_t>(result[flutter::EncodableValue("width")]);
   const auto height =
       std::get<int64_t>(result[flutter::EncodableValue("height")]);
+  const auto client_width =
+      std::get<int64_t>(result[flutter::EncodableValue("clientWidth")]);
+  const auto client_height =
+      std::get<int64_t>(result[flutter::EncodableValue("clientHeight")]);
   const bool parent_valid =
       widget_desktop_attached_
           ? actual_parent ==
                 reinterpret_cast<int64_t>(widget_desktop_parent_)
           : actual_parent == 0;
+  const bool child_style = (style & WS_CHILD) != 0;
+  const bool window_style_valid =
+      widget_desktop_attached_ ? child_style : !child_style;
   const bool topmost = (extended_style & WS_EX_TOPMOST) != 0;
   const bool z_order_valid = parent_valid && topmost == expected_topmost;
   const bool presented =
       valid && visible && on_monitor && !iconic &&
       (!cloaked_available || !cloaked) && z_order_valid && width > 0 &&
-      height > 0;
+      height > 0 && client_width > 0 && client_height > 0 &&
+      window_style_valid;
   const char* classification =
       !valid ? "hwnd_creation_failure"
       : !visible || iconic ? "window_visibility_failure"
-      : !on_monitor || width <= 0 || height <= 0 ? "window_bounds_failure"
+      : !on_monitor || width <= 0 || height <= 0 || client_width <= 0 ||
+                client_height <= 0
+          ? "window_bounds_failure"
+      : !window_style_valid ? "window_style_failure"
       : !z_order_valid ? "z_order_failure"
                        : "presentation_failure";
   result[flutter::EncodableValue("presentationVerified")] =
@@ -2211,6 +2236,16 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyWidgetPresentation(
       flutter::EncodableValue(widget_desktop_attached_);
   result[flutter::EncodableValue("isTopmost")] =
       flutter::EncodableValue(topmost);
+  result[flutter::EncodableValue("windowStyleValid")] =
+      flutter::EncodableValue(window_style_valid);
+  result[flutter::EncodableValue("clientAreaUsable")] =
+      flutter::EncodableValue(client_width > 0 && client_height > 0);
+  result[flutter::EncodableValue("presentationEvidence")] =
+      flutter::EncodableValue(
+          "native HWND geometry/style/visibility checks and DWM flush; "
+          "Flutter pixel presentation is not directly observable");
+  result[flutter::EncodableValue("pixelPresentationVerified")] =
+      flutter::EncodableValue(false);
 
   std::ostringstream details;
   details << "result=" << (presented ? "verified" : "failed")
@@ -2223,6 +2258,9 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::VerifyWidgetPresentation(
           << " expectedParent="
           << reinterpret_cast<intptr_t>(widget_desktop_parent_)
           << " width=" << width << " height=" << height
+          << " clientWidth=" << client_width
+          << " clientHeight=" << client_height
+          << " windowStyleValid=" << window_style_valid
           << " topmost=" << topmost
           << " expectedTopmost=" << expected_topmost
           << " dwmFlushHresult=" << flush_result;
