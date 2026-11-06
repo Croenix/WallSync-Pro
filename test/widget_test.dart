@@ -39,23 +39,96 @@ void main() {
 
     final catalog = find.byKey(const ValueKey('desktop_widget_library_grid'));
     final lastPreview = find.byKey(
-      const ValueKey('desktop_widget_card_station_weather'),
+      const ValueKey('desktop_widget_card_starter_holo_telemetry'),
     );
     expect(catalog, findsOneWidget);
     expect(lastPreview, findsNothing);
 
-    await tester.scrollUntilVisible(
-      lastPreview,
-      400,
-      scrollable: find.descendant(
-        of: catalog,
-        matching: find.byType(Scrollable),
+    for (final key in [
+      'starter_fluent_calendar',
+      'starter_weather_report',
+      'starter_system_pulse',
+      'starter_media_player',
+      'starter_holo_telemetry',
+    ]) {
+      final card = find.byKey(ValueKey('desktop_widget_card_$key'));
+      await tester.scrollUntilVisible(
+        card,
+        300,
+        scrollable: find.descendant(
+          of: catalog,
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(card, findsOneWidget, reason: '$key is listed in Desktop Widgets');
+    }
+    expect(lastPreview, findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 901));
+  });
+
+  testWidgets('custom widget starter opens its preloaded Studio design', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      DashboardApp(
+        settings: WidgetSettings(),
+        startMinimized: true,
+        initialTab: 'widgets',
       ),
     );
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(lastPreview, findsOneWidget);
+    await tester.tap(find.text('Custom Studio').first);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(find.text('STARTER WIDGETS'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('widget_starter_fluent_calendar')),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Fluent Calendar'), findsWidgets);
+    expect(find.text('November 2026'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 901));
+  });
+
+  testWidgets('Launch New Custom opens a genuinely empty canvas', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      DashboardApp(
+        settings: WidgetSettings(
+          customElements: CustomWidgetElement.defaultCustomLayout(),
+        ),
+        startMinimized: true,
+        initialTab: 'widgets',
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Custom Studio').first);
+    await tester.pump(const Duration(milliseconds: 220));
+
+    await tester.tap(find.text('Launch New Custom'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.textContaining('0 Elements on Canvas'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 901));
   });

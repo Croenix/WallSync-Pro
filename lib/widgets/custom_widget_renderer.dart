@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -12,10 +13,14 @@ import '../services/system_metrics_service.dart';
 class CustomWidgetRenderer extends StatelessWidget {
   final List<CustomWidgetElement> elements;
   final DateTime dateTime;
-  final double cpuUsage;
-  final double ramUsage;
+  final double? cpuUsage;
+  final double? ramUsage;
   final String weatherTemp;
   final String weatherStatus;
+  final String weatherLocation;
+  final String weatherApparentTemp;
+  final String weatherHumidity;
+  final String weatherForecastJson;
   final MediaInfo? mediaInfo;
   final Uint8List? mediaThumbnailBytes;
   final BatterySnapshot? batteryInfo;
@@ -39,10 +44,14 @@ class CustomWidgetRenderer extends StatelessWidget {
     super.key,
     required this.elements,
     required this.dateTime,
-    this.cpuUsage = 18.0,
-    this.ramUsage = 42.0,
-    this.weatherTemp = '24',
-    this.weatherStatus = 'Clear',
+    this.cpuUsage,
+    this.ramUsage,
+    this.weatherTemp = '',
+    this.weatherStatus = '',
+    this.weatherLocation = '',
+    this.weatherApparentTemp = '',
+    this.weatherHumidity = '',
+    this.weatherForecastJson = '',
     this.mediaInfo,
     this.mediaThumbnailBytes,
     this.batteryInfo,
@@ -67,97 +76,121 @@ class CustomWidgetRenderer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.none,
-      children: elements.map((elem) {
-        final isSelected = isInteractive && elem.id == selectedElementId;
-        final rendered = _buildElement(context, elem);
+      children: (elements.toList()..sort((a, b) => a.depth.compareTo(b.depth)))
+          .map((elem) {
+            final isSelected = isInteractive && elem.id == selectedElementId;
+            final rendered = _buildElement(context, elem);
+            final elementContent = _buildElementContent(elem, rendered);
 
-        if (!isInteractive) {
-          return Positioned(
-            left: elem.x,
-            top: elem.y,
-            child: Opacity(
-              opacity: elem.opacity.clamp(0.0, 1.0),
-              child: Transform.rotate(
-                angle: elem.rotation * math.pi / 180,
-                child: rendered,
-              ),
-            ),
-          );
-        }
-
-        // Interactive canvas element with dragging & selection
-        return Positioned(
-          left: elem.x,
-          top: elem.y,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              onSelectElement?.call(elem.id);
-            },
-            onPanUpdate: (details) {
-              final newX = (elem.x + details.delta.dx).clamp(
-                0.0,
-                canvasWidth - 20.0,
-              );
-              final newY = (elem.y + details.delta.dy).clamp(
-                0.0,
-                canvasHeight - 20.0,
-              );
-              onElementMoved?.call(elem.id, newX, newY);
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isSelected
-                      ? const Color(0xFF38BDF8)
-                      : Colors.white.withValues(alpha: 0.12),
-                  width: isSelected ? 1.8 : 0.8,
+            if (!isInteractive) {
+              return Positioned(
+                left: elem.x,
+                top: elem.y,
+                child: Opacity(
+                  opacity: elem.opacity.clamp(0.0, 1.0),
+                  child: elementContent,
                 ),
-                borderRadius: BorderRadius.circular(6),
-                color: isSelected
-                    ? const Color(0xFF38BDF8).withValues(alpha: 0.08)
-                    : Colors.transparent,
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Opacity(
-                      opacity: elem.opacity.clamp(0.0, 1.0),
-                      child: Transform.rotate(
-                        angle: elem.rotation * math.pi / 180,
-                        child: rendered,
-                      ),
+              );
+            }
+
+            // Interactive canvas element with dragging & selection
+            return Positioned(
+              left: elem.x,
+              top: elem.y,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  onSelectElement?.call(elem.id);
+                },
+                onPanUpdate: (details) {
+                  final newX = (elem.x + details.delta.dx).clamp(
+                    0.0,
+                    canvasWidth - 20.0,
+                  );
+                  final newY = (elem.y + details.delta.dy).clamp(
+                    0.0,
+                    canvasHeight - 20.0,
+                  );
+                  onElementMoved?.call(elem.id, newX, newY);
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF38BDF8)
+                          : Colors.white.withValues(alpha: 0.12),
+                      width: isSelected ? 1.8 : 0.8,
                     ),
+                    borderRadius: BorderRadius.circular(6),
+                    color: isSelected
+                        ? const Color(0xFF38BDF8).withValues(alpha: 0.08)
+                        : Colors.transparent,
                   ),
-                  if (isSelected) ...[
-                    // Selection handle at top-right
-                    Positioned(
-                      right: -8,
-                      top: -8,
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: const Icon(
-                          Icons.open_with_rounded,
-                          size: 9,
-                          color: Colors.black,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Opacity(
+                          opacity: elem.opacity.clamp(0.0, 1.0),
+                          child: elementContent,
                         ),
                       ),
-                    ),
-                  ],
-                ],
+                      if (isSelected) ...[
+                        // Selection handle at top-right
+                        Positioned(
+                          right: -8,
+                          top: -8,
+                          child: Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF38BDF8),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.open_with_rounded,
+                              size: 9,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        );
-      }).toList(),
+            );
+          })
+          .toList(),
+    );
+  }
+
+  Widget _buildElementContent(CustomWidgetElement element, Widget child) {
+    final clipped = element.cornerRadius > 0
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(element.cornerRadius),
+            child: child,
+          )
+        : child;
+    final transform = Matrix4.identity()
+      ..setEntry(3, 2, 0.001)
+      ..translateByDouble(0, 0, element.depth, 1)
+      ..rotateX(element.rotationX * math.pi / 180)
+      ..rotateY(element.rotationY * math.pi / 180)
+      ..rotateZ(element.rotation * math.pi / 180)
+      ..scaleByDouble(element.scaleX, element.scaleY, 1, 1);
+    return Transform(
+      alignment: Alignment.center,
+      transform: transform,
+      child: _AnimatedElement(
+        animationType: element.animationType,
+        child: clipped,
+      ),
     );
   }
 
@@ -249,6 +282,29 @@ class CustomWidgetRenderer extends StatelessWidget {
           ),
         );
 
+      case 'glow_outer':
+        return Container(
+          width: elem.width > 0 ? elem.width : 160,
+          height: elem.height > 0 ? elem.height : 80,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Color(elem.color).withValues(alpha: 0.18),
+                blurRadius: 16,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        );
+
+      case 'holo_panel':
+        return _HoloPanel(
+          width: elem.width > 0 ? elem.width : 320,
+          height: elem.height > 0 ? elem.height : 180,
+          color: Color(elem.color),
+        );
+
       case 'cpu_bar':
         return _buildUsageBar(
           label: 'CPU',
@@ -310,20 +366,47 @@ class CustomWidgetRenderer extends StatelessWidget {
         );
 
       case 'weather_temp':
-        final tempStr = weatherTemp.isNotEmpty ? '$weatherTemp°C' : '24°C';
+        final tempStr = weatherTemp.isNotEmpty
+            ? '${_formatWeatherTemperature(weatherTemp, elem.weatherUnit)}°${elem.weatherUnit}'
+            : '—';
         return _styledText(tempStr, elem);
 
       case 'weather_status':
         final statusStr = weatherStatus.isNotEmpty
             ? weatherStatus.toUpperCase()
-            : 'CLEAR';
+            : 'WEATHER UNAVAILABLE';
         return _styledText(statusStr, elem);
+
+      case 'weather_location':
+        return _styledText(
+          weatherLocation.isNotEmpty ? weatherLocation : 'LOCATION UNAVAILABLE',
+          elem,
+        );
+
+      case 'weather_feels_like':
+        return _styledText(
+          weatherApparentTemp.isNotEmpty
+              ? 'FEELS LIKE ${_formatWeatherTemperature(weatherApparentTemp, elem.weatherUnit)}°${elem.weatherUnit}'
+              : 'FEELS LIKE —',
+          elem,
+        );
+
+      case 'weather_humidity':
+        return _styledText(
+          weatherHumidity.isNotEmpty
+              ? 'HUMIDITY $weatherHumidity%'
+              : 'HUMIDITY —',
+          elem,
+        );
+
+      case 'weather_forecast':
+        return _buildWeatherForecast(elem);
 
       case 'weather_icon':
         return Icon(
           _getWeatherIconData(weatherStatus),
           color: Color(elem.color),
-          size: elem.fontSize * 1.5,
+          size: elem.width > 0 ? elem.width : elem.fontSize * 1.5,
         );
 
       case 'weather_pill':
@@ -348,7 +431,9 @@ class CustomWidgetRenderer extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                weatherTemp.isNotEmpty ? '$weatherTemp°C' : '24°C',
+                weatherTemp.isNotEmpty
+                    ? '${_formatWeatherTemperature(weatherTemp, elem.weatherUnit)}°${elem.weatherUnit}'
+                    : '—',
                 style: TextStyle(
                   color: Colors.white,
                   fontFamily: elem.fontFamily,
@@ -361,7 +446,7 @@ class CustomWidgetRenderer extends StatelessWidget {
                 child: Text(
                   weatherStatus.isNotEmpty
                       ? weatherStatus.toUpperCase()
-                      : 'CLEAR',
+                      : 'WEATHER UNAVAILABLE',
                   style: TextStyle(
                     color: Colors.white70,
                     fontFamily: elem.fontFamily,
@@ -539,6 +624,49 @@ class CustomWidgetRenderer extends StatelessWidget {
     }
   }
 
+  Widget _buildWeatherForecast(CustomWidgetElement elem) {
+    final forecastJson = weatherForecastJson.trim();
+    if (forecastJson.isEmpty) return _styledText('FORECAST UNAVAILABLE', elem);
+
+    try {
+      final decoded = jsonDecode(forecastJson);
+      if (decoded is! List) return _styledText('FORECAST UNAVAILABLE', elem);
+      final forecasts = decoded
+          .whereType<Map>()
+          .take(3)
+          .map((item) {
+            final time = item['time']?.toString() ?? '';
+            final temperature = item['temp']?.toString() ?? '';
+            final status = item['status']?.toString() ?? '';
+            return [
+              time,
+              temperature.isEmpty
+                  ? ''
+                  : '${_formatWeatherTemperature(temperature, elem.weatherUnit)}°${elem.weatherUnit}',
+              status,
+            ].where((part) => part.isNotEmpty).join('  ·  ');
+          })
+          .where((line) => line.isNotEmpty)
+          .toList(growable: false);
+      if (forecasts.isEmpty) {
+        return _styledText('FORECAST UNAVAILABLE', elem);
+      }
+      return SizedBox(
+        width: elem.width > 0 ? elem.width : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: forecasts
+              .map((line) => _styledText(line, elem))
+              .toList(growable: false),
+        ),
+      );
+    } on FormatException catch (error) {
+      debugPrint('CustomWidgetRenderer: Invalid weather forecast data: $error');
+      return _styledText('FORECAST UNAVAILABLE', elem);
+    }
+  }
+
   Widget _buildConnectivityIcon({
     required CustomWidgetElement elem,
     required bool? enabled,
@@ -579,16 +707,55 @@ class CustomWidgetRenderer extends StatelessWidget {
   }
 
   Widget _styledText(String text, CustomWidgetElement elem) {
-    return Text(
+    final shadows = elem.shadowBlur > 0
+        ? [
+            Shadow(
+              color: Color(
+                elem.shadowColor ?? elem.color,
+              ).withValues(alpha: 0.65),
+              blurRadius: elem.shadowBlur,
+              offset: Offset(elem.shadowOffsetX, elem.shadowOffsetY),
+            ),
+          ]
+        : null;
+    Text textLayer({required Paint? foreground, Color? color}) => Text(
       text,
       style: TextStyle(
         fontFamily: elem.fontFamily,
         fontSize: elem.fontSize,
         fontWeight: elem.isBold ? FontWeight.bold : FontWeight.normal,
-        color: Color(elem.color),
+        color: color,
+        foreground: foreground,
         letterSpacing: elem.letterSpacing,
+        shadows: shadows,
       ),
     );
+
+    Widget fill = textLayer(foreground: null, color: Color(elem.color));
+    if (elem.gradientColors != null && elem.gradientColors!.length > 1) {
+      final gradient = elem.gradientRadial
+          ? RadialGradient(colors: elem.gradientColors!.map(Color.new).toList())
+          : LinearGradient(
+              colors: elem.gradientColors!.map(Color.new).toList(),
+            );
+      fill = ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => gradient.createShader(bounds),
+        child: textLayer(foreground: null, color: Colors.white),
+      );
+    }
+
+    if (elem.strokeWidth > 0) {
+      final outline = textLayer(
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = elem.strokeWidth
+          ..color = Color(elem.strokeColor ?? elem.color),
+      );
+      fill = Stack(alignment: Alignment.centerLeft, children: [outline, fill]);
+    }
+
+    return SizedBox(width: elem.width > 0 ? elem.width : null, child: fill);
   }
 
   Widget _buildMediaText(String text, CustomWidgetElement elem) {
@@ -908,8 +1075,14 @@ class CustomWidgetRenderer extends StatelessWidget {
     return '${(bytes / gib).toStringAsFixed(1)} GB';
   }
 
+  String _formatWeatherTemperature(String celsiusValue, String unit) {
+    final celsius = double.tryParse(celsiusValue);
+    if (celsius == null || unit != 'F') return celsiusValue;
+    return (celsius * 9 / 5 + 32).toStringAsFixed(0);
+  }
+
   IconData _getWeatherIconData(String status) {
-    if (status.isEmpty) return Icons.wb_sunny_rounded;
+    if (status.isEmpty) return Icons.cloud_off_rounded;
     final lower = status.toLowerCase();
     if (lower.contains('clear') || lower.contains('sunny')) {
       return Icons.wb_sunny_rounded;
@@ -976,6 +1149,174 @@ class _MediaActivityIndicatorState extends State<_MediaActivityIndicator>
   }
 }
 
+class _HoloPanel extends StatefulWidget {
+  const _HoloPanel({
+    required this.width,
+    required this.height,
+    required this.color,
+  });
+
+  final double width;
+  final double height;
+  final Color color;
+
+  @override
+  State<_HoloPanel> createState() => _HoloPanelState();
+}
+
+class _HoloPanelState extends State<_HoloPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 7),
+    value: 0.5,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotionPreference();
+  }
+
+  void _syncMotionPreference() {
+    final shouldAnimate =
+        TickerMode.valuesOf(context).enabled &&
+        !MediaQuery.of(context).disableAnimations;
+    if (shouldAnimate && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!shouldAnimate && _controller.isAnimating) {
+      _controller
+        ..stop()
+        ..value = 0.5;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final phase = _controller.value * math.pi * 2;
+          final transform = Matrix4.identity()
+            ..setEntry(3, 2, 0.0012)
+            ..rotateX(math.sin(phase) * 0.025)
+            ..rotateY(math.cos(phase) * 0.035);
+
+          return Transform(
+            alignment: Alignment.center,
+            transform: transform,
+            child: Container(
+              width: widget.width,
+              height: widget.height,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xE81B2934), Color(0xE80B121C)],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: widget.color.withValues(alpha: 0.6),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: widget.color.withValues(alpha: 0.16),
+                    blurRadius: 14,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AnimatedElement extends StatefulWidget {
+  const _AnimatedElement({required this.animationType, required this.child});
+
+  final String animationType;
+  final Widget child;
+
+  @override
+  State<_AnimatedElement> createState() => _AnimatedElementState();
+}
+
+class _AnimatedElementState extends State<_AnimatedElement>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedElement oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animationType != widget.animationType) _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    final shouldAnimate =
+        widget.animationType != 'none' &&
+        TickerMode.valuesOf(context).enabled &&
+        !MediaQuery.of(context).disableAnimations;
+    if (shouldAnimate && !_controller.isAnimating) {
+      _controller.repeat(reverse: widget.animationType != 'rotate');
+    } else if (!shouldAnimate && _controller.isAnimating) {
+      _controller
+        ..stop()
+        ..value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.animationType == 'none') return widget.child;
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        final phase = _controller.value;
+        switch (widget.animationType) {
+          case 'pulse':
+            return Transform.scale(scale: 0.94 + phase * 0.12, child: child);
+          case 'float':
+            return Transform.translate(
+              offset: Offset(0, -4 * math.sin(phase * math.pi)),
+              child: child,
+            );
+          case 'rotate':
+            return Transform.rotate(angle: phase * math.pi * 2, child: child);
+          default:
+            return child!;
+        }
+      },
+    );
+  }
+}
+
 class _FluentCalendarWidget extends StatefulWidget {
   const _FluentCalendarWidget({
     required this.dateTime,
@@ -1037,7 +1378,8 @@ class _FluentCalendarWidgetState extends State<_FluentCalendarWidget>
 
   void _syncMotionPreference() {
     final shouldAnimate =
-        TickerMode.of(context) && !MediaQuery.of(context).disableAnimations;
+        TickerMode.valuesOf(context).enabled &&
+        !MediaQuery.of(context).disableAnimations;
     if (shouldAnimate && !_todayPulse.isAnimating) {
       _todayPulse.repeat(reverse: true);
     } else if (!shouldAnimate && _todayPulse.isAnimating) {

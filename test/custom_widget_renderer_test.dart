@@ -189,6 +189,132 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('weather elements never substitute fabricated readings', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomWidgetRenderer(
+            elements: [
+              CustomWidgetElement(
+                id: 'weather_temp',
+                type: 'weather_temp',
+                color: 0xFFFFFFFF,
+              ),
+              CustomWidgetElement(
+                id: 'weather_status',
+                type: 'weather_status',
+                color: 0xFFFFFFFF,
+              ),
+            ],
+            dateTime: DateTime(2026, 11, 7),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('—'), findsOneWidget);
+    expect(find.text('WEATHER UNAVAILABLE'), findsOneWidget);
+    expect(find.text('24°C'), findsNothing);
+    expect(find.text('CLEAR'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders live weather details and unavailable system metrics', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomWidgetRenderer(
+            elements: [
+              for (final type in [
+                'weather_location',
+                'weather_feels_like',
+                'weather_humidity',
+                'weather_forecast',
+                'cpu_bar',
+                'ram_bar',
+              ])
+                CustomWidgetElement(
+                  id: type,
+                  type: type,
+                  width: 220,
+                  height: 48,
+                  color: 0xFF38BDF8,
+                ),
+            ],
+            dateTime: DateTime(2026, 11, 7),
+            weatherLocation: 'Seattle, Washington',
+            weatherApparentTemp: '26.0',
+            weatherHumidity: '58',
+            weatherForecastJson:
+                '[{"time":"14:00","temp":"24.0","status":"Clear"}]',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Seattle, Washington'), findsOneWidget);
+    expect(find.text('FEELS LIKE 26.0°C'), findsOneWidget);
+    expect(find.text('HUMIDITY 58%'), findsOneWidget);
+    expect(find.text('14:00  ·  24.0°C  ·  Clear'), findsOneWidget);
+    expect(find.text('N/A'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('outer glow element renders as decoration, not fallback text', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomWidgetRenderer(
+            elements: [
+              CustomWidgetElement(
+                id: 'glow',
+                type: 'glow_outer',
+                width: 180,
+                height: 90,
+                color: 0xFF38BDF8,
+              ),
+            ],
+            dateTime: DateTime(2026, 11, 7),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('WallSync Widget'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Holo panel renders its animated 3D surface', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomWidgetRenderer(
+            elements: [
+              CustomWidgetElement(
+                id: 'holo_panel',
+                type: 'holo_panel',
+                width: 450,
+                height: 250,
+                color: 0xFF38BDF8,
+              ),
+            ],
+            dateTime: DateTime(2026, 11, 7),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('WallSync Widget'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('media capsule fits compact, standard, and wide canvases', (
     tester,
   ) async {
@@ -353,6 +479,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(Image), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('weather temperature elements honor per-element Fahrenheit', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomWidgetRenderer(
+            elements: [
+              CustomWidgetElement(
+                id: 'fahrenheit',
+                type: 'weather_temp',
+                weatherUnit: 'F',
+                color: 0xFFFFFFFF,
+              ),
+            ],
+            dateTime: DateTime(2026, 10, 22),
+            weatherTemp: '20',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('68°F'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

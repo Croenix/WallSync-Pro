@@ -6,6 +6,8 @@ import '../services/media_session_service.dart';
 import '../services/settings_service.dart';
 import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
+import '../services/system_optimizer_service.dart';
+import '../services/weather_service.dart';
 import 'custom_widget_renderer.dart';
 
 /// Full-screen Two-Section Custom Widget Studio / Builder.
@@ -21,6 +23,7 @@ class CustomWidgetBuilderView extends StatefulWidget {
   final VoidCallback? onLaunchOverlay;
   final bool isOverlayRunning;
   final String? initialSelectedElementId;
+  final String? initialPreset;
 
   const CustomWidgetBuilderView({
     super.key,
@@ -30,6 +33,7 @@ class CustomWidgetBuilderView extends StatefulWidget {
     this.onLaunchOverlay,
     this.isOverlayRunning = false,
     this.initialSelectedElementId,
+    this.initialPreset,
     this.existingWidget,
   });
 
@@ -48,6 +52,14 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   DateTime _now = DateTime.now();
   late Timer _clockTimer;
   SystemMetricsSnapshot _systemMetrics = const SystemMetricsSnapshot();
+  double? _cpuUsage;
+  double? _ramUsage;
+  late String _weatherTemp;
+  late String _weatherStatus;
+  late String _weatherLocation;
+  late String _weatherApparentTemp;
+  late int _weatherHumidity;
+  late String _weatherForecastJson;
   MediaInfo _mediaInfo = MediaSessionService().current;
   Uint8List? _mediaThumbnailBytes;
   final ValueNotifier<int> _mediaPosition = ValueNotifier<int>(0);
@@ -59,6 +71,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   String _searchQuery = '';
   String _canvasBgMode = 'glass_dark'; // 'glass_dark' | 'grid' | 'pure_dark'
   bool _hasUnsavedChanges = false;
+  bool _isRefreshingSystemMetrics = false;
+  bool _isRefreshingWeather = false;
   late String _widgetName;
 
   TextEditingController? _customTextController;
@@ -95,6 +109,14 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   @override
   void initState() {
     super.initState();
+    _weatherTemp = widget.initialSettings.weatherTemp;
+    _weatherStatus = widget.initialSettings.weatherStatus;
+    _weatherLocation = widget.initialSettings.weatherLocationResolved.isNotEmpty
+        ? widget.initialSettings.weatherLocationResolved
+        : widget.initialSettings.weatherLocation;
+    _weatherApparentTemp = widget.initialSettings.weatherApparentTemp;
+    _weatherHumidity = widget.initialSettings.weatherHumidity;
+    _weatherForecastJson = widget.initialSettings.weatherForecastJson;
     if (widget.existingWidget != null) {
       _widgetName = widget.existingWidget!.name;
       _elements = widget.existingWidget!.elements
@@ -118,13 +140,15 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
           ? widget.initialSettings.height
           : 260.0;
     }
+    if (widget.existingWidget == null && widget.initialPreset != null) {
+      _loadPreset(widget.initialPreset!);
+    }
     if (_elements.any((e) => e.id == widget.initialSelectedElementId)) {
       _selectedElementId = widget.initialSelectedElementId;
     }
 
-    if (_needsSystemMetrics) {
-      _systemMetrics = SystemMetricsService.readSnapshot();
-    }
+    _syncSystemMetrics();
+    _syncWeather();
     _syncMediaSessionService();
     _syncConnectivityService();
     _mediaInfo = MediaSessionService().current;
@@ -151,7 +175,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
         setState(() {
           _now = DateTime.now();
           if (_needsSystemMetrics && timer.tick % 15 == 0) {
-            _systemMetrics = SystemMetricsService.readSnapshot();
+            unawaited(_refreshSystemMetrics());
           }
         });
       }
@@ -159,8 +183,91 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   }
 
   bool get _needsSystemMetrics => _elements.any(
-    (element) => element.type == 'space_bar' || element.type == 'battery_bar',
+    (element) => const {
+      'cpu_bar',
+      'ram_bar',
+      'space_bar',
+      'battery_bar',
+    }.contains(element.type),
   );
+
+  bool get _needsWeather =>
+      _elements.any((element) => element.type.startsWith('weather_'));
+
+  void _syncSystemMetrics() {
+    if (_needsSystemMetrics) unawaited(_refreshSystemMetrics());
+  }
+
+  void _syncWeather() {
+    if (_needsWeather && !_isRefreshingWeather) {
+      unawaited(_refreshWeather());
+    }
+  }
+
+  Future<void> _refreshSystemMetrics() async {
+    if (!_needsSystemMetrics || _isRefreshingSystemMetrics) return;
+    _isRefreshingSystemMetrics = true;
+    try {
+      final metrics = await SystemMetricsService.readSnapshotAsync(
+        widget.initialSettings.taskbarDiskDrive,
+      );
+      final performance = await SystemOptimizerService.instance
+          .getPerformanceMetrics();
+      if (!mounted) return;
+      setState(() {
+        _systemMetrics = metrics;
+        _cpuUsage = performance?.cpuPercent;
+        _ramUsage = performance?.ramLoadPercent;
+      });
+    } catch (error, stackTrace) {
+      logWarning(
+        'CustomWidgetBuilder',
+        'Could not refresh device metrics for the widget preview: '
+            '$error\n$stackTrace',
+      );
+    } finally {
+      _isRefreshingSystemMetrics = false;
+    }
+  }
+
+  Future<void> _refreshWeather() async {
+    if (_isRefreshingWeather || !_needsWeather) return;
+    _isRefreshingWeather = true;
+    try {
+      final service = WeatherService();
+      Map<String, dynamic>? location;
+      final query = widget.initialSettings.weatherLocation.trim();
+      if (query.isNotEmpty) {
+        location = await service.searchLocation(query);
+      } else {
+        location = await service.autoDetectLocation();
+      }
+      if (location == null) return;
+
+      final lat = (location['lat'] as num?)?.toDouble();
+      final lon = (location['lon'] as num?)?.toDouble();
+      final name =
+          location['name']?.toString() ??
+          [
+            location['city']?.toString(),
+            location['countryCode']?.toString(),
+          ].whereType<String>().where((part) => part.isNotEmpty).join(', ');
+      if (lat == null || lon == null || name.isEmpty) return;
+
+      final info = await service.fetchWeather(lat, lon, name);
+      if (!mounted || info == null) return;
+      setState(() {
+        _weatherTemp = info.temperature.toStringAsFixed(1);
+        _weatherStatus = info.status;
+        _weatherLocation = info.locationName;
+        _weatherApparentTemp = info.apparentTemp.toStringAsFixed(1);
+        _weatherHumidity = info.humidity;
+        _weatherForecastJson = info.forecastJson;
+      });
+    } finally {
+      _isRefreshingWeather = false;
+    }
+  }
 
   bool get _needsMediaSession =>
       _elements.any((element) => MediaElementType.contains(element.type));
@@ -356,6 +463,12 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
       height: _canvasHeight,
       customElements: _elements.map((e) => e.copyWith()).toList(),
       savedCustomWidgets: currentSaved,
+      weatherTemp: _weatherTemp,
+      weatherStatus: _weatherStatus,
+      weatherApparentTemp: _weatherApparentTemp,
+      weatherHumidity: _weatherHumidity,
+      weatherLocationResolved: _weatherLocation,
+      weatherForecastJson: _weatherForecastJson,
     );
 
     widget.onSave(updated);
@@ -411,6 +524,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
     });
     _syncMediaSessionService();
     _syncConnectivityService();
+    _syncSystemMetrics();
+    _syncWeather();
   }
 
   void _deleteElement(String id) {
@@ -423,6 +538,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
     });
     _syncMediaSessionService();
     _syncConnectivityService();
+    _syncSystemMetrics();
+    _syncWeather();
   }
 
   void _duplicateElement(String id) {
@@ -439,11 +556,19 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
     });
     _syncMediaSessionService();
     _syncConnectivityService();
+    _syncSystemMetrics();
+    _syncWeather();
   }
 
   void _loadPreset(String name) {
     setState(() {
-      if (name == 'fluent_calendar') {
+      if (name == 'empty_canvas') {
+        _widgetName = 'New Custom Widget';
+        _elements = [];
+        _canvasWidth = 480;
+        _canvasHeight = 260;
+        _selectedElementId = null;
+      } else if (name == 'fluent_calendar') {
         _widgetName = 'Fluent Calendar';
         _elements = [
           CustomWidgetElement(
@@ -460,6 +585,351 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
         ];
         _canvasWidth = 340;
         _canvasHeight = 300;
+      } else if (name == 'weather_report') {
+        _widgetName = 'Weather Briefing';
+        _elements = [
+          CustomWidgetElement(
+            id: 'weather_frame',
+            type: 'neon_box',
+            x: 0,
+            y: 0,
+            width: 400,
+            height: 270,
+            color: 0xFF38BDF8,
+          ),
+          CustomWidgetElement(
+            id: 'weather_date',
+            type: 'full_date',
+            x: 22,
+            y: 18,
+            width: 260,
+            height: 22,
+            fontSize: 13,
+            color: 0xFFB8D7E8,
+          ),
+          CustomWidgetElement(
+            id: 'weather_icon',
+            type: 'weather_icon',
+            x: 28,
+            y: 66,
+            width: 56,
+            height: 56,
+            fontSize: 48,
+            color: 0xFF60CDFF,
+          ),
+          CustomWidgetElement(
+            id: 'weather_temp',
+            type: 'weather_temp',
+            x: 100,
+            y: 62,
+            width: 220,
+            height: 58,
+            fontSize: 42,
+            isBold: true,
+            color: 0xFFFFFFFF,
+          ),
+          CustomWidgetElement(
+            id: 'weather_status',
+            type: 'weather_status',
+            x: 102,
+            y: 122,
+            width: 240,
+            height: 24,
+            fontSize: 13,
+            color: 0xFFB8D7E8,
+          ),
+          CustomWidgetElement(
+            id: 'weather_location',
+            type: 'weather_location',
+            x: 22,
+            y: 198,
+            width: 330,
+            height: 20,
+            fontSize: 11,
+            color: 0xFF91A4B3,
+          ),
+          CustomWidgetElement(
+            id: 'weather_feels_like',
+            type: 'weather_feels_like',
+            x: 22,
+            y: 152,
+            width: 160,
+            height: 20,
+            fontSize: 11,
+            color: 0xFFB8D7E8,
+          ),
+          CustomWidgetElement(
+            id: 'weather_humidity',
+            type: 'weather_humidity',
+            x: 190,
+            y: 152,
+            width: 160,
+            height: 20,
+            fontSize: 11,
+            color: 0xFFB8D7E8,
+          ),
+          CustomWidgetElement(
+            id: 'weather_forecast',
+            type: 'weather_forecast',
+            x: 22,
+            y: 222,
+            width: 350,
+            height: 42,
+            fontSize: 10,
+            color: 0xFF91A4B3,
+          ),
+        ];
+        _canvasWidth = 400;
+        _canvasHeight = 270;
+      } else if (name == 'system_pulse') {
+        _widgetName = 'System Pulse';
+        _elements = [
+          CustomWidgetElement(
+            id: 'system_frame',
+            type: 'neon_box',
+            x: 0,
+            y: 0,
+            width: 460,
+            height: 250,
+            color: 0xFF00D6B2,
+          ),
+          CustomWidgetElement(
+            id: 'system_heading',
+            type: 'custom_text',
+            x: 22,
+            y: 18,
+            width: 300,
+            height: 22,
+            text: 'SYSTEM PULSE',
+            fontSize: 14,
+            isBold: true,
+            letterSpacing: 1.2,
+            color: 0xFF9FFFE7,
+          ),
+          CustomWidgetElement(
+            id: 'system_cpu',
+            type: 'cpu_bar',
+            x: 22,
+            y: 58,
+            width: 196,
+            height: 34,
+            fontSize: 11,
+            color: 0xFF00D6B2,
+          ),
+          CustomWidgetElement(
+            id: 'system_ram',
+            type: 'ram_bar',
+            x: 240,
+            y: 58,
+            width: 196,
+            height: 34,
+            fontSize: 11,
+            color: 0xFF7C8CFF,
+          ),
+          CustomWidgetElement(
+            id: 'system_disk',
+            type: 'space_bar',
+            x: 22,
+            y: 112,
+            width: 196,
+            height: 34,
+            fontSize: 11,
+            color: 0xFFFFB454,
+          ),
+          CustomWidgetElement(
+            id: 'system_battery',
+            type: 'battery_bar',
+            x: 240,
+            y: 112,
+            width: 196,
+            height: 34,
+            fontSize: 11,
+            color: 0xFF60CDFF,
+          ),
+          CustomWidgetElement(
+            id: 'system_clock',
+            type: 'full_time',
+            x: 22,
+            y: 202,
+            width: 210,
+            height: 24,
+            fontSize: 15,
+            color: 0xFFE7F7F2,
+          ),
+          CustomWidgetElement(
+            id: 'system_wifi',
+            type: 'wifi_icon',
+            x: 392,
+            y: 195,
+            width: 24,
+            height: 24,
+            fontSize: 18,
+            color: 0xFF60CDFF,
+          ),
+        ];
+        _canvasWidth = 460;
+        _canvasHeight = 250;
+      } else if (name == 'media_player') {
+        _widgetName = 'Now Playing';
+        _elements = [
+          CustomWidgetElement(
+            id: 'media_frame',
+            type: 'neon_box',
+            x: 0,
+            y: 0,
+            width: 460,
+            height: 210,
+            color: 0xFFD946EF,
+          ),
+          CustomWidgetElement(
+            id: 'media_art',
+            type: 'media_artwork',
+            x: 18,
+            y: 18,
+            width: 88,
+            height: 88,
+            color: 0xFFD946EF,
+          ),
+          CustomWidgetElement(
+            id: 'media_title',
+            type: 'media_title',
+            x: 122,
+            y: 24,
+            width: 315,
+            height: 26,
+            fontSize: 17,
+            isBold: true,
+            color: 0xFFFFFFFF,
+          ),
+          CustomWidgetElement(
+            id: 'media_artist',
+            type: 'media_artist',
+            x: 122,
+            y: 56,
+            width: 315,
+            height: 22,
+            fontSize: 12,
+            color: 0xFFC9BDD0,
+          ),
+          CustomWidgetElement(
+            id: 'media_progress',
+            type: 'media_progress',
+            x: 122,
+            y: 88,
+            width: 310,
+            height: 4,
+            color: 0xFFE879F9,
+          ),
+          CustomWidgetElement(
+            id: 'media_controls',
+            type: 'media_controls',
+            x: 120,
+            y: 116,
+            width: 200,
+            height: 36,
+            fontSize: 20,
+            color: 0xFFFFFFFF,
+          ),
+          CustomWidgetElement(
+            id: 'media_animation',
+            type: 'media_animation',
+            x: 374,
+            y: 116,
+            width: 30,
+            height: 24,
+            color: 0xFFE879F9,
+          ),
+        ];
+        _canvasWidth = 460;
+        _canvasHeight = 210;
+      } else if (name == 'holo_telemetry') {
+        _widgetName = 'Holo Telemetry';
+        _elements = [
+          CustomWidgetElement(
+            id: 'holo_panel',
+            type: 'holo_panel',
+            x: 10,
+            y: 10,
+            width: 450,
+            height: 250,
+            color: 0xFF38BDF8,
+          ),
+          CustomWidgetElement(
+            id: 'holo_heading',
+            type: 'custom_text',
+            x: 28,
+            y: 24,
+            width: 280,
+            height: 24,
+            text: 'HOLO TELEMETRY',
+            fontSize: 14,
+            isBold: true,
+            letterSpacing: 1.4,
+            color: 0xFF9BE7FF,
+          ),
+          CustomWidgetElement(
+            id: 'holo_time',
+            type: 'full_time',
+            x: 28,
+            y: 64,
+            width: 240,
+            height: 42,
+            fontSize: 28,
+            isBold: true,
+            color: 0xFFFFFFFF,
+          ),
+          CustomWidgetElement(
+            id: 'holo_cpu',
+            type: 'cpu_bar',
+            x: 28,
+            y: 128,
+            width: 190,
+            height: 34,
+            fontSize: 11,
+            color: 0xFF38BDF8,
+          ),
+          CustomWidgetElement(
+            id: 'holo_ram',
+            type: 'ram_bar',
+            x: 238,
+            y: 128,
+            width: 190,
+            height: 34,
+            fontSize: 11,
+            color: 0xFFA78BFA,
+          ),
+          CustomWidgetElement(
+            id: 'holo_wifi',
+            type: 'wifi_icon',
+            x: 28,
+            y: 198,
+            width: 28,
+            height: 28,
+            fontSize: 20,
+            color: 0xFF38BDF8,
+          ),
+          CustomWidgetElement(
+            id: 'holo_bluetooth',
+            type: 'bluetooth_icon',
+            x: 70,
+            y: 198,
+            width: 28,
+            height: 28,
+            fontSize: 20,
+            color: 0xFFA78BFA,
+          ),
+          CustomWidgetElement(
+            id: 'holo_audio',
+            type: 'media_animation',
+            x: 398,
+            y: 198,
+            width: 30,
+            height: 24,
+            color: 0xFF38BDF8,
+          ),
+        ];
+        _canvasWidth = 470;
+        _canvasHeight = 270;
       } else if (name == 'robik_signature') {
         _elements = CustomWidgetElement.defaultCustomLayout();
         _canvasWidth = 480.0;
@@ -601,8 +1071,18 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
       _selectedElementId = null;
       _hasUnsavedChanges = true;
     });
+    _weatherTemp = widget.initialSettings.weatherTemp;
+    _weatherStatus = widget.initialSettings.weatherStatus;
+    _weatherLocation = widget.initialSettings.weatherLocationResolved.isNotEmpty
+        ? widget.initialSettings.weatherLocationResolved
+        : widget.initialSettings.weatherLocation;
+    _weatherApparentTemp = widget.initialSettings.weatherApparentTemp;
+    _weatherHumidity = widget.initialSettings.weatherHumidity;
+    _weatherForecastJson = widget.initialSettings.weatherForecastJson;
     _syncMediaSessionService();
     _syncConnectivityService();
+    _syncSystemMetrics();
+    _syncWeather();
   }
 
   @override
@@ -737,6 +1217,63 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
               borderRadius: BorderRadius.circular(10),
             ),
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'weather_report',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_rounded,
+                      size: 16,
+                      color: Color(0xFF60CDFF),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Weather Briefing'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'system_pulse',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.monitor_heart_rounded,
+                      size: 16,
+                      color: Color(0xFF00D6B2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('System Pulse'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'media_player',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.graphic_eq_rounded,
+                      size: 16,
+                      color: Color(0xFFE879F9),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Now Playing'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'holo_telemetry',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.view_in_ar_rounded,
+                      size: 16,
+                      color: Color(0xFF38BDF8),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Holo Telemetry'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'fluent_calendar',
                 child: Row(
@@ -1039,6 +1576,16 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                               CustomWidgetRenderer(
                                 elements: _elements,
                                 dateTime: _now,
+                                cpuUsage: _cpuUsage,
+                                ramUsage: _ramUsage,
+                                weatherTemp: _weatherTemp,
+                                weatherStatus: _weatherStatus,
+                                weatherLocation: _weatherLocation,
+                                weatherApparentTemp: _weatherApparentTemp,
+                                weatherHumidity: _weatherHumidity > 0
+                                    ? _weatherHumidity.toString()
+                                    : '',
+                                weatherForecastJson: _weatherForecastJson,
                                 mediaInfo: _mediaInfo,
                                 mediaThumbnailBytes: _mediaThumbnailBytes,
                                 mediaPosition: _mediaPosition,
@@ -1153,7 +1700,11 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   // ── Selected Element Inspector Drawer ─────────────────────────────────────
   Widget _buildSelectedElementInspector() {
     final elem = _selectedElement!;
-    final isIcon = elem.type == 'wifi_icon' || elem.type == 'bluetooth_icon';
+    final isIcon = const {
+      'wifi_icon',
+      'bluetooth_icon',
+      'weather_icon',
+    }.contains(elem.type);
     if (elem.type == 'custom_text' || elem.type == 'time_colon') {
       if (_customTextController == null ||
           _customTextControllerElementId != elem.id) {
@@ -1240,6 +1791,31 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                   ),
                 ),
                 const SizedBox(width: 14),
+              ],
+
+              if (elem.type.startsWith('weather_')) ...[
+                const Text(
+                  'Units:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 6),
+                DropdownButton<String>(
+                  value: elem.weatherUnit,
+                  dropdownColor: const Color(0xFF1E2235),
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
+                  items: const [
+                    DropdownMenuItem(value: 'C', child: Text('°C')),
+                    DropdownMenuItem(value: 'F', child: Text('°F')),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      elem.weatherUnit = value;
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
+                const SizedBox(width: 12),
               ],
 
               // Size Slider (Icon Size for Wi-Fi / Bluetooth, Font Size for text elements)
@@ -1374,6 +1950,47 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                   ),
                 );
               }),
+              IconButton(
+                tooltip: elem.gradientColors == null
+                    ? 'Enable text gradient'
+                    : 'Disable text gradient',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.gradient_rounded,
+                  size: 18,
+                  color: elem.gradientColors == null
+                      ? Colors.white54
+                      : const Color(0xFF38BDF8),
+                ),
+                onPressed: () {
+                  setState(() {
+                    elem.gradientColors = elem.gradientColors == null
+                        ? [elem.color, 0xFF38BDF8]
+                        : null;
+                    _hasUnsavedChanges = true;
+                  });
+                },
+              ),
+              if (elem.gradientColors != null)
+                IconButton(
+                  tooltip: elem.gradientRadial
+                      ? 'Use linear gradient'
+                      : 'Use radial gradient',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    elem.gradientRadial
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.linear_scale_rounded,
+                    size: 17,
+                    color: const Color(0xFF38BDF8),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      elem.gradientRadial = !elem.gradientRadial;
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
 
               if (elem.type == 'custom_text' || elem.type == 'time_colon') ...[
                 const SizedBox(width: 14),
@@ -1418,6 +2035,240 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                 ),
               ],
             ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              _buildElementPropertySlider(
+                label: 'Width',
+                value: elem.width.clamp(16.0, _canvasWidth),
+                min: 16,
+                max: _canvasWidth,
+                suffix: 'px',
+                onChanged: (value) => setState(() {
+                  elem.width = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Height',
+                value: elem.height.clamp(8.0, _canvasHeight),
+                min: 8,
+                max: _canvasHeight,
+                suffix: 'px',
+                onChanged: (value) => setState(() {
+                  elem.height = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Opacity',
+                value: elem.opacity.clamp(0.0, 1.0),
+                min: 0,
+                max: 1,
+                divisions: 20,
+                suffix: '%',
+                displayValue: '${(elem.opacity * 100).round()}',
+                onChanged: (value) => setState(() {
+                  elem.opacity = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Rotation',
+                value: elem.rotation.clamp(-180.0, 180.0),
+                min: -180,
+                max: 180,
+                divisions: 36,
+                suffix: '°',
+                onChanged: (value) => setState(() {
+                  elem.rotation = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Rotate X',
+                value: elem.rotationX.clamp(-180.0, 180.0),
+                min: -180,
+                max: 180,
+                divisions: 36,
+                suffix: '°',
+                onChanged: (value) => setState(() {
+                  elem.rotationX = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Rotate Y',
+                value: elem.rotationY.clamp(-180.0, 180.0),
+                min: -180,
+                max: 180,
+                divisions: 36,
+                suffix: '°',
+                onChanged: (value) => setState(() {
+                  elem.rotationY = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Scale X',
+                value: elem.scaleX.clamp(0.25, 2.0),
+                min: 0.25,
+                max: 2,
+                divisions: 35,
+                suffix: '×',
+                onChanged: (value) => setState(() {
+                  elem.scaleX = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Scale Y',
+                value: elem.scaleY.clamp(0.25, 2.0),
+                min: 0.25,
+                max: 2,
+                divisions: 35,
+                suffix: '×',
+                onChanged: (value) => setState(() {
+                  elem.scaleY = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Depth',
+                value: elem.depth.clamp(-100.0, 100.0),
+                min: -100,
+                max: 100,
+                divisions: 40,
+                suffix: '',
+                onChanged: (value) => setState(() {
+                  elem.depth = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Corners',
+                value: elem.cornerRadius.clamp(0.0, 40.0),
+                min: 0,
+                max: 40,
+                divisions: 20,
+                suffix: 'px',
+                onChanged: (value) => setState(() {
+                  elem.cornerRadius = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Outline',
+                value: elem.strokeWidth.clamp(0.0, 8.0),
+                min: 0,
+                max: 8,
+                divisions: 16,
+                suffix: 'px',
+                onChanged: (value) => setState(() {
+                  elem.strokeWidth = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              _buildElementPropertySlider(
+                label: 'Shadow',
+                value: elem.shadowBlur.clamp(0.0, 32.0),
+                min: 0,
+                max: 32,
+                divisions: 16,
+                suffix: 'px',
+                onChanged: (value) => setState(() {
+                  elem.shadowBlur = value;
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+              DropdownButton<String>(
+                value:
+                    const {
+                      'none',
+                      'pulse',
+                      'float',
+                      'rotate',
+                    }.contains(elem.animationType)
+                    ? elem.animationType
+                    : 'none',
+                dropdownColor: const Color(0xFF1E2235),
+                style: const TextStyle(fontSize: 11, color: Colors.white),
+                items: const [
+                  DropdownMenuItem(value: 'none', child: Text('No animation')),
+                  DropdownMenuItem(value: 'pulse', child: Text('Pulse')),
+                  DropdownMenuItem(value: 'float', child: Text('Float')),
+                  DropdownMenuItem(value: 'rotate', child: Text('Rotate')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    elem.animationType = value;
+                    _hasUnsavedChanges = true;
+                  });
+                },
+              ),
+              if (!isIcon)
+                _buildElementPropertySlider(
+                  label: 'Spacing',
+                  value: elem.letterSpacing.clamp(-2.0, 12.0),
+                  min: -2,
+                  max: 12,
+                  divisions: 28,
+                  suffix: 'px',
+                  onChanged: (value) => setState(() {
+                    elem.letterSpacing = value;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildElementPropertySlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required String suffix,
+    required ValueChanged<double> onChanged,
+    int? divisions,
+    String? displayValue,
+  }) {
+    final safeMax = max <= min ? min + 1 : max;
+    return SizedBox(
+      width: 190,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: Colors.white54),
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              value: value.clamp(min, safeMax),
+              min: min,
+              max: safeMax,
+              divisions: divisions,
+              activeColor: const Color(0xFF38BDF8),
+              onChanged: onChanged,
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            child: Text(
+              '${displayValue ?? value.round()}$suffix',
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 9, color: Colors.white70),
+            ),
           ),
         ],
       ),
@@ -1999,6 +2850,67 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                   ),
                 ),
               ),
+            for (final detail
+                in <
+                  ({String type, String title, String subtitle, String sample})
+                >[
+                  (
+                    type: 'weather_temp',
+                    title: 'Weather Temperature',
+                    subtitle: 'Current local temperature',
+                    sample: '24.5°C',
+                  ),
+                  (
+                    type: 'weather_status',
+                    title: 'Weather Condition',
+                    subtitle: 'Current condition text',
+                    sample: 'PARTLY CLOUDY',
+                  ),
+                  (
+                    type: 'weather_location',
+                    title: 'Weather Location',
+                    subtitle: 'Resolved city and region',
+                    sample: 'Seattle, Washington',
+                  ),
+                  (
+                    type: 'weather_feels_like',
+                    title: 'Feels Like',
+                    subtitle: 'Apparent temperature',
+                    sample: 'FEELS LIKE 26.0°C',
+                  ),
+                  (
+                    type: 'weather_humidity',
+                    title: 'Humidity',
+                    subtitle: 'Current relative humidity',
+                    sample: 'HUMIDITY 58%',
+                  ),
+                  (
+                    type: 'weather_forecast',
+                    title: 'Hourly Forecast',
+                    subtitle: 'Up to three upcoming hours',
+                    sample: '14:00 · 24° · Clear',
+                  ),
+                ])
+              if (matches(detail.title, 'Weather'))
+                _buildToolboxItem(
+                  title: detail.title,
+                  subtitle: detail.subtitle,
+                  element: CustomWidgetElement(
+                    id: '',
+                    type: detail.type,
+                    width: detail.type == 'weather_forecast' ? 210 : 190,
+                    height: detail.type == 'weather_forecast' ? 48 : 24,
+                    fontSize: 11,
+                    color: 0xFF38BDF8,
+                  ),
+                  preview: Text(
+                    detail.sample,
+                    style: const TextStyle(
+                      color: Color(0xFFB8D7E8),
+                      fontSize: 9,
+                    ),
+                  ),
+                ),
             if (matches('Smart Media Pill', 'Media'))
               _buildToolboxItem(
                 title: 'Media Capsule',
@@ -2477,6 +3389,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
       'weather_temp': 'Weather Temperature',
       'weather_status': 'Weather Status',
       'weather_icon': 'Weather Icon',
+      'weather_location': 'Weather Location',
+      'weather_feels_like': 'Feels Like Temperature',
+      'weather_humidity': 'Weather Humidity',
+      'weather_forecast': 'Hourly Weather Forecast',
       'weather_pill': 'Weather Pill',
       'media_pill': 'Media Pill',
       'media_title': 'Media Title',

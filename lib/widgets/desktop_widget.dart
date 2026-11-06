@@ -287,10 +287,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
       case 'custom':
         return _settings.showWeather ||
             _settings.customElements.any(
-              (element) =>
-                  element.type == 'weather_temp' ||
-                  element.type == 'weather_icon' ||
-                  element.type == 'weather_status',
+              (element) => element.type.startsWith('weather_'),
             );
       default:
         return false;
@@ -3551,6 +3548,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
       ramUsage: _ramUsage,
       weatherTemp: _settings.weatherTemp,
       weatherStatus: _settings.weatherStatus,
+      weatherLocation: _settings.weatherLocationResolved.isNotEmpty
+          ? _settings.weatherLocationResolved
+          : _settings.weatherLocation,
+      weatherApparentTemp: _settings.weatherApparentTemp,
+      weatherHumidity: _settings.weatherHumidity > 0
+          ? _settings.weatherHumidity.toString()
+          : '',
+      weatherForecastJson: _settings.weatherForecastJson,
       mediaInfo: _mediaInfo,
       mediaThumbnailBytes: _thumbnailBytes,
       mediaPosition: _playbackPositionNotifier,
@@ -7642,6 +7647,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
               (current) => current.copyWith(
                 weatherTemp: info.temperature.toStringAsFixed(1),
                 weatherStatus: info.status,
+                weatherApparentTemp: info.apparentTemp.toStringAsFixed(1),
+                weatherHumidity: info.humidity,
                 weatherLocationResolved: info.locationName,
                 weatherForecastJson: info.forecastJson,
               ),
@@ -7666,6 +7673,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
               (current) => current.copyWith(
                 weatherTemp: info.temperature.toStringAsFixed(1),
                 weatherStatus: info.status,
+                weatherApparentTemp: info.apparentTemp.toStringAsFixed(1),
+                weatherHumidity: info.humidity,
                 weatherLocationResolved: info.locationName,
                 weatherForecastJson: info.forecastJson,
               ),
@@ -7702,6 +7711,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
               weatherLocation: val,
               weatherTemp: info.temperature.toStringAsFixed(1),
               weatherStatus: info.status,
+              weatherApparentTemp: info.apparentTemp.toStringAsFixed(1),
+              weatherHumidity: info.humidity,
               weatherLocationResolved: info.locationName,
               weatherForecastJson: info.forecastJson,
             ),
@@ -7754,6 +7765,8 @@ class _DesktopWidgetState extends State<DesktopWidget>
               weatherLocation: '',
               weatherTemp: info.temperature.toStringAsFixed(1),
               weatherStatus: info.status,
+              weatherApparentTemp: info.apparentTemp.toStringAsFixed(1),
+              weatherHumidity: info.humidity,
               weatherLocationResolved: info.locationName,
               weatherForecastJson: info.forecastJson,
             ),

@@ -370,6 +370,21 @@ class CustomWidgetElement {
   bool isBold;
   double opacity;
   double rotation;
+  double rotationX;
+  double rotationY;
+  double scaleX;
+  double scaleY;
+  double depth;
+  double cornerRadius;
+  double strokeWidth;
+  int? strokeColor;
+  int? shadowColor;
+  double shadowBlur;
+  double shadowOffsetX;
+  double shadowOffsetY;
+  bool gradientRadial;
+  String animationType;
+  String weatherUnit;
   List<int>? gradientColors;
 
   CustomWidgetElement({
@@ -389,6 +404,21 @@ class CustomWidgetElement {
     this.isBold = false,
     this.opacity = 1.0,
     this.rotation = 0.0,
+    this.rotationX = 0.0,
+    this.rotationY = 0.0,
+    this.scaleX = 1.0,
+    this.scaleY = 1.0,
+    this.depth = 0.0,
+    this.cornerRadius = 0.0,
+    this.strokeWidth = 0.0,
+    this.strokeColor,
+    this.shadowColor,
+    this.shadowBlur = 0.0,
+    this.shadowOffsetX = 0.0,
+    this.shadowOffsetY = 0.0,
+    this.gradientRadial = false,
+    this.animationType = 'none',
+    this.weatherUnit = 'C',
     this.gradientColors,
   });
 
@@ -420,6 +450,25 @@ class CustomWidgetElement {
       isBold: json['isBold'] is bool ? json['isBold'] as bool : false,
       opacity: (json['opacity'] as num?)?.toDouble() ?? 1.0,
       rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
+      rotationX: (json['rotationX'] as num?)?.toDouble() ?? 0.0,
+      rotationY: (json['rotationY'] as num?)?.toDouble() ?? 0.0,
+      scaleX: (json['scaleX'] as num?)?.toDouble() ?? 1.0,
+      scaleY: (json['scaleY'] as num?)?.toDouble() ?? 1.0,
+      depth: (json['depth'] as num?)?.toDouble() ?? 0.0,
+      cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 0.0,
+      strokeWidth: (json['strokeWidth'] as num?)?.toDouble() ?? 0.0,
+      strokeColor: json['strokeColor'] is int
+          ? json['strokeColor'] as int
+          : null,
+      shadowColor: json['shadowColor'] is int
+          ? json['shadowColor'] as int
+          : null,
+      shadowBlur: (json['shadowBlur'] as num?)?.toDouble() ?? 0.0,
+      shadowOffsetX: (json['shadowOffsetX'] as num?)?.toDouble() ?? 0.0,
+      shadowOffsetY: (json['shadowOffsetY'] as num?)?.toDouble() ?? 0.0,
+      gradientRadial: json['gradientRadial'] as bool? ?? false,
+      animationType: json['animationType']?.toString() ?? 'none',
+      weatherUnit: json['weatherUnit'] == 'F' ? 'F' : 'C',
       gradientColors: grad,
     );
   }
@@ -441,6 +490,21 @@ class CustomWidgetElement {
     'isBold': isBold,
     'opacity': opacity,
     'rotation': rotation,
+    'rotationX': rotationX,
+    'rotationY': rotationY,
+    'scaleX': scaleX,
+    'scaleY': scaleY,
+    'depth': depth,
+    'cornerRadius': cornerRadius,
+    'strokeWidth': strokeWidth,
+    if (strokeColor != null) 'strokeColor': strokeColor,
+    if (shadowColor != null) 'shadowColor': shadowColor,
+    'shadowBlur': shadowBlur,
+    'shadowOffsetX': shadowOffsetX,
+    'shadowOffsetY': shadowOffsetY,
+    'gradientRadial': gradientRadial,
+    'animationType': animationType,
+    'weatherUnit': weatherUnit,
     if (gradientColors != null) 'gradientColors': gradientColors,
   };
 
@@ -461,6 +525,21 @@ class CustomWidgetElement {
     bool? isBold,
     double? opacity,
     double? rotation,
+    double? rotationX,
+    double? rotationY,
+    double? scaleX,
+    double? scaleY,
+    double? depth,
+    double? cornerRadius,
+    double? strokeWidth,
+    int? strokeColor,
+    int? shadowColor,
+    double? shadowBlur,
+    double? shadowOffsetX,
+    double? shadowOffsetY,
+    bool? gradientRadial,
+    String? animationType,
+    String? weatherUnit,
     List<int>? gradientColors,
   }) {
     return CustomWidgetElement(
@@ -480,6 +559,21 @@ class CustomWidgetElement {
       isBold: isBold ?? this.isBold,
       opacity: opacity ?? this.opacity,
       rotation: rotation ?? this.rotation,
+      rotationX: rotationX ?? this.rotationX,
+      rotationY: rotationY ?? this.rotationY,
+      scaleX: scaleX ?? this.scaleX,
+      scaleY: scaleY ?? this.scaleY,
+      depth: depth ?? this.depth,
+      cornerRadius: cornerRadius ?? this.cornerRadius,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+      strokeColor: strokeColor ?? this.strokeColor,
+      shadowColor: shadowColor ?? this.shadowColor,
+      shadowBlur: shadowBlur ?? this.shadowBlur,
+      shadowOffsetX: shadowOffsetX ?? this.shadowOffsetX,
+      shadowOffsetY: shadowOffsetY ?? this.shadowOffsetY,
+      gradientRadial: gradientRadial ?? this.gradientRadial,
+      animationType: animationType ?? this.animationType,
+      weatherUnit: weatherUnit ?? this.weatherUnit,
       gradientColors:
           gradientColors ??
           (this.gradientColors != null
@@ -670,7 +764,7 @@ class SavedCustomWidget {
         }
       }
     }
-    if (elems.isEmpty) {
+    if (json['elements'] is! List) {
       elems = CustomWidgetElement.defaultCustomLayout();
     }
     return SavedCustomWidget(
@@ -800,6 +894,8 @@ class WidgetSettings {
   String weatherLocation;
   String weatherTemp;
   String weatherStatus;
+  String weatherApparentTemp;
+  int weatherHumidity;
   String weatherLocationResolved;
   String weatherForecastJson;
 
@@ -959,6 +1055,8 @@ class WidgetSettings {
     this.weatherLocation = '',
     this.weatherTemp = '',
     this.weatherStatus = '',
+    this.weatherApparentTemp = '',
+    this.weatherHumidity = 0,
     this.weatherLocationResolved = '',
     this.weatherForecastJson = '',
     this.showWifi = true,
@@ -1391,7 +1489,7 @@ class WidgetSettings {
         }
       }
     }
-    if (customElems.isEmpty) {
+    if (json['customElements'] is! List) {
       customElems = CustomWidgetElement.defaultCustomLayout();
     }
 
@@ -1487,6 +1585,8 @@ class WidgetSettings {
       weatherLocation: json['weatherLocation'] ?? '',
       weatherTemp: json['weatherTemp'] ?? '',
       weatherStatus: json['weatherStatus'] ?? '',
+      weatherApparentTemp: json['weatherApparentTemp']?.toString() ?? '',
+      weatherHumidity: (json['weatherHumidity'] as num?)?.toInt() ?? 0,
       weatherLocationResolved: json['weatherLocationResolved'] ?? '',
       weatherForecastJson: json['weatherForecastJson'] ?? '',
       showWifi: json['showWifi'] ?? true,
@@ -1606,6 +1706,8 @@ class WidgetSettings {
       'weatherLocation': weatherLocation,
       'weatherTemp': weatherTemp,
       'weatherStatus': weatherStatus,
+      'weatherApparentTemp': weatherApparentTemp,
+      'weatherHumidity': weatherHumidity,
       'weatherLocationResolved': weatherLocationResolved,
       'weatherForecastJson': weatherForecastJson,
       'showWifi': showWifi,
@@ -1709,6 +1811,8 @@ class WidgetSettings {
     String? weatherLocation,
     String? weatherTemp,
     String? weatherStatus,
+    String? weatherApparentTemp,
+    int? weatherHumidity,
     String? weatherLocationResolved,
     String? weatherForecastJson,
     bool? showWifi,
@@ -1826,6 +1930,8 @@ class WidgetSettings {
       weatherLocation: weatherLocation ?? this.weatherLocation,
       weatherTemp: weatherTemp ?? this.weatherTemp,
       weatherStatus: weatherStatus ?? this.weatherStatus,
+      weatherApparentTemp: weatherApparentTemp ?? this.weatherApparentTemp,
+      weatherHumidity: weatherHumidity ?? this.weatherHumidity,
       weatherLocationResolved:
           weatherLocationResolved ?? this.weatherLocationResolved,
       weatherForecastJson: weatherForecastJson ?? this.weatherForecastJson,

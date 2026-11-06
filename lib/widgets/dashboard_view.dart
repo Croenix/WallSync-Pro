@@ -1014,6 +1014,7 @@ class _DashboardViewState extends State<DashboardView>
   String? _selectedElement; // null → no element selected
   bool _editingWidget = false;
   bool _isCustomStudioOpen = false;
+  String? _customStudioPreset;
   SavedCustomWidget? _editingSavedWidget;
   String? _editingCustomElementId;
   String? _activeSavedWidgetId;
@@ -11462,10 +11463,12 @@ class _DashboardViewState extends State<DashboardView>
         initialSettings: _settings,
         existingWidget: _editingSavedWidget,
         initialSelectedElementId: _editingCustomElementId,
+        initialPreset: _customStudioPreset,
         isOverlayRunning: _isOverlayRunning,
         onBack: () {
           setState(() {
             _isCustomStudioOpen = false;
+            _customStudioPreset = null;
             _editingSavedWidget = null;
             _editingCustomElementId = null;
           });
@@ -11479,12 +11482,14 @@ class _DashboardViewState extends State<DashboardView>
                     ? updated.savedCustomWidgets.first.id
                     : null);
             _selectedCustomElementId = null;
+            _customStudioPreset = null;
             _editingSavedWidget = null;
             _editingCustomElementId = null;
             _isCustomStudioOpen = false;
             _editingWidget = true;
           });
           _tabCtrl.animateTo(0);
+          unawaited(_launchWidgetOverlay('custom'));
         },
       );
     }
@@ -12574,6 +12579,8 @@ class _DashboardViewState extends State<DashboardView>
           final systemMetrics =
               _settings.customElements.any(
                 (element) =>
+                    element.type == 'cpu_bar' ||
+                    element.type == 'ram_bar' ||
                     element.type == 'space_bar' ||
                     element.type == 'battery_bar',
               )
@@ -12589,10 +12596,19 @@ class _DashboardViewState extends State<DashboardView>
                   child: CustomWidgetRenderer(
                     elements: _settings.customElements,
                     dateTime: now,
-                    cpuUsage: 22.0,
-                    ramUsage: 45.0,
+                    cpuUsage: _cpuUsage,
+                    ramUsage: _ramUsage,
                     weatherTemp: _settings.weatherTemp,
                     weatherStatus: _settings.weatherStatus,
+                    weatherLocation:
+                        _settings.weatherLocationResolved.isNotEmpty
+                        ? _settings.weatherLocationResolved
+                        : _settings.weatherLocation,
+                    weatherApparentTemp: _settings.weatherApparentTemp,
+                    weatherHumidity: _settings.weatherHumidity > 0
+                        ? _settings.weatherHumidity.toString()
+                        : '',
+                    weatherForecastJson: _settings.weatherForecastJson,
                     mediaInfo: _mediaInfo,
                     mediaThumbnailBytes: _thumbnailBytes,
                     mediaPosition: _playbackPositionNotifier,
@@ -18431,10 +18447,24 @@ class _DashboardViewState extends State<DashboardView>
                                   child: CustomWidgetRenderer(
                                     elements: saved.elements,
                                     dateTime: DateTime.now(),
-                                    cpuUsage: 22.0,
-                                    ramUsage: 45.0,
+                                    cpuUsage: _cpuUsage,
+                                    ramUsage: _ramUsage,
                                     weatherTemp: _settings.weatherTemp,
                                     weatherStatus: _settings.weatherStatus,
+                                    weatherLocation:
+                                        _settings
+                                            .weatherLocationResolved
+                                            .isNotEmpty
+                                        ? _settings.weatherLocationResolved
+                                        : _settings.weatherLocation,
+                                    weatherApparentTemp:
+                                        _settings.weatherApparentTemp,
+                                    weatherHumidity:
+                                        _settings.weatherHumidity > 0
+                                        ? _settings.weatherHumidity.toString()
+                                        : '',
+                                    weatherForecastJson:
+                                        _settings.weatherForecastJson,
                                     mediaInfo: _mediaInfo,
                                     mediaThumbnailBytes: _thumbnailBytes,
                                     mediaPosition: _playbackPositionNotifier,
@@ -25196,6 +25226,46 @@ class _DashboardViewState extends State<DashboardView>
         'tag': 'STATION PILL',
         'tagColor': const Color(0xFFEF4444),
       },
+      {
+        'key': 'starter_fluent_calendar',
+        'preset': 'fluent_calendar',
+        'title': 'Fluent Calendar',
+        'desc': 'Animated month view with selectable dates',
+        'tag': 'NEW',
+        'tagColor': const Color(0xFF60CDFF),
+      },
+      {
+        'key': 'starter_weather_report',
+        'preset': 'weather_report',
+        'title': 'Weather Briefing',
+        'desc': 'Live conditions, forecast and location details',
+        'tag': 'LIVE WEATHER',
+        'tagColor': const Color(0xFF38BDF8),
+      },
+      {
+        'key': 'starter_system_pulse',
+        'preset': 'system_pulse',
+        'title': 'System Pulse',
+        'desc': 'Live CPU, memory, disk and battery readings',
+        'tag': 'DEVICE INFO',
+        'tagColor': const Color(0xFF00D6B2),
+      },
+      {
+        'key': 'starter_media_player',
+        'preset': 'media_player',
+        'title': 'Now Playing',
+        'desc': 'Live Windows media controls and track details',
+        'tag': 'MEDIA',
+        'tagColor': const Color(0xFFE879F9),
+      },
+      {
+        'key': 'starter_holo_telemetry',
+        'preset': 'holo_telemetry',
+        'title': 'Holo Telemetry',
+        'desc': 'Customizable animated system HUD',
+        'tag': 'HUD',
+        'tagColor': const Color(0xFFA78BFA),
+      },
     ];
 
     final filtered = desktopWidgets.where((w) {
@@ -25224,21 +25294,25 @@ class _DashboardViewState extends State<DashboardView>
         final desc = item['desc'] as String;
         final tag = item['tag'] as String;
         final tagColor = item['tagColor'] as Color;
+        final preset = item['preset'] as String?;
         final isRunning = key == 'taskbar_dock' && Platform.isWindows
             ? WindowsTaskbarService.instance.isCustomTaskbarActive
             : _activeRunningWidgetIds.contains(key);
+        void activateWidget() {
+          if (preset != null) {
+            _openCustomWidgetStarter(preset);
+          } else if (isRunning) {
+            _closeWidgetOverlay(key);
+          } else {
+            _launchWidgetOverlay(key);
+          }
+        }
 
         return SizedBox(
           key: ValueKey('desktop_widget_card_$key'),
           width: 320,
           child: HoverCard(
-            onTap: () {
-              if (isRunning) {
-                _closeWidgetOverlay(key);
-              } else {
-                _launchWidgetOverlay(key);
-              }
-            },
+            onTap: activateWidget,
             borderRadius: BorderRadius.circular(18),
             glowColor: isRunning ? const Color(0xFF10B981) : tagColor,
             maxGlowOpacity: isRunning ? 0.35 : 0.15,
@@ -25375,21 +25449,21 @@ class _DashboardViewState extends State<DashboardView>
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            if (isRunning) {
-                              _closeWidgetOverlay(key);
-                            } else {
-                              _launchWidgetOverlay(key);
-                            }
-                          },
+                          onPressed: activateWidget,
                           icon: Icon(
-                            isRunning
+                            preset != null
+                                ? Icons.tune_rounded
+                                : isRunning
                                 ? Icons.stop_circle_rounded
                                 : Icons.play_arrow_rounded,
                             size: 14,
                           ),
                           label: Text(
-                            isRunning ? 'Turn OFF' : 'Turn ON',
+                            preset != null
+                                ? 'Customize'
+                                : isRunning
+                                ? 'Turn OFF'
+                                : 'Turn ON',
                             style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.bold,
@@ -25413,7 +25487,9 @@ class _DashboardViewState extends State<DashboardView>
                         tooltip: 'Customize Layout & 3D',
                         icon: const Icon(Icons.tune_rounded, size: 16),
                         color: Colors.white70,
-                        onPressed: () => _customizeWidget(key),
+                        onPressed: preset != null
+                            ? activateWidget
+                            : () => _customizeWidget(key),
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.white.withValues(alpha: 0.05),
                           shape: RoundedRectangleBorder(
@@ -25736,6 +25812,52 @@ class _DashboardViewState extends State<DashboardView>
   // ── Custom Widgets Sub-View ─────────────────────────────────────────────────
   Widget _buildCustomWidgetsSubView() {
     final customList = _settings.savedCustomWidgets;
+    const starterWidgets =
+        <
+          ({
+            String preset,
+            String title,
+            String subtitle,
+            IconData icon,
+            Color color,
+          })
+        >[
+          (
+            preset: 'fluent_calendar',
+            title: 'Fluent Calendar',
+            subtitle: 'Animated month view',
+            icon: Icons.calendar_month_rounded,
+            color: Color(0xFF60CDFF),
+          ),
+          (
+            preset: 'weather_report',
+            title: 'Weather Briefing',
+            subtitle: 'Live conditions and location',
+            icon: Icons.cloud_rounded,
+            color: Color(0xFF38BDF8),
+          ),
+          (
+            preset: 'system_pulse',
+            title: 'System Pulse',
+            subtitle: 'CPU, RAM, disk and battery',
+            icon: Icons.monitor_heart_rounded,
+            color: Color(0xFF00D6B2),
+          ),
+          (
+            preset: 'media_player',
+            title: 'Now Playing',
+            subtitle: 'Windows media controls',
+            icon: Icons.graphic_eq_rounded,
+            color: Color(0xFFE879F9),
+          ),
+          (
+            preset: 'holo_telemetry',
+            title: 'Holo Telemetry',
+            subtitle: 'Animated system HUD',
+            icon: Icons.view_in_ar_rounded,
+            color: Color(0xFFA78BFA),
+          ),
+        ];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -25799,16 +25921,10 @@ class _DashboardViewState extends State<DashboardView>
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _settings = _settings.copyWith(widgetTemplate: 'custom');
-                      _editingWidget = true;
-                    });
-                    _updateSettings(_settings);
-                  },
+                  onPressed: () => _openCustomWidgetStarter('empty_canvas'),
                   icon: const Icon(Icons.add_rounded, size: 16),
                   label: const Text(
-                    'Launch Custom Studio',
+                    'Launch New Custom',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -25826,6 +25942,97 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 24),
+
+          const Text(
+            'STARTER WIDGETS',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: starterWidgets.map((starter) {
+              return SizedBox(
+                width: 220,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: ValueKey('widget_starter_${starter.preset}'),
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _openCustomWidgetStarter(starter.preset),
+                    child: Container(
+                      height: 78,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.035),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: starter.color.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: starter.color.withValues(alpha: 0.13),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              starter.icon,
+                              color: starter.color,
+                              size: 21,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  starter.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  starter.subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.48),
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white38,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 24),
 
@@ -25951,6 +26158,15 @@ class _DashboardViewState extends State<DashboardView>
         ],
       ),
     );
+  }
+
+  void _openCustomWidgetStarter(String preset) {
+    setState(() {
+      _editingSavedWidget = null;
+      _editingCustomElementId = null;
+      _customStudioPreset = preset;
+      _isCustomStudioOpen = true;
+    });
   }
 
   // ── Helper Title Formatter ──────────────────────────────────────────────────
@@ -27083,6 +27299,50 @@ class _DashboardViewState extends State<DashboardView>
 
       case 'atomic_clock':
         return _buildAtomicClockPreview();
+
+      case 'starter_fluent_calendar':
+      case 'starter_weather_report':
+      case 'starter_system_pulse':
+      case 'starter_media_player':
+      case 'starter_holo_telemetry':
+        final icon = switch (key) {
+          'starter_fluent_calendar' => Icons.calendar_month_rounded,
+          'starter_weather_report' => Icons.cloud_rounded,
+          'starter_system_pulse' => Icons.monitor_heart_rounded,
+          'starter_media_player' => Icons.graphic_eq_rounded,
+          _ => Icons.view_in_ar_rounded,
+        };
+        final accent = switch (key) {
+          'starter_fluent_calendar' => const Color(0xFF60CDFF),
+          'starter_weather_report' => const Color(0xFF38BDF8),
+          'starter_system_pulse' => const Color(0xFF00D6B2),
+          'starter_media_player' => const Color(0xFFE879F9),
+          _ => const Color(0xFFA78BFA),
+        };
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 30, color: accent),
+            const SizedBox(height: 8),
+            Text(
+              key
+                  .replaceFirst('starter_', '')
+                  .replaceAll('_', ' ')
+                  .toUpperCase(),
+              style: TextStyle(
+                color: accent,
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'CUSTOMIZABLE WIDGET',
+              style: TextStyle(color: Colors.white54, fontSize: 7),
+            ),
+          ],
+        );
 
       case 'custom':
         return Container(
@@ -31625,12 +31885,17 @@ class _DashboardViewState extends State<DashboardView>
           if (_settings.weatherLocation != query ||
               _settings.weatherTemp != tempStr ||
               _settings.weatherStatus != info.status ||
+              _settings.weatherApparentTemp !=
+                  info.apparentTemp.toStringAsFixed(1) ||
+              _settings.weatherHumidity != info.humidity ||
               _settings.weatherLocationResolved != info.locationName ||
               _settings.weatherForecastJson != info.forecastJson) {
             final updated = _settings.copyWith(
               weatherLocation: query,
               weatherTemp: tempStr,
               weatherStatus: info.status,
+              weatherApparentTemp: info.apparentTemp.toStringAsFixed(1),
+              weatherHumidity: info.humidity,
               weatherLocationResolved: info.locationName,
               weatherForecastJson: info.forecastJson,
             );
@@ -31675,6 +31940,8 @@ class _DashboardViewState extends State<DashboardView>
             weatherLocation: '',
             weatherTemp: info.temperature.toStringAsFixed(1),
             weatherStatus: info.status,
+            weatherApparentTemp: info.apparentTemp.toStringAsFixed(1),
+            weatherHumidity: info.humidity,
             weatherLocationResolved: info.locationName,
             weatherForecastJson: info.forecastJson,
           );

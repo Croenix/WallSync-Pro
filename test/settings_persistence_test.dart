@@ -27,6 +27,25 @@ void main() {
     expect(restored.alwaysOnTop, isFalse);
   });
 
+  test('weather detail values persist for custom widget elements', () {
+    final settings = WidgetSettings(
+      weatherTemp: '24.5',
+      weatherStatus: 'Clear',
+      weatherApparentTemp: '26.0',
+      weatherHumidity: 58,
+      weatherLocationResolved: 'Seattle, Washington',
+      weatherForecastJson:
+          '[{"time":"14:00","temp":"24.0","status":"Clear","code":0}]',
+    );
+
+    final restored = WidgetSettings.fromJson(settings.toJson());
+
+    expect(restored.weatherApparentTemp, '26.0');
+    expect(restored.weatherHumidity, 58);
+    expect(restored.weatherLocationResolved, 'Seattle, Washington');
+    expect(restored.weatherForecastJson, settings.weatherForecastJson);
+  });
+
   test('invalid saved widget dimensions recover to template defaults', () {
     final settings = WidgetSettings(
       widgetTemplate: 'cyber',
@@ -138,6 +157,25 @@ void main() {
     expect(restored.savedCustomWidgets.single.elements.single.text, 'original');
   });
 
+  test('intentionally empty custom canvases survive settings round-trip', () {
+    final settings = WidgetSettings(
+      widgetTemplate: 'custom',
+      customElements: [],
+      savedCustomWidgets: [
+        SavedCustomWidget(
+          id: 'empty-design',
+          name: 'Blank Design',
+          elements: [],
+        ),
+      ],
+    );
+
+    final restored = WidgetSettings.fromJson(settings.toJson());
+
+    expect(restored.customElements, isEmpty);
+    expect(restored.savedCustomWidgets.single.elements, isEmpty);
+  });
+
   test('custom element active and disabled colors persist independently', () {
     final element = CustomWidgetElement(
       id: 'wifi',
@@ -154,6 +192,70 @@ void main() {
     expect(copied.color, 0xFF123456);
     expect(copied.activeColor, restored.activeColor);
     expect(copied.disabledColor, restored.disabledColor);
+  });
+
+  test('custom element studio transforms and styling round-trip', () {
+    final element = CustomWidgetElement(
+      id: 'styled-title',
+      type: 'custom_text',
+      rotationX: 24,
+      rotationY: -18,
+      rotation: 12,
+      scaleX: 1.2,
+      scaleY: 0.8,
+      depth: 16,
+      cornerRadius: 9,
+      strokeWidth: 2,
+      strokeColor: 0xFF123456,
+      shadowColor: 0xFF654321,
+      shadowBlur: 11,
+      shadowOffsetX: 3,
+      shadowOffsetY: 5,
+      gradientRadial: true,
+      gradientColors: [0xFF112233, 0xFF445566, 0xFF778899],
+      animationType: 'pulse',
+      weatherUnit: 'F',
+    );
+
+    final restored = CustomWidgetElement.fromJson(element.toJson());
+    final copied = restored.copyWith(rotationX: 40);
+
+    expect(restored.rotationX, 24);
+    expect(restored.rotationY, -18);
+    expect(restored.rotation, 12);
+    expect(restored.scaleX, 1.2);
+    expect(restored.scaleY, 0.8);
+    expect(restored.depth, 16);
+    expect(restored.cornerRadius, 9);
+    expect(restored.strokeWidth, 2);
+    expect(restored.strokeColor, 0xFF123456);
+    expect(restored.shadowColor, 0xFF654321);
+    expect(restored.shadowBlur, 11);
+    expect(restored.shadowOffsetX, 3);
+    expect(restored.shadowOffsetY, 5);
+    expect(restored.gradientRadial, isTrue);
+    expect(restored.gradientColors, [0xFF112233, 0xFF445566, 0xFF778899]);
+    expect(restored.animationType, 'pulse');
+    expect(restored.weatherUnit, 'F');
+    expect(copied.rotationX, 40);
+    expect(copied.animationType, 'pulse');
+  });
+
+  test('older custom elements use safe studio defaults', () {
+    final element = CustomWidgetElement.fromJson({
+      'id': 'legacy',
+      'type': 'custom_text',
+    });
+
+    expect(element.rotationX, 0);
+    expect(element.rotationY, 0);
+    expect(element.scaleX, 1);
+    expect(element.scaleY, 1);
+    expect(element.depth, 0);
+    expect(element.cornerRadius, 0);
+    expect(element.strokeWidth, 0);
+    expect(element.animationType, 'none');
+    expect(element.weatherUnit, 'C');
   });
 
   test('recent wallpapers serialize and deserialize correctly', () {
