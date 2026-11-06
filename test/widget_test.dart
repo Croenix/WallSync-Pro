@@ -20,6 +20,46 @@ void main() {
     expect(find.byType(DashboardApp), findsOneWidget);
   });
 
+  testWidgets('widget catalog builds offscreen previews lazily', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(640, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      DashboardApp(
+        settings: WidgetSettings(),
+        startMinimized: true,
+        initialTab: 'widgets',
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final catalog = find.byKey(const ValueKey('desktop_widget_library_grid'));
+    final lastPreview = find.byKey(
+      const ValueKey('desktop_widget_card_station_weather'),
+    );
+    expect(catalog, findsOneWidget);
+    expect(lastPreview, findsNothing);
+
+    await tester.scrollUntilVisible(
+      lastPreview,
+      400,
+      scrollable: find.descendant(
+        of: catalog,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(lastPreview, findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 901));
+  });
+
   for (final size in <Size>[
     const Size(640, 480),
     const Size(700, 500),

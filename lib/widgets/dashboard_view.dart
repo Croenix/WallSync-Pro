@@ -25207,235 +25207,232 @@ class _DashboardViewState extends State<DashboardView>
       return title.contains(q) || desc.contains(q) || tag.contains(q);
     }).toList();
 
-    return SingleChildScrollView(
+    return GridView.builder(
+      key: const ValueKey('desktop_widget_library_grid'),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 20,
-            runSpacing: 20,
-            children: filtered.map((item) {
-              final key = item['key'] as String;
-              final title = item['title'] as String;
-              final desc = item['desc'] as String;
-              final tag = item['tag'] as String;
-              final tagColor = item['tagColor'] as Color;
-              final isRunning = key == 'taskbar_dock' && Platform.isWindows
-                  ? WindowsTaskbarService.instance.isCustomTaskbarActive
-                  : _activeRunningWidgetIds.contains(key);
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 320,
+        mainAxisExtent: 320,
+        crossAxisSpacing: 20,
+        mainAxisSpacing: 20,
+      ),
+      itemCount: filtered.length,
+      itemBuilder: (context, index) {
+        final item = filtered[index];
+        final key = item['key'] as String;
+        final title = item['title'] as String;
+        final desc = item['desc'] as String;
+        final tag = item['tag'] as String;
+        final tagColor = item['tagColor'] as Color;
+        final isRunning = key == 'taskbar_dock' && Platform.isWindows
+            ? WindowsTaskbarService.instance.isCustomTaskbarActive
+            : _activeRunningWidgetIds.contains(key);
 
-              return SizedBox(
-                width: 320,
-                child: HoverCard(
-                  onTap: () {
-                    if (isRunning) {
-                      _closeWidgetOverlay(key);
-                    } else {
-                      _launchWidgetOverlay(key);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(18),
-                  glowColor: isRunning ? const Color(0xFF10B981) : tagColor,
-                  maxGlowOpacity: isRunning ? 0.35 : 0.15,
-                  child: Container(
+        return SizedBox(
+          key: ValueKey('desktop_widget_card_$key'),
+          width: 320,
+          child: HoverCard(
+            onTap: () {
+              if (isRunning) {
+                _closeWidgetOverlay(key);
+              } else {
+                _launchWidgetOverlay(key);
+              }
+            },
+            borderRadius: BorderRadius.circular(18),
+            glowColor: isRunning ? const Color(0xFF10B981) : tagColor,
+            maxGlowOpacity: isRunning ? 0.35 : 0.15,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF111422).withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: isRunning
+                      ? const Color(0xFF10B981)
+                      : Colors.white.withValues(alpha: 0.08),
+                  width: isRunning ? 1.6 : 1.0,
+                ),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Live mini preview
+                  Container(
+                    height: 120,
+                    width: double.infinity,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111422).withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(18),
+                      color: const Color(0xFF090B14),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isRunning
-                            ? const Color(0xFF10B981)
-                            : Colors.white.withValues(alpha: 0.08),
-                        width: isRunning ? 1.6 : 1.0,
+                        color: Colors.white.withValues(alpha: 0.06),
                       ),
                     ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Stack(
                       children: [
-                        // Live mini preview
-                        Container(
-                          height: 120,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF090B14),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.06),
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: _buildMiniWidgetPreview(key),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tagColor.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: tagColor.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                color: tagColor,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
-                          child: Stack(
-                            children: [
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: _buildMiniWidgetPreview(key),
+                        ),
+                        if (isRunning)
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF10B981,
+                                ).withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.7),
                                 ),
                               ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 7,
+                                    color: Color(0xFF10B981),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: tagColor.withValues(alpha: 0.18),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: tagColor.withValues(alpha: 0.4),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    tag,
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'ACTIVE',
                                     style: TextStyle(
-                                      color: tagColor,
+                                      color: Color(0xFF10B981),
                                       fontSize: 8,
                                       fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.5,
                                     ),
                                   ),
-                                ),
-                              ),
-                              if (isRunning)
-                                Positioned(
-                                  top: 8,
-                                  left: 8,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(
-                                        0xFF10B981,
-                                      ).withValues(alpha: 0.25),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: const Color(
-                                          0xFF10B981,
-                                        ).withValues(alpha: 0.7),
-                                      ),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.circle,
-                                          size: 7,
-                                          color: Color(0xFF10B981),
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'ACTIVE',
-                                          style: TextStyle(
-                                            color: Color(0xFF10B981),
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Title & Description
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          desc,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white.withValues(alpha: 0.5),
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  if (isRunning) {
-                                    _closeWidgetOverlay(key);
-                                  } else {
-                                    _launchWidgetOverlay(key);
-                                  }
-                                },
-                                icon: Icon(
-                                  isRunning
-                                      ? Icons.stop_circle_rounded
-                                      : Icons.play_arrow_rounded,
-                                  size: 14,
-                                ),
-                                label: Text(
-                                  isRunning ? 'Turn OFF' : 'Turn ON',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isRunning
-                                      ? Colors.redAccent.withValues(alpha: 0.85)
-                                      : const Color(0xFF10B981),
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              tooltip: 'Customize Layout & 3D',
-                              icon: const Icon(Icons.tune_rounded, size: 16),
-                              color: Colors.white70,
-                              onPressed: () => _customizeWidget(key),
-                              style: IconButton.styleFrom(
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.05,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.1),
-                                  ),
-                                ),
-                                minimumSize: const Size(34, 34),
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
                       ],
                     ),
                   ),
-                ),
-              );
-            }).toList(),
+                  const SizedBox(height: 12),
+
+                  // Title & Description
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    desc,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.5),
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Action Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            if (isRunning) {
+                              _closeWidgetOverlay(key);
+                            } else {
+                              _launchWidgetOverlay(key);
+                            }
+                          },
+                          icon: Icon(
+                            isRunning
+                                ? Icons.stop_circle_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 14,
+                          ),
+                          label: Text(
+                            isRunning ? 'Turn OFF' : 'Turn ON',
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isRunning
+                                ? Colors.redAccent.withValues(alpha: 0.85)
+                                : const Color(0xFF10B981),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Customize Layout & 3D',
+                        icon: const Icon(Icons.tune_rounded, size: 16),
+                        color: Colors.white70,
+                        onPressed: () => _customizeWidget(key),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: 0.05),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.1),
+                            ),
+                          ),
+                          minimumSize: const Size(34, 34),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
