@@ -148,6 +148,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Fluent calendar animates and navigates real month dates', (
+    tester,
+  ) async {
+    final calendar = CustomWidgetElement(
+      id: 'calendar',
+      type: 'fluent_calendar',
+      width: 300,
+      height: 260,
+      color: 0xFF60CDFF,
+      activeColor: 0xFF0078D4,
+    );
+    final restored = CustomWidgetElement.fromJson(
+      jsonDecode(jsonEncode(calendar.toJson())) as Map<String, dynamic>,
+    );
+    expect(restored.type, 'fluent_calendar');
+    expect(restored.width, 300);
+    expect(restored.height, 260);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomWidgetRenderer(
+            elements: [restored],
+            dateTime: DateTime(2026, 10, 22),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('October 2026'), findsOneWidget);
+    expect(find.byTooltip('Previous month'), findsOneWidget);
+    expect(find.byTooltip('Next month'), findsOneWidget);
+    expect(find.text('22'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(find.text('November 2026'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('media capsule fits compact, standard, and wide canvases', (
     tester,
   ) async {

@@ -354,7 +354,7 @@ class CustomWidgetElement {
   /// 'media_pill', 'media_title', 'media_artist', 'media_album',
   /// 'media_source', 'media_status', 'media_artwork', 'media_progress',
   /// 'media_elapsed', 'media_duration', 'media_controls', 'media_animation',
-  /// 'wifi_icon', 'bluetooth_icon', 'custom_text', 'neon_box'
+  /// 'wifi_icon', 'bluetooth_icon', 'fluent_calendar', 'custom_text', 'neon_box'
   final String type;
   double x;
   double y;

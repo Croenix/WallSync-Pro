@@ -391,18 +391,16 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
 
   void _addElement(CustomWidgetElement element, [Offset? dropOffset]) {
     final newId = 'elem_${DateTime.now().microsecondsSinceEpoch}';
+    final elementWidth = element.width > 0 ? element.width : 60.0;
+    final elementHeight = element.height > 0 ? element.height : 30.0;
+    final maxX = (_canvasWidth - elementWidth).clamp(0.0, _canvasWidth);
+    final maxY = (_canvasHeight - elementHeight).clamp(0.0, _canvasHeight);
     final targetX = dropOffset != null
-        ? dropOffset.dx.clamp(
-            0.0,
-            _canvasWidth - (element.width > 0 ? element.width : 60.0),
-          )
-        : (_canvasWidth / 2 - 40.0).clamp(10.0, _canvasWidth - 80.0);
+        ? dropOffset.dx.clamp(0.0, maxX)
+        : maxX / 2;
     final targetY = dropOffset != null
-        ? dropOffset.dy.clamp(
-            0.0,
-            _canvasHeight - (element.height > 0 ? element.height : 30.0),
-          )
-        : (_canvasHeight / 2 - 20.0).clamp(10.0, _canvasHeight - 40.0);
+        ? dropOffset.dy.clamp(0.0, maxY)
+        : maxY / 2;
 
     final newElement = element.copyWith(id: newId, x: targetX, y: targetY);
 
@@ -445,7 +443,24 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
 
   void _loadPreset(String name) {
     setState(() {
-      if (name == 'robik_signature') {
+      if (name == 'fluent_calendar') {
+        _widgetName = 'Fluent Calendar';
+        _elements = [
+          CustomWidgetElement(
+            id: 'fluent_calendar',
+            type: 'fluent_calendar',
+            x: 20,
+            y: 20,
+            width: 300,
+            height: 260,
+            fontFamily: 'Segoe UI',
+            color: 0xFF60CDFF,
+            activeColor: 0xFF0078D4,
+          ),
+        ];
+        _canvasWidth = 340;
+        _canvasHeight = 300;
+      } else if (name == 'robik_signature') {
         _elements = CustomWidgetElement.defaultCustomLayout();
         _canvasWidth = 480.0;
         _canvasHeight = 260.0;
@@ -722,6 +737,21 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
               borderRadius: BorderRadius.circular(10),
             ),
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'fluent_calendar',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_month_rounded,
+                      size: 16,
+                      color: Color(0xFF60CDFF),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Fluent Calendar'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'robik_signature',
                 child: Row(
@@ -1221,12 +1251,15 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
               SizedBox(
                 width: 110,
                 child: Slider(
-                  value: (isIcon
-                          ? (elem.width > 0
-                              ? elem.width
-                              : (elem.fontSize > 0 ? elem.fontSize : 24.0))
-                          : elem.fontSize)
-                      .clamp(8.0, 120.0),
+                  value:
+                      (isIcon
+                              ? (elem.width > 0
+                                    ? elem.width
+                                    : (elem.fontSize > 0
+                                          ? elem.fontSize
+                                          : 24.0))
+                              : elem.fontSize)
+                          .clamp(8.0, 120.0),
                   min: 8.0,
                   max: 120.0,
                   activeColor: const Color(0xFF38BDF8),
@@ -1780,6 +1813,25 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                 preview: const Text(
                   '21 OCTOBER 2026',
                   style: TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1)),
+                ),
+              ),
+            if (matches('Fluent Calendar', 'Date'))
+              _buildToolboxItem(
+                title: 'Fluent Calendar',
+                subtitle: 'Animated month, today & selection',
+                element: CustomWidgetElement(
+                  id: '',
+                  type: 'fluent_calendar',
+                  width: 300,
+                  height: 260,
+                  fontFamily: 'Segoe UI',
+                  color: 0xFF60CDFF,
+                  activeColor: 0xFF0078D4,
+                ),
+                preview: const Icon(
+                  Icons.calendar_month_rounded,
+                  color: Color(0xFF60CDFF),
+                  size: 28,
                 ),
               ),
           ],
@@ -2415,6 +2467,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
       'time_colon': 'Time Separator',
       'full_time': 'Full Clock',
       'full_date': 'Full Date',
+      'fluent_calendar': 'Fluent Calendar',
       'custom_text': 'Custom Text',
       'cpu_bar': 'CPU Usage Bar',
       'ram_bar': 'RAM Usage Bar',

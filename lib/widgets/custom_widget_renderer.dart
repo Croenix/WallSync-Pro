@@ -221,6 +221,17 @@ class CustomWidgetRenderer extends StatelessWidget {
         final fullDate = '$dayNum $monthName $yearNum';
         return _styledText(fullDate, elem);
 
+      case 'fluent_calendar':
+        return _FluentCalendarWidget(
+          dateTime: dateTime,
+          width: elem.width > 0 ? elem.width : 300,
+          height: elem.height > 0 ? elem.height : 260,
+          accentColor: Color(elem.color),
+          selectedColor: Color(elem.activeColor ?? elem.color),
+          fontFamily: elem.fontFamily,
+          allowInteraction: !isInteractive,
+        );
+
       case 'accent_bar':
         return Container(
           width: elem.width > 0 ? elem.width : 64.0,
@@ -959,6 +970,361 @@ class _MediaActivityIndicatorState extends State<_MediaActivityIndicator>
               ),
             );
           }),
+        ),
+      ),
+    );
+  }
+}
+
+class _FluentCalendarWidget extends StatefulWidget {
+  const _FluentCalendarWidget({
+    required this.dateTime,
+    required this.width,
+    required this.height,
+    required this.accentColor,
+    required this.selectedColor,
+    required this.fontFamily,
+    required this.allowInteraction,
+  });
+
+  final DateTime dateTime;
+  final double width;
+  final double height;
+  final Color accentColor;
+  final Color selectedColor;
+  final String fontFamily;
+  final bool allowInteraction;
+
+  @override
+  State<_FluentCalendarWidget> createState() => _FluentCalendarWidgetState();
+}
+
+class _FluentCalendarWidgetState extends State<_FluentCalendarWidget>
+    with SingleTickerProviderStateMixin {
+  late DateTime _displayedMonth = DateTime(
+    widget.dateTime.year,
+    widget.dateTime.month,
+  );
+  late DateTime _selectedDate = DateUtils.dateOnly(widget.dateTime);
+  late final AnimationController _todayPulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotionPreference();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FluentCalendarWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final currentMonth = DateTime(widget.dateTime.year, widget.dateTime.month);
+    final previousMonth = DateTime(
+      oldWidget.dateTime.year,
+      oldWidget.dateTime.month,
+    );
+    if (currentMonth != previousMonth &&
+        _displayedMonth.year == previousMonth.year &&
+        _displayedMonth.month == previousMonth.month) {
+      _displayedMonth = currentMonth;
+    }
+    if (DateUtils.isSameDay(_selectedDate, oldWidget.dateTime)) {
+      _selectedDate = DateUtils.dateOnly(widget.dateTime);
+    }
+  }
+
+  void _syncMotionPreference() {
+    final shouldAnimate =
+        TickerMode.of(context) && !MediaQuery.of(context).disableAnimations;
+    if (shouldAnimate && !_todayPulse.isAnimating) {
+      _todayPulse.repeat(reverse: true);
+    } else if (!shouldAnimate && _todayPulse.isAnimating) {
+      _todayPulse
+        ..stop()
+        ..value = 0.5;
+    }
+  }
+
+  @override
+  void dispose() {
+    _todayPulse.dispose();
+    super.dispose();
+  }
+
+  void _changeMonth(int offset) {
+    setState(() {
+      _displayedMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month + offset,
+      );
+    });
+  }
+
+  List<DateTime?> _monthCells(int firstDayOfWeek) {
+    final firstOfMonth = DateTime(_displayedMonth.year, _displayedMonth.month);
+    final leadingDays = (firstOfMonth.weekday % 7 - firstDayOfWeek + 7) % 7;
+    final daysInMonth = DateUtils.getDaysInMonth(
+      _displayedMonth.year,
+      _displayedMonth.month,
+    );
+    return List<DateTime?>.generate(42, (index) {
+      final day = index - leadingDays + 1;
+      if (day < 1 || day > daysInMonth) return null;
+      return DateTime(_displayedMonth.year, _displayedMonth.month, day);
+    });
+  }
+
+  Widget _monthButton({required String tooltip, required IconData icon}) {
+    if (!widget.allowInteraction) return const SizedBox(width: 30, height: 30);
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: () => _changeMonth(tooltip == 'Next month' ? 1 : -1),
+      icon: Icon(icon, size: 17),
+      color: Colors.white70,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  Widget _buildDayCell(DateTime? date) {
+    if (date == null) return const SizedBox.shrink();
+    final isToday = DateUtils.isSameDay(date, widget.dateTime);
+    final isSelected = DateUtils.isSameDay(date, _selectedDate);
+    final color = isSelected ? widget.selectedColor : widget.accentColor;
+
+    Widget day = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: isSelected ? color.withValues(alpha: 0.88) : Colors.transparent,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isToday && !isSelected
+              ? widget.accentColor.withValues(alpha: 0.85)
+              : Colors.transparent,
+        ),
+      ),
+      child: Text(
+        '${date.day}',
+        style: TextStyle(
+          fontFamily: widget.fontFamily,
+          fontSize: 12,
+          fontWeight: isSelected || isToday ? FontWeight.w700 : FontWeight.w400,
+          color: isSelected
+              ? Colors.white
+              : Colors.white.withValues(alpha: 0.86),
+        ),
+      ),
+    );
+
+    if (isToday && !isSelected) {
+      day = AnimatedBuilder(
+        animation: _todayPulse,
+        builder: (context, child) =>
+            Opacity(opacity: 0.72 + _todayPulse.value * 0.28, child: child),
+        child: day,
+      );
+    }
+
+    return Semantics(
+      button: widget.allowInteraction,
+      selected: isSelected,
+      label: DateFormat.yMMMMEEEEd().format(date),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: widget.allowInteraction
+            ? () => setState(() => _selectedDate = date)
+            : null,
+        child: Center(child: day),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    final firstDayOfWeek = localizations.firstDayOfWeekIndex;
+    final weekdays = List.generate(
+      7,
+      (index) => localizations.narrowWeekdays[(firstDayOfWeek + index) % 7],
+    );
+    final monthCells = _monthCells(firstDayOfWeek);
+
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xE8212933), Color(0xE8121820)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 7),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 34,
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: widget.accentColor.withValues(alpha: 0.13),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Icon(
+                      Icons.calendar_month_rounded,
+                      size: 17,
+                      color: widget.accentColor,
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.12),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: Text(
+                        DateFormat.yMMMM().format(_displayedMonth),
+                        key: ValueKey(
+                          '${_displayedMonth.year}-${_displayedMonth.month}',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: widget.fontFamily,
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  _monthButton(
+                    tooltip: 'Previous month',
+                    icon: Icons.chevron_left_rounded,
+                  ),
+                  _monthButton(
+                    tooltip: 'Next month',
+                    icon: Icons.chevron_right_rounded,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 18,
+              child: Row(
+                children: weekdays
+                    .map(
+                      (weekday) => Expanded(
+                        child: Center(
+                          child: Text(
+                            weekday,
+                            style: TextStyle(
+                              fontFamily: widget.fontFamily,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.45),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => GridView.builder(
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: monthCells.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 7,
+                    mainAxisExtent: constraints.maxHeight / 6,
+                  ),
+                  itemBuilder: (context, index) =>
+                      _buildDayCell(monthCells[index]),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 16,
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: widget.accentColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      DateFormat('EEE, MMM d').format(_selectedDate),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: widget.fontFamily,
+                        fontSize: 10,
+                        color: Colors.white.withValues(alpha: 0.58),
+                      ),
+                    ),
+                  ),
+                  if (widget.allowInteraction)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _displayedMonth = DateTime(
+                          widget.dateTime.year,
+                          widget.dateTime.month,
+                        );
+                        _selectedDate = DateUtils.dateOnly(widget.dateTime);
+                      }),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(36, 16),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: widget.accentColor,
+                      ),
+                      child: const Text(
+                        'Today',
+                        style: TextStyle(fontSize: 10),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
