@@ -61,6 +61,21 @@ void main() {
         ),
       );
       expect(card, findsOneWidget, reason: '$key is listed in Desktop Widgets');
+      if (key.startsWith('starter_')) {
+        expect(
+          find.descendant(of: card, matching: find.text('Turn ON')),
+          findsOneWidget,
+          reason: '$key must have the same install action as built-in widgets',
+        );
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.byTooltip('Customize Layout & 3D'),
+          ),
+          findsOneWidget,
+          reason: '$key keeps a separate customization action',
+        );
+      }
     }
     expect(lastPreview, findsOneWidget);
     expect(tester.takeException(), isNull);

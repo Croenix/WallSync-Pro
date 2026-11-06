@@ -258,6 +258,34 @@ void main() {
     expect(element.weatherUnit, 'C');
   });
 
+  test('desktop starter widgets have launchable template definitions', () {
+    final expectedPresets = {
+      'fluent_calendar': 'starter_fluent_calendar',
+      'weather_report': 'starter_weather_report',
+      'system_pulse': 'starter_system_pulse',
+      'media_player': 'starter_media_player',
+      'holo_telemetry': 'starter_holo_telemetry',
+    };
+
+    for (final entry in expectedPresets.entries) {
+      final layout = CustomWidgetElement.starterPresetLayout(entry.key);
+      expect(layout, isNotNull, reason: entry.key);
+      expect(layout!.elements, isNotEmpty, reason: entry.key);
+      expect(
+        WidgetSettings.templateDefaults.containsKey(entry.value),
+        isTrue,
+        reason: '${entry.value} must be recognized during overlay startup',
+      );
+      expect(
+        WidgetSettings.isCustomLayoutTemplate(entry.value),
+        isTrue,
+        reason: '${entry.value} must use the custom element renderer',
+      );
+      expect(layout.width, greaterThan(0));
+      expect(layout.height, greaterThan(0));
+    }
+  });
+
   test('recent wallpapers serialize and deserialize correctly', () {
     final original = WidgetSettings(
       recentWallpapers: [

@@ -1247,7 +1247,9 @@ class _DashboardViewState extends State<DashboardView>
             ((_settings.widgetTemplate == 'sleep_weather' &&
                     _settings.showMediaControl &&
                     _tabCtrl.index == 0) ||
-                _settings.widgetTemplate == 'custom' ||
+                WidgetSettings.isCustomLayoutTemplate(
+                  _settings.widgetTemplate,
+                ) ||
                 _settings.savedCustomWidgets.any(
                   (widget) => widget.elements.any(
                     (element) => MediaElementType.contains(element.type),
@@ -2502,6 +2504,68 @@ class _DashboardViewState extends State<DashboardView>
     } catch (_) {}
   }
 
+  Future<void> _launchStarterWidget(String widgetId, String preset) async {
+    final layout = CustomWidgetElement.starterPresetLayout(preset);
+    if (layout == null ||
+        CustomWidgetElement.starterWidgetIds[preset] != widgetId) {
+      logError(
+        'DashboardView',
+        'Starter widget "$widgetId" has no valid preset configuration "$preset".',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This widget is not configured yet.')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final instanceService = SettingsService(instanceId: widgetId);
+      final savedInstance = await instanceService.load();
+      final activeIds = {..._settings.activeWidgetIds, widgetId}.toList();
+      final instanceSettings = savedInstance.widgetTemplate == widgetId
+          ? savedInstance.copyWith(
+              exitOverlay: false,
+              activeWidgetIds: activeIds,
+            )
+          : _settings.copyWith(
+              widgetTemplate: widgetId,
+              width: layout.width,
+              height: layout.height,
+              sizeFactor: 1,
+              customElements: layout.elements
+                  .map((element) => element.copyWith())
+                  .toList(),
+              exitOverlay: false,
+              activeWidgetIds: activeIds,
+            );
+
+      await instanceService.save(instanceSettings);
+      final updatedSettings = _settings.copyWith(activeWidgetIds: activeIds);
+      await _settingsService.saveSettings(updatedSettings);
+      if (mounted) {
+        setState(() => _settings = updatedSettings);
+      }
+      await _launchWidgetOverlay(widgetId);
+    } catch (error, stackTrace) {
+      logError(
+        'DashboardView',
+        'Could not configure starter widget "$widgetId".',
+        error,
+        stackTrace,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not add this widget: $error'),
+            backgroundColor: const Color(0xFF1E293B),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _launchWidgetOverlay(String widgetId) {
     final pending = _widgetLaunchOperations[widgetId];
     if (pending != null) return pending;
@@ -3547,7 +3611,7 @@ class _DashboardViewState extends State<DashboardView>
     final bool needMedia =
         (_settings.widgetTemplate == 'sleep_weather' &&
             _settings.showMediaControl) ||
-        (_settings.widgetTemplate == 'custom' &&
+        (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
             _settings.customElements.any(
               (element) => MediaElementType.contains(element.type),
             )) ||
@@ -3565,7 +3629,7 @@ class _DashboardViewState extends State<DashboardView>
 
   void _syncConnectivityService() {
     final needsConnectivity =
-        (_settings.widgetTemplate == 'custom' &&
+        (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
             _settings.customElements.any(
               (element) =>
                   element.type == 'wifi_icon' ||
@@ -11340,6 +11404,46 @@ class _DashboardViewState extends State<DashboardView>
     });
   }
 
+  Future<void> _saveStarterWidgetDesign(
+    WidgetSettings updated,
+    String preset,
+  ) async {
+    final widgetId = CustomWidgetElement.starterWidgetIds[preset];
+    if (widgetId == null) {
+      throw StateError('Unknown starter widget preset "$preset".');
+    }
+
+    final activeIds = {..._settings.activeWidgetIds, widgetId}.toList();
+    final instanceSettings = updated.copyWith(
+      widgetTemplate: widgetId,
+      activeWidgetIds: activeIds,
+      exitOverlay: false,
+    );
+    await SettingsService(instanceId: widgetId).save(instanceSettings);
+
+    final dashboardSettings = _settings.copyWith(
+      activeWidgetIds: activeIds,
+      savedCustomWidgets: updated.savedCustomWidgets,
+    );
+    await _settingsService.saveSettings(dashboardSettings);
+    if (!mounted) return;
+
+    setState(() {
+      _settings = dashboardSettings;
+      _activeSavedWidgetId = updated.savedCustomWidgets.isNotEmpty
+          ? updated.savedCustomWidgets.first.id
+          : null;
+      _selectedCustomElementId = null;
+      _customStudioPreset = null;
+      _editingSavedWidget = null;
+      _editingCustomElementId = null;
+      _isCustomStudioOpen = false;
+      _editingWidget = true;
+    });
+    _tabCtrl.animateTo(0);
+    await _launchWidgetOverlay(widgetId);
+  }
+
   void _selectSavedCustomWidget(SavedCustomWidget saved) {
     setState(() {
       _activeSavedWidgetId = saved.id;
@@ -11474,6 +11578,31 @@ class _DashboardViewState extends State<DashboardView>
           });
         },
         onSave: (updated) {
+          final starterPreset = _customStudioPreset;
+          if (starterPreset != null) {
+            unawaited(
+              _saveStarterWidgetDesign(updated, starterPreset).catchError((
+                error,
+                stackTrace,
+              ) {
+                logError(
+                  'DashboardView',
+                  'Could not save starter widget design "$starterPreset".',
+                  error,
+                  stackTrace,
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not save widget: $error'),
+                      backgroundColor: const Color(0xFF1E293B),
+                    ),
+                  );
+                }
+              }),
+            );
+            return;
+          }
           _updateSettings(updated);
           setState(() {
             _activeSavedWidgetId =
@@ -24964,7 +25093,7 @@ class _DashboardViewState extends State<DashboardView>
                       label: 'Desktop Widgets',
                       icon: Icons.desktop_windows_rounded,
                       activeColor: const Color(0xFF38BDF8),
-                      count: 14,
+                      count: 19,
                     ),
                     const SizedBox(width: 6),
                     _buildWidgetSubTabChip(
@@ -25299,10 +25428,10 @@ class _DashboardViewState extends State<DashboardView>
             ? WindowsTaskbarService.instance.isCustomTaskbarActive
             : _activeRunningWidgetIds.contains(key);
         void activateWidget() {
-          if (preset != null) {
-            _openCustomWidgetStarter(preset);
-          } else if (isRunning) {
+          if (isRunning) {
             _closeWidgetOverlay(key);
+          } else if (preset != null) {
+            _launchStarterWidget(key, preset);
           } else {
             _launchWidgetOverlay(key);
           }
@@ -25451,19 +25580,13 @@ class _DashboardViewState extends State<DashboardView>
                         child: ElevatedButton.icon(
                           onPressed: activateWidget,
                           icon: Icon(
-                            preset != null
-                                ? Icons.tune_rounded
-                                : isRunning
+                            isRunning
                                 ? Icons.stop_circle_rounded
                                 : Icons.play_arrow_rounded,
                             size: 14,
                           ),
                           label: Text(
-                            preset != null
-                                ? 'Customize'
-                                : isRunning
-                                ? 'Turn OFF'
-                                : 'Turn ON',
+                            isRunning ? 'Turn OFF' : 'Turn ON',
                             style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.bold,
@@ -25488,7 +25611,7 @@ class _DashboardViewState extends State<DashboardView>
                         icon: const Icon(Icons.tune_rounded, size: 16),
                         color: Colors.white70,
                         onPressed: preset != null
-                            ? activateWidget
+                            ? () => _openCustomWidgetStarter(preset)
                             : () => _customizeWidget(key),
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.white.withValues(alpha: 0.05),
@@ -26200,6 +26323,16 @@ class _DashboardViewState extends State<DashboardView>
         return 'Mechanical Flip Clock';
       case 'station_weather':
         return 'Station Clock & Weather';
+      case 'starter_fluent_calendar':
+        return 'Fluent Calendar';
+      case 'starter_weather_report':
+        return 'Weather Briefing';
+      case 'starter_system_pulse':
+        return 'System Pulse';
+      case 'starter_media_player':
+        return 'Now Playing';
+      case 'starter_holo_telemetry':
+        return 'Holo Telemetry';
       case 'taskbar_dock':
         return 'Modular Taskbar Dock';
       case 'taskbar_media':

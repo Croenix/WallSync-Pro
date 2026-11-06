@@ -93,6 +93,11 @@ class DesktopWidget extends StatefulWidget {
     'arc_clock': DesktopWidgetLayout.arcClock,
     'flip_clock': DesktopWidgetLayout.flipClock,
     'station_weather': DesktopWidgetLayout.stationWeather,
+    'starter_fluent_calendar': DesktopWidgetLayout.custom,
+    'starter_weather_report': DesktopWidgetLayout.custom,
+    'starter_system_pulse': DesktopWidgetLayout.custom,
+    'starter_media_player': DesktopWidgetLayout.custom,
+    'starter_holo_telemetry': DesktopWidgetLayout.custom,
     'taskbar_dock': DesktopWidgetLayout.taskbarDock,
     'taskbar_media': DesktopWidgetLayout.taskbarMedia,
     'taskbar_system': DesktopWidgetLayout.taskbarSystem,
@@ -106,14 +111,14 @@ class DesktopWidget extends StatefulWidget {
       templateLayouts[templateId] ?? DesktopWidgetLayout.classic;
 
   static bool requiresConnectivity(WidgetSettings settings) {
-    if (settings.widgetTemplate == 'sleep_weather') {
-      return settings.showWifi || settings.showBluetooth;
-    }
-    if (settings.widgetTemplate == 'custom') {
+    if (WidgetSettings.isCustomLayoutTemplate(settings.widgetTemplate)) {
       return settings.customElements.any(
         (element) =>
             element.type == 'wifi_icon' || element.type == 'bluetooth_icon',
       );
+    }
+    if (settings.widgetTemplate == 'sleep_weather') {
+      return settings.showWifi || settings.showBluetooth;
     }
     return false;
   }
@@ -265,11 +270,12 @@ class _DesktopWidgetState extends State<DesktopWidget>
       case 'taskbar_dock':
       case 'taskbar_system':
         return true;
-      case 'custom':
-        return _settings.customElements.any(
-          (element) => element.type == 'cpu_bar' || element.type == 'ram_bar',
-        );
       default:
+        if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
+          return _settings.customElements.any(
+            (element) => element.type == 'cpu_bar' || element.type == 'ram_bar',
+          );
+        }
         return false;
     }
   }
@@ -284,18 +290,18 @@ class _DesktopWidgetState extends State<DesktopWidget>
         return _settings.taskbarShowWeather;
       case 'robik':
         return _settings.showWeather;
-      case 'custom':
-        return _settings.showWeather ||
-            _settings.customElements.any(
-              (element) => element.type.startsWith('weather_'),
-            );
       default:
+        if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
+          return _settings.customElements.any(
+            (element) => element.type.startsWith('weather_'),
+          );
+        }
         return false;
     }
   }
 
   bool _settingsNeedSystemMetrics(WidgetSettings settings) =>
-      (settings.widgetTemplate == 'custom' &&
+      (WidgetSettings.isCustomLayoutTemplate(settings.widgetTemplate) &&
           settings.customElements.any(
             (element) =>
                 element.type == 'space_bar' || element.type == 'battery_bar',
@@ -1030,11 +1036,10 @@ class _DesktopWidgetState extends State<DesktopWidget>
         _settings.widgetTemplate == 'taskbar_media') {
       return true;
     }
-    return _settings.widgetTemplate == 'custom' &&
-        (_settings.showMediaControl ||
-            _settings.customElements.any(
-              (element) => MediaElementType.contains(element.type),
-            ));
+    return WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+        _settings.customElements.any(
+          (element) => MediaElementType.contains(element.type),
+        );
   }
 
   @override
@@ -1212,11 +1217,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
     final baseWidth =
-        _settings.widgetTemplate == 'custom' && _settings.width > 0
+        WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+            _settings.width > 0
         ? _settings.width
         : defaults['width']!;
     final baseHeight =
-        _settings.widgetTemplate == 'custom' && _settings.height > 0
+        WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+            _settings.height > 0
         ? _settings.height
         : defaults['height']!;
 
@@ -7818,11 +7825,13 @@ class _DesktopWidgetState extends State<DesktopWidget>
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
     final baseWidth =
-        _settings.widgetTemplate == 'custom' && _settings.width > 0
+        WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+            _settings.width > 0
         ? _settings.width
         : defaults['width']!;
     final baseHeight =
-        _settings.widgetTemplate == 'custom' && _settings.height > 0
+        WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+            _settings.height > 0
         ? _settings.height
         : defaults['height']!;
 

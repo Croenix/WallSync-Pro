@@ -561,6 +561,32 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   }
 
   void _loadPreset(String name) {
+    final starterPreset = CustomWidgetElement.starterPresetLayout(name);
+    if (starterPreset != null) {
+      setState(() {
+        _widgetName = switch (name) {
+          'fluent_calendar' => 'Fluent Calendar',
+          'weather_report' => 'Weather Briefing',
+          'system_pulse' => 'System Pulse',
+          'media_player' => 'Now Playing',
+          'holo_telemetry' => 'Holo Telemetry',
+          _ => 'Custom Widget',
+        };
+        _elements = starterPreset.elements
+            .map((element) => element.copyWith())
+            .toList();
+        _canvasWidth = starterPreset.width;
+        _canvasHeight = starterPreset.height;
+        _selectedElementId = null;
+        _hasUnsavedChanges = true;
+      });
+      _syncConnectivityService();
+      _syncSystemMetrics();
+      _syncWeather();
+      _syncMediaSessionService();
+      return;
+    }
+
     setState(() {
       if (name == 'empty_canvas') {
         _widgetName = 'New Custom Widget';

@@ -345,6 +345,389 @@ class RecentWallpaperItem {
 
 /// Represents an individual drag-and-drop element inside a Custom Widget layout.
 class CustomWidgetElement {
+  static const Map<String, String> starterWidgetIds = {
+    'fluent_calendar': 'starter_fluent_calendar',
+    'weather_report': 'starter_weather_report',
+    'system_pulse': 'starter_system_pulse',
+    'media_player': 'starter_media_player',
+    'holo_telemetry': 'starter_holo_telemetry',
+  };
+
+  static ({List<CustomWidgetElement> elements, double width, double height})?
+  starterPresetLayout(String preset) {
+    switch (preset) {
+      case 'fluent_calendar':
+        return (
+          elements: [
+            CustomWidgetElement(
+              id: 'fluent_calendar',
+              type: 'fluent_calendar',
+              x: 20,
+              y: 20,
+              width: 300,
+              height: 260,
+              fontFamily: 'Segoe UI',
+              color: 0xFF60CDFF,
+              activeColor: 0xFF0078D4,
+            ),
+          ],
+          width: 340,
+          height: 300,
+        );
+      case 'weather_report':
+        return (
+          elements: [
+            CustomWidgetElement(
+              id: 'weather_frame',
+              type: 'neon_box',
+              x: 0,
+              y: 0,
+              width: 400,
+              height: 270,
+              color: 0xFF38BDF8,
+            ),
+            CustomWidgetElement(
+              id: 'weather_date',
+              type: 'full_date',
+              x: 22,
+              y: 18,
+              width: 260,
+              height: 22,
+              fontSize: 13,
+              color: 0xFFB8D7E8,
+            ),
+            CustomWidgetElement(
+              id: 'weather_icon',
+              type: 'weather_icon',
+              x: 28,
+              y: 66,
+              width: 56,
+              height: 56,
+              fontSize: 48,
+              color: 0xFF60CDFF,
+            ),
+            CustomWidgetElement(
+              id: 'weather_temp',
+              type: 'weather_temp',
+              x: 100,
+              y: 62,
+              width: 220,
+              height: 58,
+              fontSize: 42,
+              isBold: true,
+              color: 0xFFFFFFFF,
+            ),
+            CustomWidgetElement(
+              id: 'weather_status',
+              type: 'weather_status',
+              x: 102,
+              y: 122,
+              width: 240,
+              height: 24,
+              fontSize: 13,
+              color: 0xFFB8D7E8,
+            ),
+            CustomWidgetElement(
+              id: 'weather_location',
+              type: 'weather_location',
+              x: 22,
+              y: 198,
+              width: 330,
+              height: 20,
+              fontSize: 11,
+              color: 0xFF91A4B3,
+            ),
+            CustomWidgetElement(
+              id: 'weather_feels_like',
+              type: 'weather_feels_like',
+              x: 22,
+              y: 152,
+              width: 160,
+              height: 20,
+              fontSize: 11,
+              color: 0xFFB8D7E8,
+            ),
+            CustomWidgetElement(
+              id: 'weather_humidity',
+              type: 'weather_humidity',
+              x: 190,
+              y: 152,
+              width: 160,
+              height: 20,
+              fontSize: 11,
+              color: 0xFFB8D7E8,
+            ),
+            CustomWidgetElement(
+              id: 'weather_forecast',
+              type: 'weather_forecast',
+              x: 22,
+              y: 222,
+              width: 350,
+              height: 42,
+              fontSize: 10,
+              color: 0xFF91A4B3,
+            ),
+          ],
+          width: 400,
+          height: 270,
+        );
+      case 'system_pulse':
+        return (
+          elements: [
+            CustomWidgetElement(
+              id: 'system_frame',
+              type: 'neon_box',
+              x: 0,
+              y: 0,
+              width: 460,
+              height: 250,
+              color: 0xFF00D6B2,
+            ),
+            CustomWidgetElement(
+              id: 'system_heading',
+              type: 'custom_text',
+              x: 22,
+              y: 18,
+              width: 300,
+              height: 22,
+              text: 'SYSTEM PULSE',
+              fontSize: 14,
+              isBold: true,
+              letterSpacing: 1.2,
+              color: 0xFF9FFFE7,
+            ),
+            CustomWidgetElement(
+              id: 'system_cpu',
+              type: 'cpu_bar',
+              x: 22,
+              y: 58,
+              width: 196,
+              height: 34,
+              fontSize: 11,
+              color: 0xFF00D6B2,
+            ),
+            CustomWidgetElement(
+              id: 'system_ram',
+              type: 'ram_bar',
+              x: 240,
+              y: 58,
+              width: 196,
+              height: 34,
+              fontSize: 11,
+              color: 0xFF7C8CFF,
+            ),
+            CustomWidgetElement(
+              id: 'system_disk',
+              type: 'space_bar',
+              x: 22,
+              y: 112,
+              width: 196,
+              height: 34,
+              fontSize: 11,
+              color: 0xFFFFB454,
+            ),
+            CustomWidgetElement(
+              id: 'system_battery',
+              type: 'battery_bar',
+              x: 240,
+              y: 112,
+              width: 196,
+              height: 34,
+              fontSize: 11,
+              color: 0xFF60CDFF,
+            ),
+            CustomWidgetElement(
+              id: 'system_clock',
+              type: 'full_time',
+              x: 22,
+              y: 202,
+              width: 210,
+              height: 24,
+              fontSize: 15,
+              color: 0xFFE7F7F2,
+            ),
+            CustomWidgetElement(
+              id: 'system_wifi',
+              type: 'wifi_icon',
+              x: 392,
+              y: 195,
+              width: 24,
+              height: 24,
+              fontSize: 18,
+              color: 0xFF60CDFF,
+            ),
+          ],
+          width: 460,
+          height: 250,
+        );
+      case 'media_player':
+        return (
+          elements: [
+            CustomWidgetElement(
+              id: 'media_frame',
+              type: 'neon_box',
+              x: 0,
+              y: 0,
+              width: 460,
+              height: 210,
+              color: 0xFFD946EF,
+            ),
+            CustomWidgetElement(
+              id: 'media_art',
+              type: 'media_artwork',
+              x: 18,
+              y: 18,
+              width: 88,
+              height: 88,
+              color: 0xFFD946EF,
+            ),
+            CustomWidgetElement(
+              id: 'media_title',
+              type: 'media_title',
+              x: 122,
+              y: 24,
+              width: 315,
+              height: 26,
+              fontSize: 17,
+              isBold: true,
+              color: 0xFFFFFFFF,
+            ),
+            CustomWidgetElement(
+              id: 'media_artist',
+              type: 'media_artist',
+              x: 122,
+              y: 56,
+              width: 315,
+              height: 22,
+              fontSize: 12,
+              color: 0xFFC9BDD0,
+            ),
+            CustomWidgetElement(
+              id: 'media_progress',
+              type: 'media_progress',
+              x: 122,
+              y: 88,
+              width: 310,
+              height: 4,
+              color: 0xFFE879F9,
+            ),
+            CustomWidgetElement(
+              id: 'media_controls',
+              type: 'media_controls',
+              x: 120,
+              y: 116,
+              width: 200,
+              height: 36,
+              fontSize: 20,
+              color: 0xFFFFFFFF,
+            ),
+            CustomWidgetElement(
+              id: 'media_animation',
+              type: 'media_animation',
+              x: 374,
+              y: 116,
+              width: 30,
+              height: 24,
+              color: 0xFFE879F9,
+            ),
+          ],
+          width: 460,
+          height: 210,
+        );
+      case 'holo_telemetry':
+        return (
+          elements: [
+            CustomWidgetElement(
+              id: 'holo_panel',
+              type: 'holo_panel',
+              x: 10,
+              y: 10,
+              width: 450,
+              height: 250,
+              color: 0xFF38BDF8,
+            ),
+            CustomWidgetElement(
+              id: 'holo_heading',
+              type: 'custom_text',
+              x: 28,
+              y: 24,
+              width: 280,
+              height: 24,
+              text: 'HOLO TELEMETRY',
+              fontSize: 14,
+              isBold: true,
+              letterSpacing: 1.4,
+              color: 0xFF9BE7FF,
+            ),
+            CustomWidgetElement(
+              id: 'holo_time',
+              type: 'full_time',
+              x: 28,
+              y: 64,
+              width: 240,
+              height: 42,
+              fontSize: 28,
+              isBold: true,
+              color: 0xFFFFFFFF,
+            ),
+            CustomWidgetElement(
+              id: 'holo_cpu',
+              type: 'cpu_bar',
+              x: 28,
+              y: 128,
+              width: 190,
+              height: 34,
+              fontSize: 11,
+              color: 0xFF38BDF8,
+            ),
+            CustomWidgetElement(
+              id: 'holo_ram',
+              type: 'ram_bar',
+              x: 238,
+              y: 128,
+              width: 190,
+              height: 34,
+              fontSize: 11,
+              color: 0xFFA78BFA,
+            ),
+            CustomWidgetElement(
+              id: 'holo_wifi',
+              type: 'wifi_icon',
+              x: 28,
+              y: 198,
+              width: 28,
+              height: 28,
+              fontSize: 20,
+              color: 0xFF38BDF8,
+            ),
+            CustomWidgetElement(
+              id: 'holo_bluetooth',
+              type: 'bluetooth_icon',
+              x: 70,
+              y: 198,
+              width: 28,
+              height: 28,
+              fontSize: 20,
+              color: 0xFFA78BFA,
+            ),
+            CustomWidgetElement(
+              id: 'holo_audio',
+              type: 'media_animation',
+              x: 398,
+              y: 198,
+              width: 30,
+              height: 24,
+              color: 0xFF38BDF8,
+            ),
+          ],
+          width: 470,
+          height: 270,
+        );
+      default:
+        return null;
+    }
+  }
+
   final String id;
 
   /// Element type: 'hours', 'minutes', 'seconds', 'ampm', 'time_colon', 'full_time',
@@ -811,6 +1194,10 @@ class SavedCustomWidget {
 }
 
 class WidgetSettings {
+  static bool isCustomLayoutTemplate(String templateId) =>
+      templateId == 'custom' ||
+      CustomWidgetElement.starterWidgetIds.values.contains(templateId);
+
   String
   backgroundType; // 'glass_dark', 'glass_light', 'gradient', 'curated', 'custom', 'animated'
   int curatedIndex;
@@ -966,6 +1353,31 @@ class WidgetSettings {
     'arc_clock': {'width': 280.0, 'height': 300.0, 'sizeFactor': 1.0},
     'flip_clock': {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0},
     'station_weather': {'width': 420.0, 'height': 180.0, 'sizeFactor': 1.0},
+    'starter_fluent_calendar': {
+      'width': 340.0,
+      'height': 300.0,
+      'sizeFactor': 1.0,
+    },
+    'starter_weather_report': {
+      'width': 400.0,
+      'height': 270.0,
+      'sizeFactor': 1.0,
+    },
+    'starter_system_pulse': {
+      'width': 460.0,
+      'height': 250.0,
+      'sizeFactor': 1.0,
+    },
+    'starter_media_player': {
+      'width': 460.0,
+      'height': 210.0,
+      'sizeFactor': 1.0,
+    },
+    'starter_holo_telemetry': {
+      'width': 470.0,
+      'height': 270.0,
+      'sizeFactor': 1.0,
+    },
     'taskbar_dock': {'width': 640.0, 'height': 48.0, 'sizeFactor': 1.0},
     'taskbar_media': {'width': 340.0, 'height': 44.0, 'sizeFactor': 1.0},
     'taskbar_system': {'width': 260.0, 'height': 44.0, 'sizeFactor': 1.0},
