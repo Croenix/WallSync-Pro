@@ -36,7 +36,6 @@ import '../services/steam_monitor_service.dart';
 import 'animated_backgrounds.dart';
 import 'color_picker_widget.dart';
 import 'gradient_picker_widget.dart';
-import 'splash_screen.dart';
 import 'device_optimization_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -4334,9 +4333,11 @@ class _DashboardViewState extends State<DashboardView>
 
           // 3. Grid painter overlay (subtle dot grid, cached in RepaintBoundary)
           if (_showDashboardDecorations)
-            const Positioned.fill(
+            Positioned.fill(
               child: RepaintBoundary(
-                child: CustomPaint(painter: GridPainter(opacity: 0.03)),
+                child: CustomPaint(
+                  painter: _DashboardGridPainter(opacity: 0.03),
+                ),
               ),
             ),
 
@@ -32567,6 +32568,27 @@ class _DashboardAmbientPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashboardAmbientPainter oldDelegate) => false;
+}
+
+class _DashboardGridPainter extends CustomPainter {
+  const _DashboardGridPainter({required this.opacity});
+
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFB7C7E8).withValues(alpha: opacity);
+    for (double y = 12; y < size.height; y += 24) {
+      for (double x = 12; x < size.width; x += 24) {
+        canvas.drawCircle(Offset(x, y), 0.7, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashboardGridPainter oldDelegate) =>
+      opacity != oldDelegate.opacity;
 }
 
 class _ScanlinePainter extends CustomPainter {

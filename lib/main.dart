@@ -495,7 +495,7 @@ void main(List<String> args) async {
   if (isOverlayMode) {
     logInfo(
       'OverlayStartup',
-      'Startup trigger received; source=$startupTrigger, pid=$pid.',
+      'Startup trigger re+ceived; source=$startupTrigger, pid=$pid.',
     );
     logPerf(
       'OverlayStartup',
