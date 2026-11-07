@@ -258,6 +258,7 @@ class _DashboardViewState extends State<DashboardView>
 
   Widget _buildCustomElementIdentificationDeck() {
     final elements = _settings.customElements;
+    final canEditLayoutInStudio = _settings.widgetTemplate == 'custom';
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -270,7 +271,7 @@ class _DashboardViewState extends State<DashboardView>
                   _sectionLabel('WIDGET OBJECTS & LAYERS'),
                   const SizedBox(height: 3),
                   Text(
-                    'Every element in this custom widget is listed below.',
+                    'Every element in this widget is listed below.',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.white.withValues(alpha: 0.45),
@@ -279,11 +280,12 @@ class _DashboardViewState extends State<DashboardView>
                 ],
               ),
             ),
-            OutlinedButton.icon(
-              onPressed: () => _openCustomElementEditor(null),
-              icon: const Icon(Icons.dashboard_customize_rounded, size: 14),
-              label: const Text('Edit layout'),
-            ),
+            if (canEditLayoutInStudio)
+              OutlinedButton.icon(
+                onPressed: () => _openCustomElementEditor(null),
+                icon: const Icon(Icons.dashboard_customize_rounded, size: 14),
+                label: const Text('Edit layout'),
+              ),
           ],
         ),
         const SizedBox(height: 16),
@@ -344,11 +346,12 @@ class _DashboardViewState extends State<DashboardView>
                     style: TextStyle(color: Colors.white70),
                   ),
                   const SizedBox(height: 10),
-                  FilledButton.icon(
-                    onPressed: () => _openCustomElementEditor(null),
-                    icon: const Icon(Icons.add_rounded, size: 16),
-                    label: const Text('Add elements'),
-                  ),
+                  if (canEditLayoutInStudio)
+                    FilledButton.icon(
+                      onPressed: () => _openCustomElementEditor(null),
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text('Add elements'),
+                    ),
                 ],
               ),
             ),
@@ -607,26 +610,28 @@ class _DashboardViewState extends State<DashboardView>
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: 'Duplicate element',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _duplicateCustomWidgetElement(element.id),
-                icon: const Icon(
-                  Icons.copy_rounded,
-                  size: 15,
-                  color: Colors.white70,
+              if (_settings.widgetTemplate == 'custom') ...[
+                IconButton(
+                  tooltip: 'Duplicate element',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _duplicateCustomWidgetElement(element.id),
+                  icon: const Icon(
+                    Icons.copy_rounded,
+                    size: 15,
+                    color: Colors.white70,
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Delete element',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _deleteCustomWidgetElement(element.id),
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  size: 16,
-                  color: Colors.redAccent,
+                IconButton(
+                  tooltip: 'Delete element',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _deleteCustomWidgetElement(element.id),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 16,
+                    color: Colors.redAccent,
+                  ),
                 ),
-              ),
+              ],
               IconButton(
                 tooltip: 'Close customization',
                 visualDensity: VisualDensity.compact,
@@ -638,16 +643,17 @@ class _DashboardViewState extends State<DashboardView>
                   color: Colors.white54,
                 ),
               ),
-              IconButton(
-                tooltip: 'Edit layout in studio',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _openCustomElementEditor(element.id),
-                icon: const Icon(
-                  Icons.open_in_full_rounded,
-                  size: 15,
-                  color: Colors.white54,
+              if (_settings.widgetTemplate == 'custom')
+                IconButton(
+                  tooltip: 'Edit layout in studio',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _openCustomElementEditor(element.id),
+                  icon: const Icon(
+                    Icons.open_in_full_rounded,
+                    size: 15,
+                    color: Colors.white54,
+                  ),
                 ),
-              ),
             ],
           ),
           if (element.type == 'custom_text' || element.type == 'time_colon')
@@ -3437,6 +3443,72 @@ class _DashboardViewState extends State<DashboardView>
     });
   }
 
+  Future<void> _customizeStarterWidget(String widgetId, String preset) async {
+    final layout = CustomWidgetElement.starterPresetLayout(preset);
+    if (layout == null ||
+        CustomWidgetElement.starterWidgetIds[preset] != widgetId) {
+      logError(
+        'DashboardView',
+        'Starter widget "$widgetId" has no valid preset configuration "$preset".',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This widget is not configured yet.')),
+        );
+      }
+      return;
+    }
+
+    final defaultSettings = _settings.copyWith(
+      widgetTemplate: widgetId,
+      width: layout.width,
+      height: layout.height,
+      sizeFactor: 1,
+      customElements: layout.elements
+          .map((element) => element.copyWith())
+          .toList(),
+    );
+    setState(() {
+      _settings = defaultSettings;
+      _activeTemplate = widgetId;
+      _editingWidget = true;
+      _selectedElement = null;
+      _selectedCustomElementId = null;
+      _activeSavedWidgetId = null;
+    });
+
+    try {
+      final saved = await SettingsService(instanceId: widgetId).load();
+      if (saved.widgetTemplate == widgetId) {
+        if (!mounted ||
+            !_editingWidget ||
+            _settings.widgetTemplate != widgetId ||
+            jsonEncode(_settings.toJson()) !=
+                jsonEncode(defaultSettings.toJson())) {
+          return;
+        }
+        setState(() => _settings = saved);
+      } else {
+        await SettingsService(instanceId: widgetId).save(defaultSettings);
+      }
+    } catch (error, stackTrace) {
+      logError(
+        'DashboardView',
+        'Could not load starter widget "$widgetId" for customization.',
+        error,
+        stackTrace,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open widget settings: $error'),
+            backgroundColor: const Color(0xFF1E293B),
+          ),
+        );
+      }
+    }
+  }
+
   void _startOverlayRecoveryStabilityTimer() {
     if (_overlayRecoveryStabilityTimer != null) return;
     _overlayRecoveryStabilityTimer = Timer(const Duration(minutes: 5), () {
@@ -3545,7 +3617,7 @@ class _DashboardViewState extends State<DashboardView>
     final templateChanged = s.widgetTemplate != _settings.widgetTemplate;
     final alwaysOnTopChanged = s.alwaysOnTop != _settings.alwaysOnTop;
     final customElementsChanged =
-        s.widgetTemplate == 'custom' &&
+        WidgetSettings.isCustomLayoutTemplate(s.widgetTemplate) &&
         s.customElements != _settings.customElements;
     final shouldSaveImmediately = templateChanged || customElementsChanged;
 
@@ -3579,6 +3651,13 @@ class _DashboardViewState extends State<DashboardView>
   Future<void> _saveSettingsSafely(WidgetSettings settings) async {
     try {
       await _settingsService.saveSettings(settings);
+      if (CustomWidgetElement.starterWidgetIds.values.contains(
+        settings.widgetTemplate,
+      )) {
+        await SettingsService(
+          instanceId: settings.widgetTemplate,
+        ).save(settings);
+      }
       if (WindowsTaskbarService.instance.isCustomTaskbarActive ||
           _activeRunningWidgetIds.contains('taskbar_dock') ||
           settings.widgetTemplate.startsWith('taskbar_')) {
@@ -11468,7 +11547,7 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   void _resetCurrentWidgetEdits() {
-    if (_settings.widgetTemplate == 'custom') {
+    if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
       SavedCustomWidget? saved;
       for (final item in _settings.savedCustomWidgets) {
         if (item.id == _activeSavedWidgetId) {
@@ -11961,7 +12040,7 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Widget _buildSelectElementSection() {
-    if (_settings.widgetTemplate == 'custom') {
+    if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
       final elements = _settings.customElements;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -12717,6 +12796,11 @@ class _DashboardViewState extends State<DashboardView>
               : const SystemMetricsSnapshot();
           switch (_settings.widgetTemplate) {
             case 'custom':
+            case 'starter_fluent_calendar':
+            case 'starter_weather_report':
+            case 'starter_system_pulse':
+            case 'starter_media_player':
+            case 'starter_holo_telemetry':
               return FittedBox(
                 fit: BoxFit.scaleDown,
                 child: SizedBox(
@@ -14878,7 +14962,7 @@ class _DashboardViewState extends State<DashboardView>
   // ── ELEMENT EDITOR ───────────────────────────────────────────────────────
 
   Widget _buildElementEditor() {
-    if (_settings.widgetTemplate == 'custom') {
+    if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
       _selectedElement = null;
       return _buildElementIdentificationDeck();
     }
@@ -15885,7 +15969,7 @@ class _DashboardViewState extends State<DashboardView>
   // ── 1. OBJECT IDENTIFICATION DECK (Overview) ─────────────────────────────
 
   Widget _buildElementIdentificationDeck() {
-    if (_settings.widgetTemplate == 'custom') {
+    if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
       return _buildCustomElementIdentificationDeck();
     }
 
@@ -22248,6 +22332,11 @@ class _DashboardViewState extends State<DashboardView>
                 Widget miniClockPreview() {
                   switch (key) {
                     case 'custom':
+                    case 'starter_fluent_calendar':
+                    case 'starter_weather_report':
+                    case 'starter_system_pulse':
+                    case 'starter_media_player':
+                    case 'starter_holo_telemetry':
                       return Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -25611,7 +25700,7 @@ class _DashboardViewState extends State<DashboardView>
                         icon: const Icon(Icons.tune_rounded, size: 16),
                         color: Colors.white70,
                         onPressed: preset != null
-                            ? () => _openCustomWidgetStarter(preset)
+                            ? () => _customizeStarterWidget(key, preset)
                             : () => _customizeWidget(key),
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.white.withValues(alpha: 0.05),
@@ -25935,52 +26024,6 @@ class _DashboardViewState extends State<DashboardView>
   // ── Custom Widgets Sub-View ─────────────────────────────────────────────────
   Widget _buildCustomWidgetsSubView() {
     final customList = _settings.savedCustomWidgets;
-    const starterWidgets =
-        <
-          ({
-            String preset,
-            String title,
-            String subtitle,
-            IconData icon,
-            Color color,
-          })
-        >[
-          (
-            preset: 'fluent_calendar',
-            title: 'Fluent Calendar',
-            subtitle: 'Animated month view',
-            icon: Icons.calendar_month_rounded,
-            color: Color(0xFF60CDFF),
-          ),
-          (
-            preset: 'weather_report',
-            title: 'Weather Briefing',
-            subtitle: 'Live conditions and location',
-            icon: Icons.cloud_rounded,
-            color: Color(0xFF38BDF8),
-          ),
-          (
-            preset: 'system_pulse',
-            title: 'System Pulse',
-            subtitle: 'CPU, RAM, disk and battery',
-            icon: Icons.monitor_heart_rounded,
-            color: Color(0xFF00D6B2),
-          ),
-          (
-            preset: 'media_player',
-            title: 'Now Playing',
-            subtitle: 'Windows media controls',
-            icon: Icons.graphic_eq_rounded,
-            color: Color(0xFFE879F9),
-          ),
-          (
-            preset: 'holo_telemetry',
-            title: 'Holo Telemetry',
-            subtitle: 'Animated system HUD',
-            icon: Icons.view_in_ar_rounded,
-            color: Color(0xFFA78BFA),
-          ),
-        ];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -26065,97 +26108,6 @@ class _DashboardViewState extends State<DashboardView>
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-
-          const Text(
-            'STARTER WIDGETS',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: starterWidgets.map((starter) {
-              return SizedBox(
-                width: 220,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    key: ValueKey('widget_starter_${starter.preset}'),
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _openCustomWidgetStarter(starter.preset),
-                    child: Container(
-                      height: 78,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.035),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: starter.color.withValues(alpha: 0.28),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: starter.color.withValues(alpha: 0.13),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              starter.icon,
-                              color: starter.color,
-                              size: 21,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  starter.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  starter.subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.48),
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.white38,
-                            size: 18,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
           ),
           const SizedBox(height: 24),
 
@@ -26246,6 +26198,18 @@ class _DashboardViewState extends State<DashboardView>
                                     color: Colors.white,
                                   ),
                                 ),
+                              ),
+                              IconButton(
+                                key: ValueKey('delete_custom_widget_${cw.id}'),
+                                tooltip: 'Delete custom widget',
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 18,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () =>
+                                    _showDeleteSavedWidgetDialog(cw),
                               ),
                             ],
                           ),

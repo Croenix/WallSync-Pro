@@ -83,7 +83,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 901));
   });
 
-  testWidgets('custom widget starter opens its preloaded Studio design', (
+  testWidgets('default widget customization opens the regular editor', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -99,18 +99,115 @@ void main() {
       ),
     );
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(seconds: 2));
 
-    await tester.tap(find.text('Custom Studio').first);
-    await tester.pump(const Duration(milliseconds: 220));
-    expect(find.text('STARTER WIDGETS'), findsOneWidget);
-
-    await tester.tap(
-      find.byKey(const ValueKey('widget_starter_fluent_calendar')),
+    final catalog = find.byKey(const ValueKey('desktop_widget_library_grid'));
+    final card = find.byKey(
+      const ValueKey('desktop_widget_card_starter_fluent_calendar'),
     );
+    await tester.scrollUntilVisible(
+      card,
+      300,
+      scrollable: find.descendant(
+        of: catalog,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    final customizeButton = find.descendant(
+      of: card,
+      matching: find.byTooltip('Customize Layout & 3D'),
+    );
+    await tester.ensureVisible(customizeButton);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(customizeButton);
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.text('Fluent Calendar'), findsWidgets);
-    expect(find.text('November 2026'), findsOneWidget);
+    expect(find.text('Back to Templates'), findsOneWidget);
+    expect(find.text('WIDGET OBJECTS & LAYERS'), findsOneWidget);
+    expect(find.text('Edit layout'), findsNothing);
+    expect(find.text('Launch New Custom'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 901));
+  });
+
+  testWidgets('Custom Studio is reserved for custom widget creation', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      DashboardApp(
+        settings: WidgetSettings(),
+        startMinimized: true,
+        initialTab: 'widgets',
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Custom Studio').first);
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(find.text('Launch New Custom'), findsOneWidget);
+    expect(find.text('STARTER WIDGETS'), findsNothing);
+    expect(find.text('Fluent Calendar'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 901));
+  });
+
+  testWidgets('saved custom widgets can be canceled or deleted', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const savedWidgetId = 'saved-test-widget';
+    await tester.pumpWidget(
+      DashboardApp(
+        settings: WidgetSettings(
+          savedCustomWidgets: [
+            SavedCustomWidget(
+              id: savedWidgetId,
+              name: 'Saved Test Widget',
+              elements: [CustomWidgetElement(id: 'test-time', type: 'hours')],
+            ),
+          ],
+        ),
+        startMinimized: true,
+        initialTab: 'widgets',
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Custom Studio').first);
+    await tester.pump(const Duration(milliseconds: 220));
+
+    final deleteButton = find.byKey(
+      const ValueKey('delete_custom_widget_saved-test-widget'),
+    );
+    await tester.ensureVisible(deleteButton);
+    await tester.pump();
+    expect(deleteButton, findsOneWidget);
+
+    await tester.tap(deleteButton);
+    await tester.pump();
+    expect(find.text('Delete Custom Widget?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(deleteButton, findsOneWidget);
+
+    await tester.tap(deleteButton);
+    await tester.pump();
+    await tester.tap(find.text('Delete'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(deleteButton, findsNothing);
+    expect(find.text('No Custom Widgets Yet'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
