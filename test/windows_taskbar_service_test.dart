@@ -519,7 +519,7 @@ void main() {
       expect(dockSettings.taskbarBgColor, 0xEE101015);
       expect(dockSettings.taskbarShowCpu, false);
       expect(dockSettings.taskbarShowWeather, true);
-      expect(dockSettings.widgetTemplate, 'taskbar_dock');
+      expect(dockSettings.widgetTemplate, 'classic');
       expect(dockSettings.taskbarSettings.customTaskbarEnabled, false);
       expect(dockSettings.taskbarSettings.nativeTaskbarHideEnabled, false);
     });

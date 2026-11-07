@@ -8,6 +8,7 @@ import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
 import '../services/system_optimizer_service.dart';
 import '../services/weather_service.dart';
+import '../services/widget_function_library.dart';
 import 'custom_widget_renderer.dart';
 
 /// Full-screen Two-Section Custom Widget Studio / Builder.
@@ -104,6 +105,39 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
     Color(0xFFF43F5E), // Rose Red
     Color(0xFF94A3B8), // Muted Slate
     Color(0xFF1E293B), // Dark Slate
+  ];
+
+  String _inspectorTab = 'typography';
+
+  static const List<IconData> _commonIcons = [
+    Icons.access_time_rounded,
+    Icons.schedule_rounded,
+    Icons.calendar_today_rounded,
+    Icons.wb_sunny_rounded,
+    Icons.cloud_rounded,
+    Icons.thunderstorm_rounded,
+    Icons.thermostat_rounded,
+    Icons.air_rounded,
+    Icons.water_drop_rounded,
+    Icons.memory_rounded,
+    Icons.storage_rounded,
+    Icons.battery_charging_full_rounded,
+    Icons.wifi_rounded,
+    Icons.bluetooth_rounded,
+    Icons.music_note_rounded,
+    Icons.play_arrow_rounded,
+    Icons.pause_rounded,
+    Icons.album_rounded,
+    Icons.star_rounded,
+    Icons.favorite_rounded,
+    Icons.bolt_rounded,
+    Icons.speed_rounded,
+    Icons.desktop_windows_rounded,
+    Icons.tune_rounded,
+    Icons.palette_rounded,
+    Icons.auto_awesome_rounded,
+    Icons.shield_rounded,
+    Icons.notifications_rounded,
   ];
 
   @override
@@ -526,6 +560,68 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
     _syncConnectivityService();
     _syncSystemMetrics();
     _syncWeather();
+  }
+
+  void _addLiveFunctionElement(
+    LiveFunctionDefinition func, [
+    Offset? dropOffset,
+  ]) {
+    final newId = 'elem_${DateTime.now().microsecondsSinceEpoch}';
+    final isImage = func.targetCategory == CustomWidgetElementCategory.image;
+    final elementWidth = isImage ? 80.0 : 160.0;
+    final elementHeight = isImage ? 80.0 : 36.0;
+    final maxX = (_canvasWidth - elementWidth).clamp(0.0, _canvasWidth);
+    final maxY = (_canvasHeight - elementHeight).clamp(0.0, _canvasHeight);
+    final targetX = dropOffset != null
+        ? dropOffset.dx.clamp(0.0, maxX)
+        : maxX / 2;
+    final targetY = dropOffset != null
+        ? dropOffset.dy.clamp(0.0, maxY)
+        : maxY / 2;
+
+    final CustomWidgetElement newElement;
+    if (isImage) {
+      newElement = CustomWidgetElement(
+        id: newId,
+        type: 'custom_image',
+        x: targetX,
+        y: targetY,
+        width: elementWidth,
+        height: elementHeight,
+        dataBinding: func.id,
+        cornerRadius: 12.0,
+      );
+    } else {
+      newElement = CustomWidgetElement(
+        id: newId,
+        type: 'custom_text',
+        x: targetX,
+        y: targetY,
+        width: elementWidth,
+        height: elementHeight,
+        text: func.sampleValue,
+        fontSize: 18.0,
+        dataBinding: func.id,
+      );
+    }
+
+    setState(() {
+      _elements.add(newElement);
+      _selectedElementId = newId;
+      _hasUnsavedChanges = true;
+    });
+    _syncMediaSessionService();
+    _syncConnectivityService();
+    _syncSystemMetrics();
+    _syncWeather();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('⚡ Added ${func.name} to canvas'),
+        backgroundColor: const Color(0xFF1E293B),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _deleteElement(String id) {
@@ -1531,17 +1627,24 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.all(32.0),
-                  child: DragTarget<CustomWidgetElement>(
+                  child: DragTarget<Object>(
                     onAcceptWithDetails: (details) {
                       final box = context.findRenderObject() as RenderBox?;
-                      if (box != null) {
-                        _addElement(details.data, details.offset);
-                      } else {
-                        _addElement(details.data);
+                      final offset = box != null ? details.offset : null;
+                      if (details.data is CustomWidgetElement) {
+                        _addElement(details.data as CustomWidgetElement, offset);
+                      } else if (details.data is LiveFunctionDefinition) {
+                        _addLiveFunctionElement(
+                          details.data as LiveFunctionDefinition,
+                          offset,
+                        );
                       }
                     },
                     builder: (context, candidateData, rejectedData) {
                       final isHovered = candidateData.isNotEmpty;
+                      final isLiveFuncDrop = candidateData.any(
+                        (d) => d is LiveFunctionDefinition,
+                      );
                       return AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         width: _canvasWidth,
@@ -1555,16 +1658,22 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: isHovered
-                                ? const Color(0xFF43E97B)
+                                ? (isLiveFuncDrop
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF43E97B))
                                 : Colors.white.withValues(alpha: 0.15),
                             width: isHovered ? 2.0 : 1.0,
                           ),
                           boxShadow: [
                             BoxShadow(
                               color: isHovered
-                                  ? const Color(
-                                      0xFF43E97B,
-                                    ).withValues(alpha: 0.25)
+                                  ? (isLiveFuncDrop
+                                      ? const Color(0xFF10B981).withValues(
+                                          alpha: 0.35,
+                                        )
+                                      : const Color(0xFF43E97B).withValues(
+                                          alpha: 0.25,
+                                        ))
                                   : Colors.black.withValues(alpha: 0.5),
                               blurRadius: isHovered ? 24 : 16,
                               spreadRadius: isHovered ? 2 : 0,
@@ -1641,6 +1750,35 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                                 },
                                 onDeleteElement: _deleteElement,
                                 onDuplicateElement: _duplicateElement,
+                                onBindFunction: (elementId, functionId) {
+                                  final func = LiveWidgetFunctionLibrary.getById(
+                                    functionId,
+                                  );
+                                  setState(() {
+                                    final elem = _elements.firstWhere(
+                                      (e) => e.id == elementId,
+                                    );
+                                    elem.dataBinding = functionId;
+                                    if (func != null &&
+                                        elem.category ==
+                                            CustomWidgetElementCategory.text) {
+                                      elem.text = func.sampleValue;
+                                    }
+                                    _selectedElementId = elementId;
+                                    _hasUnsavedChanges = true;
+                                  });
+                                  if (func != null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          '⚡ Bound element to live function: ${func.name}',
+                                        ),
+                                        backgroundColor: const Color(0xFF1E293B),
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
                               ),
 
                               // Drop zone hint when dragging over
@@ -1652,18 +1790,25 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(
-                                        0xFF43E97B,
-                                      ).withValues(alpha: 0.2),
+                                      color: (isLiveFuncDrop
+                                              ? const Color(0xFF10B981)
+                                              : const Color(0xFF43E97B))
+                                          .withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
-                                        color: const Color(0xFF43E97B),
+                                        color: isLiveFuncDrop
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFF43E97B),
                                       ),
                                     ),
-                                    child: const Text(
-                                      '+ Drop Element Here',
+                                    child: Text(
+                                      isLiveFuncDrop
+                                          ? '⚡ Drop to Add Live ${candidateData.whereType<LiveFunctionDefinition>().firstOrNull?.name ?? "Function"}'
+                                          : '+ Drop Element Here',
                                       style: TextStyle(
-                                        color: Color(0xFF43E97B),
+                                        color: isLiveFuncDrop
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFF43E97B),
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
                                       ),
@@ -1726,11 +1871,23 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   // ── Selected Element Inspector Drawer ─────────────────────────────────────
   Widget _buildSelectedElementInspector() {
     final elem = _selectedElement!;
-    final isIcon = const {
-      'wifi_icon',
-      'bluetooth_icon',
-      'weather_icon',
-    }.contains(elem.type);
+    final category = elem.category;
+
+    final validTabs = switch (category) {
+      CustomWidgetElementCategory.text => [
+        'typography',
+        '3d',
+        'animation',
+        'frame',
+      ],
+      CustomWidgetElementCategory.icon => ['icon', '3d', 'animation'],
+      CustomWidgetElementCategory.image => ['source', '3d', 'animation'],
+      CustomWidgetElementCategory.container => ['style', '3d', 'animation'],
+    };
+    if (!validTabs.contains(_inspectorTab)) {
+      _inspectorTab = validTabs.first;
+    }
+
     if (elem.type == 'custom_text' || elem.type == 'time_colon') {
       if (_customTextController == null ||
           _customTextControllerElementId != elem.id) {
@@ -1742,49 +1899,558 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
         _customTextController!.text = elem.text;
       }
     }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      constraints: const BoxConstraints(maxHeight: 285),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFF131726),
         border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: Header (Category Badge, Type, Position/Size Info, Sub-tabs, Actions)
+            _buildInspectorHeader(elem, category),
+            const SizedBox(height: 8),
+
+            // Row 2: Live Data Binding Banner
+            _buildDataBindingBar(elem, category),
+            const SizedBox(height: 8),
+
+            // Row 3: Specialized Category Control Panels
+            switch (category) {
+              CustomWidgetElementCategory.text => _buildTextControls(elem),
+              CustomWidgetElementCategory.icon => _buildIconControls(elem),
+              CustomWidgetElementCategory.image => _buildImageControls(elem),
+              CustomWidgetElementCategory.container =>
+                _buildContainerControls(elem),
+            },
+          ],
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
+    );
+  }
+
+  Widget _buildInspectorHeader(
+    CustomWidgetElement elem,
+    CustomWidgetElementCategory category,
+  ) {
+    final (catLabel, catIcon, catColor) = switch (category) {
+      CustomWidgetElementCategory.text => (
+        'TEXT',
+        Icons.text_fields_rounded,
+        const Color(0xFF38BDF8),
+      ),
+      CustomWidgetElementCategory.icon => (
+        'ICON',
+        Icons.interests_rounded,
+        const Color(0xFFA855F7),
+      ),
+      CustomWidgetElementCategory.image => (
+        'IMAGE',
+        Icons.image_rounded,
+        const Color(0xFF10B981),
+      ),
+      CustomWidgetElementCategory.container => (
+        'CONTAINER',
+        Icons.crop_square_rounded,
+        const Color(0xFFF18734),
+      ),
+    };
+
+    final tabOptions = switch (category) {
+      CustomWidgetElementCategory.text => [
+        ('typography', '🔤 Typography'),
+        ('3d', '🧊 3D Effects'),
+        ('animation', '✨ Animation'),
+        ('frame', '📐 Bounds'),
+      ],
+      CustomWidgetElementCategory.icon => [
+        ('icon', '🎨 Icon & Style'),
+        ('3d', '🧊 3D Transform'),
+        ('animation', '✨ Animation'),
+      ],
+      CustomWidgetElementCategory.image => [
+        ('source', '🖼️ Source & Mask'),
+        ('3d', '🧊 3D Transform'),
+        ('animation', '✨ Animation'),
+      ],
+      CustomWidgetElementCategory.container => [
+        ('style', '📦 Shape & Style'),
+        ('3d', '🧊 3D Transform'),
+        ('animation', '✨ Animation'),
+      ],
+    };
+
+    return Row(
+      children: [
+        // Category Pill
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: catColor.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: catColor.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Badge identifying element type
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Text(
-                  elem.type.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF38BDF8),
-                  ),
+              Icon(catIcon, size: 12, color: catColor),
+              const SizedBox(width: 4),
+              Text(
+                catLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: catColor,
                 ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
 
-              if (!isIcon) ...[
-                // Font Selector Dropdown
+        // Type Pill
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            elem.type.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: Colors.white60,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Position / Size
+        Text(
+          'X:${elem.x.round()} Y:${elem.y.round()} W:${elem.width.round()} H:${elem.height.round()}',
+          style: const TextStyle(fontSize: 9.5, color: Colors.white30),
+        ),
+        const SizedBox(width: 14),
+
+        // Sub-tabs navigation
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: tabOptions.map((t) {
+                final isSelected = _inspectorTab == t.$1;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => setState(() => _inspectorTab = t.$1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? catColor.withValues(alpha: 0.2)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isSelected
+                              ? catColor
+                              : Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Text(
+                        t.$2,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: isSelected
+                              ? FontWeight.w800
+                              : FontWeight.w500,
+                          color: isSelected ? Colors.white : Colors.white60,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+
+        // Actions: Duplicate, Delete, Close
+        IconButton(
+          icon: const Icon(Icons.copy_rounded, size: 15, color: Colors.white70),
+          tooltip: 'Duplicate element',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _duplicateElement(elem.id),
+        ),
+        IconButton(
+          icon: const Icon(
+            Icons.delete_outline_rounded,
+            size: 16,
+            color: Colors.redAccent,
+          ),
+          tooltip: 'Delete element',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _deleteElement(elem.id),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white38),
+          tooltip: 'Deselect',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => setState(() => _selectedElementId = null),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDataBindingBar(
+    CustomWidgetElement elem,
+    CustomWidgetElementCategory category,
+  ) {
+    if (elem.dataBinding != null && elem.dataBinding!.isNotEmpty) {
+      final func = LiveWidgetFunctionLibrary.getById(elem.dataBinding!);
+      final funcName = func?.name ?? elem.dataBinding!;
+      final funcCategory = func?.category.name.toUpperCase() ?? 'LIVE';
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: const Color(0xFF10B981).withValues(alpha: 0.35),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF10B981)),
+            const SizedBox(width: 6),
+            const Text(
+              'LIVE DATA:',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+                color: Color(0xFF10B981),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                funcCategory,
+                style: const TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF10B981),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              funcName,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            if (category == CustomWidgetElementCategory.text) ...[
+              const SizedBox(width: 12),
+              const Text(
+                'Format:',
+                style: TextStyle(fontSize: 10.5, color: Colors.white54),
+              ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 150,
+                height: 26,
+                child: TextField(
+                  controller: TextEditingController(
+                    text: elem.bindingFormat ?? '',
+                  )..selection = TextSelection.collapsed(
+                      offset: (elem.bindingFormat ?? '').length,
+                    ),
+                  style: const TextStyle(fontSize: 10.5, color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'prefix:RAM ;suffix:%',
+                    hintStyle: TextStyle(
+                      fontSize: 9,
+                      color: Colors.white.withValues(alpha: 0.3),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                  ),
+                  onSubmitted: (val) {
+                    setState(() {
+                      elem.bindingFormat = val.trim().isEmpty ? null : val.trim();
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
+              ),
+            ],
+            const Spacer(),
+            TextButton.icon(
+              icon: const Icon(Icons.link_off_rounded, size: 14),
+              label: const Text('Unbind', style: TextStyle(fontSize: 10)),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () {
+                setState(() {
+                  elem.dataBinding = null;
+                  elem.bindingFormat = null;
+                  _hasUnsavedChanges = true;
+                });
+              },
+            ),
+          ],
+        ),
+      );
+    } else {
+      final availableFuncs = LiveWidgetFunctionLibrary.definitions
+          .where((f) => f.targetCategory == category)
+          .toList();
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.06),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.link_rounded, size: 14, color: Colors.white38),
+            const SizedBox(width: 6),
+            const Text(
+              'Static visual element',
+              style: TextStyle(fontSize: 10.5, color: Colors.white54),
+            ),
+            const Spacer(),
+            if (availableFuncs.isNotEmpty)
+              PopupMenuButton<LiveFunctionDefinition>(
+                tooltip: 'Bind live data function',
+                color: const Color(0xFF1E2235),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.bolt_rounded,
+                        size: 13,
+                        color: Color(0xFF10B981),
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        '⚡ Bind Live Data',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF10B981),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                itemBuilder: (context) {
+                  return availableFuncs.map((func) {
+                    return PopupMenuItem<LiveFunctionDefinition>(
+                      value: func,
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(
+                                alpha: 0.15,
+                              ),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              func.category.name.toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF10B981),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            func.name,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            func.sampleValue,
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              color: Colors.white38,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList();
+                },
+                onSelected: (func) {
+                  setState(() {
+                    elem.dataBinding = func.id;
+                    if (category == CustomWidgetElementCategory.text) {
+                      elem.text = func.sampleValue;
+                    }
+                    _hasUnsavedChanges = true;
+                  });
+                },
+              ),
+          ],
+        ),
+      );
+    }
+  }
+
+  // ── Specialized Toolset: TEXT ─────────────────────────────────────────────
+  Widget _buildTextControls(CustomWidgetElement elem) {
+    switch (_inspectorTab) {
+      case '3d':
+        return _build3dTransformControls(elem);
+      case 'animation':
+        return _buildAnimationPicker(elem, const [
+          'none',
+          'typewriter',
+          'pulse',
+          'float',
+          'rotate',
+          'wave',
+          'marquee',
+          'shimmer',
+        ]);
+      case 'frame':
+        return Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            _buildElementPropertySlider(
+              label: 'Width',
+              value: elem.width.clamp(16.0, _canvasWidth),
+              min: 16,
+              max: _canvasWidth,
+              suffix: 'px',
+              onChanged: (v) => setState(() {
+                elem.width = v;
+                _hasUnsavedChanges = true;
+              }),
+            ),
+            _buildElementPropertySlider(
+              label: 'Height',
+              value: elem.height.clamp(8.0, _canvasHeight),
+              min: 8,
+              max: _canvasHeight,
+              suffix: 'px',
+              onChanged: (v) => setState(() {
+                elem.height = v;
+                _hasUnsavedChanges = true;
+              }),
+            ),
+            _buildElementPropertySlider(
+              label: 'Opacity',
+              value: elem.opacity.clamp(0.0, 1.0),
+              min: 0,
+              max: 1,
+              divisions: 20,
+              suffix: '%',
+              displayValue: '${(elem.opacity * 100).round()}',
+              onChanged: (v) => setState(() {
+                elem.opacity = v;
+                _hasUnsavedChanges = true;
+              }),
+            ),
+            _buildElementPropertySlider(
+              label: 'Corners',
+              value: elem.cornerRadius.clamp(0.0, 40.0),
+              min: 0,
+              max: 40,
+              divisions: 20,
+              suffix: 'px',
+              onChanged: (v) => setState(() {
+                elem.cornerRadius = v;
+                _hasUnsavedChanges = true;
+              }),
+            ),
+          ],
+        );
+      case 'typography':
+      default:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: Font Family, Size chips, Size Slider
+            Row(
+              children: [
                 const Text(
                   'Font:',
                   style: TextStyle(fontSize: 11, color: Colors.white54),
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  height: 32,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  height: 30,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(6),
@@ -1798,7 +2464,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                           ? elem.fontFamily
                           : 'Montserrat',
                       dropdownColor: const Color(0xFF1E2235),
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                      style: const TextStyle(fontSize: 11.5, color: Colors.white),
                       items: _availableFonts.map((f) {
                         return DropdownMenuItem(
                           value: f,
@@ -1816,82 +2482,115 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
-              ],
+                const SizedBox(width: 12),
 
-              if (elem.type.startsWith('weather_')) ...[
+                // Weather Unit if applicable
+                if (elem.type.startsWith('weather_')) ...[
+                  const Text(
+                    'Unit:',
+                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                  const SizedBox(width: 4),
+                  DropdownButton<String>(
+                    value: elem.weatherUnit,
+                    dropdownColor: const Color(0xFF1E2235),
+                    style: const TextStyle(fontSize: 11, color: Colors.white),
+                    items: const [
+                      DropdownMenuItem(value: 'C', child: Text('°C')),
+                      DropdownMenuItem(value: 'F', child: Text('°F')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        elem.weatherUnit = value;
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                ],
+
+                // Font Size chips
                 const Text(
-                  'Units:',
+                  'Size:',
                   style: TextStyle(fontSize: 11, color: Colors.white54),
                 ),
                 const SizedBox(width: 6),
-                DropdownButton<String>(
-                  value: elem.weatherUnit,
-                  dropdownColor: const Color(0xFF1E2235),
-                  style: const TextStyle(fontSize: 12, color: Colors.white),
-                  items: const [
-                    DropdownMenuItem(value: 'C', child: Text('°C')),
-                    DropdownMenuItem(value: 'F', child: Text('°F')),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() {
-                      elem.weatherUnit = value;
-                      _hasUnsavedChanges = true;
-                    });
-                  },
+                ...[14, 18, 24, 32, 48, 64].map((sz) {
+                  final isCurrent = elem.fontSize.round() == sz;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => setState(() {
+                        elem.fontSize = sz.toDouble();
+                        _hasUnsavedChanges = true;
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? const Color(0xFF38BDF8).withValues(alpha: 0.25)
+                              : Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: isCurrent
+                                ? const Color(0xFF38BDF8)
+                                : Colors.white.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: Text(
+                          '$sz',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isCurrent
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isCurrent
+                                ? const Color(0xFF38BDF8)
+                                : Colors.white60,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 90,
+                  child: Slider(
+                    value: elem.fontSize.clamp(8.0, 140.0),
+                    min: 8.0,
+                    max: 140.0,
+                    activeColor: const Color(0xFF38BDF8),
+                    onChanged: (val) {
+                      setState(() {
+                        elem.fontSize = val;
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
                 ),
-                const SizedBox(width: 12),
+                Text(
+                  '${elem.fontSize.toInt()}pt',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white70,
+                  ),
+                ),
               ],
+            ),
+            const SizedBox(height: 8),
 
-              // Size Slider (Icon Size for Wi-Fi / Bluetooth, Font Size for text elements)
-              Text(
-                isIcon ? 'Icon Size:' : 'Size:',
-                style: const TextStyle(fontSize: 11, color: Colors.white54),
-              ),
-              const SizedBox(width: 6),
-              SizedBox(
-                width: 110,
-                child: Slider(
-                  value:
-                      (isIcon
-                              ? (elem.width > 0
-                                    ? elem.width
-                                    : (elem.fontSize > 0
-                                          ? elem.fontSize
-                                          : 24.0))
-                              : elem.fontSize)
-                          .clamp(8.0, 120.0),
-                  min: 8.0,
-                  max: 120.0,
-                  activeColor: const Color(0xFF38BDF8),
-                  onChanged: (val) {
-                    setState(() {
-                      if (isIcon) {
-                        elem.width = val;
-                        elem.height = val;
-                        elem.fontSize = val;
-                      } else {
-                        elem.fontSize = val;
-                      }
-                      _hasUnsavedChanges = true;
-                    });
-                  },
-                ),
-              ),
-              Text(
-                '${(isIcon ? (elem.width > 0 ? elem.width : elem.fontSize) : elem.fontSize).toInt()}${isIcon ? 'px' : 'pt'}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white70,
-                ),
-              ),
-
-              if (!isIcon) ...[
-                const SizedBox(width: 14),
-                // Bold toggle
+            // Row 2: Typography Styling (Bold, Italic, Alignment, Line Height, Letter Spacing)
+            Row(
+              children: [
                 IconButton(
+                  visualDensity: VisualDensity.compact,
                   icon: Icon(
                     Icons.format_bold_rounded,
                     size: 18,
@@ -1899,7 +2598,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                         ? const Color(0xFF38BDF8)
                         : Colors.white38,
                   ),
-                  tooltip: 'Bold font',
+                  tooltip: 'Bold text',
                   onPressed: () {
                     setState(() {
                       elem.isBold = !elem.isBold;
@@ -1907,352 +2606,1097 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                     });
                   },
                 ),
-              ],
-
-              const Spacer(),
-
-              // Duplicate & Delete buttons
-              IconButton(
-                icon: const Icon(
-                  Icons.copy_rounded,
-                  size: 16,
-                  color: Colors.white70,
-                ),
-                tooltip: 'Duplicate element',
-                onPressed: () => _duplicateElement(elem.id),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  size: 18,
-                  color: Colors.redAccent,
-                ),
-                tooltip: 'Delete element',
-                onPressed: () => _deleteElement(elem.id),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // Second inspector row: Color Swatches & Custom Text input (if applicable)
-          Row(
-            children: [
-              const Text(
-                'Color:',
-                style: TextStyle(fontSize: 11, color: Colors.white54),
-              ),
-              const SizedBox(width: 8),
-              // Palette swatches
-              ..._quickPalette.map((col) {
-                final isCurrent = elem.color == col.toARGB32();
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      elem.color = col.toARGB32();
-                      _hasUnsavedChanges = true;
-                    });
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 6),
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: col,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isCurrent ? Colors.white : Colors.white24,
-                        width: isCurrent ? 2.5 : 1,
-                      ),
-                      boxShadow: isCurrent
-                          ? [
-                              BoxShadow(
-                                color: col.withValues(alpha: 0.6),
-                                blurRadius: 6,
-                              ),
-                            ]
-                          : null,
-                    ),
-                  ),
-                );
-              }),
-              IconButton(
-                tooltip: elem.gradientColors == null
-                    ? 'Enable text gradient'
-                    : 'Disable text gradient',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  Icons.gradient_rounded,
-                  size: 18,
-                  color: elem.gradientColors == null
-                      ? Colors.white54
-                      : const Color(0xFF38BDF8),
-                ),
-                onPressed: () {
-                  setState(() {
-                    elem.gradientColors = elem.gradientColors == null
-                        ? [elem.color, 0xFF38BDF8]
-                        : null;
-                    _hasUnsavedChanges = true;
-                  });
-                },
-              ),
-              if (elem.gradientColors != null)
                 IconButton(
-                  tooltip: elem.gradientRadial
-                      ? 'Use linear gradient'
-                      : 'Use radial gradient',
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
-                    elem.gradientRadial
-                        ? Icons.radio_button_checked_rounded
-                        : Icons.linear_scale_rounded,
-                    size: 17,
-                    color: const Color(0xFF38BDF8),
+                    Icons.format_italic_rounded,
+                    size: 18,
+                    color: elem.isItalic
+                        ? const Color(0xFF38BDF8)
+                        : Colors.white38,
                   ),
+                  tooltip: 'Italic text',
                   onPressed: () {
                     setState(() {
-                      elem.gradientRadial = !elem.gradientRadial;
+                      elem.isItalic = !elem.isItalic;
                       _hasUnsavedChanges = true;
                     });
                   },
                 ),
-
-              if (elem.type == 'custom_text' || elem.type == 'time_colon') ...[
-                const SizedBox(width: 14),
-                const Text(
-                  'Text:',
-                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                const SizedBox(width: 4),
+                _buildAlignButton(
+                  elem,
+                  'left',
+                  Icons.format_align_left_rounded,
                 ),
-                const SizedBox(width: 6),
-                SizedBox(
-                  width: 160,
-                  height: 32,
-                  child: TextField(
-                    controller: _customTextController,
-                    focusNode: _customTextFocusNode,
-                    onChanged: (val) {
-                      elem.text = val;
-                      _hasUnsavedChanges = true;
-                      setState(() {});
-                    },
-                    onSubmitted: (val) {
-                      setState(() {
+                _buildAlignButton(
+                  elem,
+                  'center',
+                  Icons.format_align_center_rounded,
+                ),
+                _buildAlignButton(
+                  elem,
+                  'right',
+                  Icons.format_align_right_rounded,
+                ),
+                const SizedBox(width: 10),
+                _buildElementPropertySlider(
+                  label: 'Line Ht',
+                  value: elem.lineHeight.clamp(0.8, 2.5),
+                  min: 0.8,
+                  max: 2.5,
+                  divisions: 17,
+                  suffix: '',
+                  displayValue: elem.lineHeight.toStringAsFixed(1),
+                  onChanged: (v) => setState(() {
+                    elem.lineHeight = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                const SizedBox(width: 10),
+                _buildElementPropertySlider(
+                  label: 'Spacing',
+                  value: elem.letterSpacing.clamp(-2.0, 16.0),
+                  min: -2,
+                  max: 16,
+                  divisions: 36,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.letterSpacing = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Row 3: Text Input (if custom_text), Color Swatches, Gradient Toggle, Stroke
+            Row(
+              children: [
+                if (elem.type == 'custom_text' ||
+                    elem.type == 'time_colon') ...[
+                  const Text(
+                    'Text:',
+                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 140,
+                    height: 28,
+                    child: TextField(
+                      controller: _customTextController,
+                      focusNode: _customTextFocusNode,
+                      onChanged: (val) {
                         elem.text = val;
                         _hasUnsavedChanges = true;
-                      });
-                    },
-                    style: const TextStyle(fontSize: 12, color: Colors.white),
-                    decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.05),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.1),
+                        setState(() {});
+                      },
+                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.05),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.1),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              _buildElementPropertySlider(
-                label: 'Width',
-                value: elem.width.clamp(16.0, _canvasWidth),
-                min: 16,
-                max: _canvasWidth,
-                suffix: 'px',
-                onChanged: (value) => setState(() {
-                  elem.width = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Height',
-                value: elem.height.clamp(8.0, _canvasHeight),
-                min: 8,
-                max: _canvasHeight,
-                suffix: 'px',
-                onChanged: (value) => setState(() {
-                  elem.height = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Opacity',
-                value: elem.opacity.clamp(0.0, 1.0),
-                min: 0,
-                max: 1,
-                divisions: 20,
-                suffix: '%',
-                displayValue: '${(elem.opacity * 100).round()}',
-                onChanged: (value) => setState(() {
-                  elem.opacity = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Rotation',
-                value: elem.rotation.clamp(-180.0, 180.0),
-                min: -180,
-                max: 180,
-                divisions: 36,
-                suffix: '°',
-                onChanged: (value) => setState(() {
-                  elem.rotation = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Rotate X',
-                value: elem.rotationX.clamp(-180.0, 180.0),
-                min: -180,
-                max: 180,
-                divisions: 36,
-                suffix: '°',
-                onChanged: (value) => setState(() {
-                  elem.rotationX = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Rotate Y',
-                value: elem.rotationY.clamp(-180.0, 180.0),
-                min: -180,
-                max: 180,
-                divisions: 36,
-                suffix: '°',
-                onChanged: (value) => setState(() {
-                  elem.rotationY = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Scale X',
-                value: elem.scaleX.clamp(0.25, 2.0),
-                min: 0.25,
-                max: 2,
-                divisions: 35,
-                suffix: '×',
-                onChanged: (value) => setState(() {
-                  elem.scaleX = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Scale Y',
-                value: elem.scaleY.clamp(0.25, 2.0),
-                min: 0.25,
-                max: 2,
-                divisions: 35,
-                suffix: '×',
-                onChanged: (value) => setState(() {
-                  elem.scaleY = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Depth',
-                value: elem.depth.clamp(-100.0, 100.0),
-                min: -100,
-                max: 100,
-                divisions: 40,
-                suffix: '',
-                onChanged: (value) => setState(() {
-                  elem.depth = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Corners',
-                value: elem.cornerRadius.clamp(0.0, 40.0),
-                min: 0,
-                max: 40,
-                divisions: 20,
-                suffix: 'px',
-                onChanged: (value) => setState(() {
-                  elem.cornerRadius = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Outline',
-                value: elem.strokeWidth.clamp(0.0, 8.0),
-                min: 0,
-                max: 8,
-                divisions: 16,
-                suffix: 'px',
-                onChanged: (value) => setState(() {
-                  elem.strokeWidth = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              _buildElementPropertySlider(
-                label: 'Shadow',
-                value: elem.shadowBlur.clamp(0.0, 32.0),
-                min: 0,
-                max: 32,
-                divisions: 16,
-                suffix: 'px',
-                onChanged: (value) => setState(() {
-                  elem.shadowBlur = value;
-                  _hasUnsavedChanges = true;
-                }),
-              ),
-              DropdownButton<String>(
-                value:
-                    const {
-                      'none',
-                      'pulse',
-                      'float',
-                      'rotate',
-                    }.contains(elem.animationType)
-                    ? elem.animationType
-                    : 'none',
-                dropdownColor: const Color(0xFF1E2235),
-                style: const TextStyle(fontSize: 11, color: Colors.white),
-                items: const [
-                  DropdownMenuItem(value: 'none', child: Text('No animation')),
-                  DropdownMenuItem(value: 'pulse', child: Text('Pulse')),
-                  DropdownMenuItem(value: 'float', child: Text('Float')),
-                  DropdownMenuItem(value: 'rotate', child: Text('Rotate')),
+                  const SizedBox(width: 12),
                 ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    elem.animationType = value;
-                    _hasUnsavedChanges = true;
-                  });
-                },
-              ),
-              if (!isIcon)
+
+                const Text(
+                  'Color:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 8),
+                ..._quickPalette.take(8).map((col) {
+                  final isCurrent = elem.color == col.toARGB32();
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        elem.color = col.toARGB32();
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: col,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isCurrent ? Colors.white : Colors.white24,
+                          width: isCurrent ? 2 : 1,
+                        ),
+                        boxShadow: isCurrent
+                            ? [
+                                BoxShadow(
+                                  color: col.withValues(alpha: 0.6),
+                                  blurRadius: 6,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    ),
+                  );
+                }),
+
+                IconButton(
+                  tooltip: elem.gradientColors == null
+                      ? 'Enable gradient'
+                      : 'Disable gradient',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.gradient_rounded,
+                    size: 16,
+                    color: elem.gradientColors == null
+                        ? Colors.white54
+                        : const Color(0xFF38BDF8),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      elem.gradientColors = elem.gradientColors == null
+                          ? [elem.color, 0xFF38BDF8]
+                          : null;
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
+                if (elem.gradientColors != null)
+                  IconButton(
+                    tooltip: elem.gradientRadial
+                        ? 'Radial gradient'
+                        : 'Linear gradient',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      elem.gradientRadial
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.linear_scale_rounded,
+                      size: 15,
+                      color: const Color(0xFF38BDF8),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        elem.gradientRadial = !elem.gradientRadial;
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
+                const SizedBox(width: 8),
                 _buildElementPropertySlider(
-                  label: 'Spacing',
-                  value: elem.letterSpacing.clamp(-2.0, 12.0),
-                  min: -2,
-                  max: 12,
-                  divisions: 28,
+                  label: 'Outline',
+                  value: elem.strokeWidth.clamp(0.0, 6.0),
+                  min: 0,
+                  max: 6,
+                  divisions: 12,
                   suffix: 'px',
-                  onChanged: (value) => setState(() {
-                    elem.letterSpacing = value;
+                  onChanged: (v) => setState(() {
+                    elem.strokeWidth = v;
                     _hasUnsavedChanges = true;
                   }),
                 ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        );
+    }
+  }
+
+  // ── Specialized Toolset: ICON ─────────────────────────────────────────────
+  Widget _buildIconControls(CustomWidgetElement elem) {
+    switch (_inspectorTab) {
+      case '3d':
+        return _build3dTransformControls(elem);
+      case 'animation':
+        return _buildAnimationPicker(elem, const [
+          'none',
+          'pulse',
+          'float',
+          'rotate',
+          'shimmer',
+        ]);
+      case 'icon':
+      default:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icon Picker Palette Grid
+            Row(
+              children: [
+                const Text(
+                  'Glyph:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _commonIcons.map((ic) {
+                        final isSel =
+                            (elem.iconCodePoint ?? 0xe871) == ic.codePoint;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () {
+                              setState(() {
+                                elem.type = 'custom_icon';
+                                elem.iconCodePoint = ic.codePoint;
+                                elem.iconFontFamily = ic.fontFamily;
+                                _hasUnsavedChanges = true;
+                              });
+                            },
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: isSel
+                                    ? const Color(
+                                        0xFFA855F7,
+                                      ).withValues(alpha: 0.25)
+                                    : Colors.white.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isSel
+                                      ? const Color(0xFFA855F7)
+                                      : Colors.white.withValues(alpha: 0.08),
+                                ),
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  ic,
+                                  size: 18,
+                                  color: isSel
+                                      ? const Color(0xFFA855F7)
+                                      : Colors.white70,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Icon Size & Color
+            Row(
+              children: [
+                const Text(
+                  'Size:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 6),
+                ...[16, 24, 32, 48, 64].map((sz) {
+                  final isCurrent =
+                      (elem.fontSize > 0 ? elem.fontSize : elem.width)
+                          .round() ==
+                      sz;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => setState(() {
+                        elem.fontSize = sz.toDouble();
+                        elem.width = sz.toDouble();
+                        elem.height = sz.toDouble();
+                        _hasUnsavedChanges = true;
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? const Color(0xFFA855F7).withValues(alpha: 0.25)
+                              : Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: isCurrent
+                                ? const Color(0xFFA855F7)
+                                : Colors.white.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: Text(
+                          '$sz',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isCurrent
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isCurrent
+                                ? const Color(0xFFA855F7)
+                                : Colors.white60,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 100,
+                  child: Slider(
+                    value:
+                        (elem.fontSize > 0 ? elem.fontSize : elem.width)
+                            .clamp(12.0, 120.0),
+                    min: 12.0,
+                    max: 120.0,
+                    activeColor: const Color(0xFFA855F7),
+                    onChanged: (val) {
+                      setState(() {
+                        elem.fontSize = val;
+                        elem.width = val;
+                        elem.height = val;
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
+                ),
+                Text(
+                  '${(elem.fontSize > 0 ? elem.fontSize : elem.width).toInt()}px',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(width: 14),
+
+                const Text(
+                  'Tint:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 8),
+                ..._quickPalette.take(8).map((col) {
+                  final isCurrent = elem.color == col.toARGB32();
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        elem.color = col.toARGB32();
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: col,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isCurrent ? Colors.white : Colors.white24,
+                          width: isCurrent ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(width: 10),
+                _buildElementPropertySlider(
+                  label: 'Glow',
+                  value: elem.shadowBlur.clamp(0.0, 32.0),
+                  min: 0,
+                  max: 32,
+                  divisions: 16,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.shadowBlur = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+          ],
+        );
+    }
+  }
+
+  // ── Specialized Toolset: IMAGE ────────────────────────────────────────────
+  Widget _buildImageControls(CustomWidgetElement elem) {
+    switch (_inspectorTab) {
+      case '3d':
+        return _build3dTransformControls(elem);
+      case 'animation':
+        return _buildAnimationPicker(elem, const [
+          'none',
+          'pulse',
+          'float',
+          'rotate',
+          'shimmer',
+        ]);
+      case 'source':
+      default:
+        final isCircle = elem.cornerRadius >= 900.0;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row 1: Source pickers
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.folder_open_rounded, size: 14),
+                  label: const Text(
+                    'Browse Image...',
+                    style: TextStyle(fontSize: 10.5),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF10B981),
+                    side: BorderSide(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: () async {
+                    final path = await SystemOptimizerService.instance
+                        .pickImageFile();
+                    if (path != null && mounted) {
+                      setState(() {
+                        elem.type = 'custom_image';
+                        elem.imagePath = path;
+                        elem.dataBinding = null;
+                        _hasUnsavedChanges = true;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.album_rounded, size: 14),
+                  label: const Text(
+                    'Bind Album Artwork',
+                    style: TextStyle(fontSize: 10.5),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF10B981),
+                    side: BorderSide(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      elem.type = 'custom_image';
+                      elem.dataBinding = 'media.cover_art';
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
+                if (elem.imagePath != null && elem.imagePath!.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      elem.imagePath!.split(RegExp(r'[\\/]')).last,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white60,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.clear_rounded,
+                      size: 14,
+                      color: Colors.redAccent,
+                    ),
+                    tooltip: 'Clear image path',
+                    onPressed: () => setState(() {
+                      elem.imagePath = null;
+                      _hasUnsavedChanges = true;
+                    }),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Row 2: Image Fit, Circular mask, Corners, Stroke
+            Row(
+              children: [
+                const Text(
+                  'Fit:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 6),
+                ...['cover', 'contain', 'fill'].map((fitMode) {
+                  final isCurrent = elem.imageFit == fitMode;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => setState(() {
+                        elem.imageFit = fitMode;
+                        _hasUnsavedChanges = true;
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? const Color(0xFF10B981).withValues(alpha: 0.25)
+                              : Colors.white.withValues(alpha: 0.04),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: isCurrent
+                                ? const Color(0xFF10B981)
+                                : Colors.white.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: Text(
+                          fitMode.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: isCurrent
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isCurrent
+                                ? const Color(0xFF10B981)
+                                : Colors.white60,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(width: 10),
+
+                // Circle Mask Toggle
+                OutlinedButton.icon(
+                  icon: Icon(
+                    isCircle
+                        ? Icons.circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 13,
+                  ),
+                  label: Text(
+                    isCircle ? 'Circular Mask ON' : 'Circle Mask',
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isCircle
+                        ? const Color(0xFF10B981)
+                        : Colors.white54,
+                    side: BorderSide(
+                      color: isCircle
+                          ? const Color(0xFF10B981)
+                          : Colors.white24,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      elem.cornerRadius = isCircle ? 12.0 : 999.0;
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
+                const SizedBox(width: 10),
+
+                if (!isCircle)
+                  _buildElementPropertySlider(
+                    label: 'Corners',
+                    value: elem.cornerRadius.clamp(0.0, 40.0),
+                    min: 0,
+                    max: 40,
+                    divisions: 20,
+                    suffix: 'px',
+                    onChanged: (v) => setState(() {
+                      elem.cornerRadius = v;
+                      _hasUnsavedChanges = true;
+                    }),
+                  ),
+                const SizedBox(width: 10),
+                _buildElementPropertySlider(
+                  label: 'Border',
+                  value: elem.strokeWidth.clamp(0.0, 8.0),
+                  min: 0,
+                  max: 8,
+                  divisions: 16,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.strokeWidth = v;
+                    elem.strokeColor ??= 0xFF10B981;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Row 3: Width, Height, Opacity
+            Row(
+              children: [
+                _buildElementPropertySlider(
+                  label: 'Width',
+                  value: elem.width.clamp(16.0, _canvasWidth),
+                  min: 16,
+                  max: _canvasWidth,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.width = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                const SizedBox(width: 10),
+                _buildElementPropertySlider(
+                  label: 'Height',
+                  value: elem.height.clamp(16.0, _canvasHeight),
+                  min: 16,
+                  max: _canvasHeight,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.height = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                const SizedBox(width: 10),
+                _buildElementPropertySlider(
+                  label: 'Opacity',
+                  value: elem.opacity.clamp(0.0, 1.0),
+                  min: 0,
+                  max: 1,
+                  divisions: 20,
+                  suffix: '%',
+                  displayValue: '${(elem.opacity * 100).round()}',
+                  onChanged: (v) => setState(() {
+                    elem.opacity = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+          ],
+        );
+    }
+  }
+
+  // ── Specialized Toolset: CONTAINER ────────────────────────────────────────
+  Widget _buildContainerControls(CustomWidgetElement elem) {
+    switch (_inspectorTab) {
+      case '3d':
+        return _build3dTransformControls(elem);
+      case 'animation':
+        return _buildAnimationPicker(elem, const [
+          'none',
+          'pulse',
+          'float',
+          'shimmer',
+        ]);
+      case 'style':
+      default:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                _buildElementPropertySlider(
+                  label: 'Width',
+                  value: elem.width.clamp(16.0, _canvasWidth),
+                  min: 16,
+                  max: _canvasWidth,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.width = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                _buildElementPropertySlider(
+                  label: 'Height',
+                  value: elem.height.clamp(8.0, _canvasHeight),
+                  min: 8,
+                  max: _canvasHeight,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.height = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                _buildElementPropertySlider(
+                  label: 'Corners',
+                  value: elem.cornerRadius.clamp(0.0, 40.0),
+                  min: 0,
+                  max: 40,
+                  divisions: 20,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.cornerRadius = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                _buildElementPropertySlider(
+                  label: 'Opacity',
+                  value: elem.opacity.clamp(0.0, 1.0),
+                  min: 0,
+                  max: 1,
+                  divisions: 20,
+                  suffix: '%',
+                  displayValue: '${(elem.opacity * 100).round()}',
+                  onChanged: (v) => setState(() {
+                    elem.opacity = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                _buildElementPropertySlider(
+                  label: 'Outline',
+                  value: elem.strokeWidth.clamp(0.0, 8.0),
+                  min: 0,
+                  max: 8,
+                  divisions: 16,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.strokeWidth = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+                _buildElementPropertySlider(
+                  label: 'Shadow',
+                  value: elem.shadowBlur.clamp(0.0, 32.0),
+                  min: 0,
+                  max: 32,
+                  divisions: 16,
+                  suffix: 'px',
+                  onChanged: (v) => setState(() {
+                    elem.shadowBlur = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text(
+                  'Color:',
+                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                ),
+                const SizedBox(width: 8),
+                ..._quickPalette.take(8).map((col) {
+                  final isCurrent = elem.color == col.toARGB32();
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        elem.color = col.toARGB32();
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: col,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isCurrent ? Colors.white : Colors.white24,
+                          width: isCurrent ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ],
+        );
+    }
+  }
+
+  // ── Shared Helpers for Inspector ──────────────────────────────────────────
+  Widget _buildAlignButton(
+    CustomWidgetElement elem,
+    String align,
+    IconData icon,
+  ) {
+    final isSelected = elem.textAlign == align;
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      icon: Icon(
+        icon,
+        size: 16,
+        color: isSelected ? const Color(0xFF38BDF8) : Colors.white38,
       ),
+      tooltip: 'Align $align',
+      onPressed: () {
+        setState(() {
+          elem.textAlign = align;
+          _hasUnsavedChanges = true;
+        });
+      },
+    );
+  }
+
+  Widget _build3dTransformControls(CustomWidgetElement elem) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        _buildElementPropertySlider(
+          label: 'Rotate X',
+          value: elem.rotationX.clamp(-180.0, 180.0),
+          min: -180,
+          max: 180,
+          divisions: 36,
+          suffix: '°',
+          onChanged: (v) => setState(() {
+            elem.rotationX = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        _buildElementPropertySlider(
+          label: 'Rotate Y',
+          value: elem.rotationY.clamp(-180.0, 180.0),
+          min: -180,
+          max: 180,
+          divisions: 36,
+          suffix: '°',
+          onChanged: (v) => setState(() {
+            elem.rotationY = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        _buildElementPropertySlider(
+          label: 'Rotate Z',
+          value: elem.rotation.clamp(-180.0, 180.0),
+          min: -180,
+          max: 180,
+          divisions: 36,
+          suffix: '°',
+          onChanged: (v) => setState(() {
+            elem.rotation = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        _buildElementPropertySlider(
+          label: 'Depth',
+          value: elem.depth.clamp(-100.0, 100.0),
+          min: -100,
+          max: 100,
+          divisions: 40,
+          suffix: '',
+          onChanged: (v) => setState(() {
+            elem.depth = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        _buildElementPropertySlider(
+          label: 'Scale X',
+          value: elem.scaleX.clamp(0.25, 2.0),
+          min: 0.25,
+          max: 2,
+          divisions: 35,
+          suffix: '×',
+          onChanged: (v) => setState(() {
+            elem.scaleX = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        _buildElementPropertySlider(
+          label: 'Scale Y',
+          value: elem.scaleY.clamp(0.25, 2.0),
+          min: 0.25,
+          max: 2,
+          divisions: 35,
+          suffix: '×',
+          onChanged: (v) => setState(() {
+            elem.scaleY = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        _buildElementPropertySlider(
+          label: 'Shadow',
+          value: elem.shadowBlur.clamp(0.0, 32.0),
+          min: 0,
+          max: 32,
+          divisions: 16,
+          suffix: 'px',
+          onChanged: (v) => setState(() {
+            elem.shadowBlur = v;
+            _hasUnsavedChanges = true;
+          }),
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.restart_alt_rounded, size: 14),
+          label: const Text(
+            'Reset 3D Transform',
+            style: TextStyle(fontSize: 10.5),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF38BDF8),
+            side: BorderSide(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+          onPressed: () {
+            setState(() {
+              elem.rotationX = 0;
+              elem.rotationY = 0;
+              elem.rotation = 0;
+              elem.depth = 0;
+              elem.scaleX = 1.0;
+              elem.scaleY = 1.0;
+              elem.shadowBlur = 0;
+              _hasUnsavedChanges = true;
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnimationPicker(
+    CustomWidgetElement elem,
+    List<String> availableAnimations,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'SELECT ANIMATION PRESET:',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+            color: Colors.white54,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: availableAnimations.map((anim) {
+            final isCurrent =
+                elem.animationType == anim ||
+                (anim == 'none' &&
+                    (elem.animationType.isEmpty ||
+                        elem.animationType == 'none'));
+            final (label, icon, desc) = switch (anim) {
+              'none' => ('None', Icons.block_rounded, 'Static element'),
+              'typewriter' => (
+                'Typewriter',
+                Icons.keyboard_rounded,
+                'Letter-by-letter typing effect',
+              ),
+              'pulse' => (
+                'Pulse',
+                Icons.favorite_rounded,
+                'Smooth rhythmic heartbeat',
+              ),
+              'float' => (
+                'Float',
+                Icons.waves_rounded,
+                'Gentle weightless levitation',
+              ),
+              'rotate' => (
+                'Rotate',
+                Icons.refresh_rounded,
+                'Continuous 360° spin',
+              ),
+              'wave' => (
+                'Wave',
+                Icons.water_rounded,
+                'Undulating vertical wave',
+              ),
+              'marquee' => (
+                'Marquee',
+                Icons.trending_flat_rounded,
+                'Horizontal scrolling ticker',
+              ),
+              'shimmer' || 'neon_shimmer' => (
+                'Shimmer',
+                Icons.auto_awesome_rounded,
+                'Neon cyber glow pulse',
+              ),
+              _ => (anim, Icons.animation_rounded, anim),
+            };
+            return Tooltip(
+              message: desc,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () {
+                  setState(() {
+                    elem.animationType = anim;
+                    _hasUnsavedChanges = true;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? const Color(0xFF38BDF8).withValues(alpha: 0.2)
+                        : Colors.white.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isCurrent
+                          ? const Color(0xFF38BDF8)
+                          : Colors.white.withValues(alpha: 0.08),
+                      width: isCurrent ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 14,
+                        color: isCurrent
+                            ? const Color(0xFF38BDF8)
+                            : Colors.white54,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isCurrent
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                          color: isCurrent ? Colors.white : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -2305,6 +3749,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   Widget _buildElementsToolbox() {
     final categories = [
       'All',
+      '⚡ Live Data',
+      'Basics',
       'Time',
       'Date',
       'Bars',
@@ -2469,6 +3915,139 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
         return false;
       }
       return true;
+    }
+
+    bool matchesFunc(LiveFunctionDefinition func) {
+      if (_elementsCategory != 'All' && _elementsCategory != '⚡ Live Data') {
+        return false;
+      }
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        return func.name.toLowerCase().contains(q) ||
+            func.description.toLowerCase().contains(q) ||
+            func.category.name.toLowerCase().contains(q);
+      }
+      return true;
+    }
+
+    // ── ⚡ Live Functions & Data Binding Category ───────────────────────────
+    if (_elementsCategory == 'All' || _elementsCategory == '⚡ Live Data') {
+      final matchingFuncs = LiveWidgetFunctionLibrary.definitions
+          .where(matchesFunc)
+          .toList();
+      if (matchingFuncs.isNotEmpty) {
+        sections.add(
+          _buildSectionHeader(
+            '⚡ LIVE FUNCTIONS (DRAG TO BIND)',
+            Icons.bolt_rounded,
+          ),
+        );
+        sections.add(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: matchingFuncs
+                .map(_buildLiveFunctionToolboxItem)
+                .toList(),
+          ),
+        );
+      }
+    }
+
+    // ── Basics Category ─────────────────────────────────────────────────────
+    if (_elementsCategory == 'All' || _elementsCategory == 'Basics') {
+      sections.add(
+        _buildSectionHeader('BASIC VISUAL ELEMENTS', Icons.category_rounded),
+      );
+      sections.add(
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            if (matches('Custom Text', 'Basics'))
+              _buildToolboxItem(
+                title: 'Custom Text',
+                subtitle: 'Free text & typography',
+                element: CustomWidgetElement(
+                  id: '',
+                  type: 'custom_text',
+                  text: 'Text Label',
+                  fontFamily: 'Montserrat',
+                  fontSize: 20,
+                  color: 0xFFFFFFFF,
+                ),
+                preview: const Text(
+                  'Text',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Montserrat',
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            if (matches('Vector Icon', 'Basics'))
+              _buildToolboxItem(
+                title: 'Vector Icon',
+                subtitle: 'Customizable glyph',
+                element: CustomWidgetElement(
+                  id: '',
+                  type: 'custom_icon',
+                  iconCodePoint: Icons.star_rounded.codePoint,
+                  iconFontFamily: 'MaterialIcons',
+                  fontSize: 32,
+                  color: 0xFFF18734,
+                ),
+                preview: const Icon(
+                  Icons.star_rounded,
+                  size: 26,
+                  color: Color(0xFFF18734),
+                ),
+              ),
+            if (matches('Custom Image', 'Basics'))
+              _buildToolboxItem(
+                title: 'Custom Image',
+                subtitle: 'Local art or photo',
+                element: CustomWidgetElement(
+                  id: '',
+                  type: 'custom_image',
+                  width: 80,
+                  height: 80,
+                  cornerRadius: 12,
+                ),
+                preview: const Icon(
+                  Icons.image_rounded,
+                  size: 26,
+                  color: Color(0xFF38BDF8),
+                ),
+              ),
+            if (matches('Glass Container', 'Basics'))
+              _buildToolboxItem(
+                title: 'Glass Container',
+                subtitle: 'Translucent backplate',
+                element: CustomWidgetElement(
+                  id: '',
+                  type: 'neon_box',
+                  width: 220,
+                  height: 110,
+                  cornerRadius: 16,
+                  color: 0xFF38BDF8,
+                ),
+                preview: Container(
+                  width: 44,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
     }
 
     // ── Time Category ──────────────────────────────────────────────────────
@@ -3434,6 +5013,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
       'media_animation': 'Media Animation',
       'wifi_icon': 'Wi-Fi Icon',
       'bluetooth_icon': 'Bluetooth Icon',
+      'custom_icon': 'Vector Icon',
+      'custom_image': 'Custom Image',
       'neon_box': 'Neon Box',
     };
     return labels[type] ??
@@ -3552,6 +5133,212 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                 child: const Text(
                   '+ Add',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiveFunctionToolboxItem(LiveFunctionDefinition func) {
+    final previewText = func.resolveText(
+      dateTime: _now,
+      cpuUsage: _cpuUsage,
+      ramUsage: _ramUsage,
+      weatherTemp: _weatherTemp,
+      weatherStatus: _weatherStatus,
+      weatherLocation: _weatherLocation,
+      weatherApparentTemp: _weatherApparentTemp,
+      weatherHumidity: _weatherHumidity > 0 ? '$_weatherHumidity' : '',
+      weatherForecastJson: _weatherForecastJson,
+      mediaInfo: _mediaInfo,
+      batteryInfo: _systemMetrics.battery,
+      diskInfo: _systemMetrics.disk,
+    );
+
+    final isTargetCategorySelected = _selectedElement != null &&
+        _selectedElement!.category == func.targetCategory;
+
+    return Draggable<LiveFunctionDefinition>(
+      data: func,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E2235),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF10B981), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                blurRadius: 16,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF10B981)),
+              const SizedBox(width: 6),
+              Text(
+                func.name,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: Container(
+        width: 165,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.025),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: const Color(0xFF10B981).withValues(alpha: 0.25),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Preview container
+            Container(
+              height: 48,
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                ),
+              ),
+              child: Center(
+                child: func.targetCategory == CustomWidgetElementCategory.image
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.album_rounded,
+                            size: 18,
+                            color: Color(0xFF10B981),
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Album Art',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF10B981),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        previewText.isNotEmpty ? previewText : func.sampleValue,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF10B981),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    func.name,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    func.category.name.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF10B981),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              func.description,
+              style: const TextStyle(fontSize: 9.5, color: Colors.white38),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              height: 24,
+              child: OutlinedButton(
+                onPressed: () {
+                  if (isTargetCategorySelected) {
+                    setState(() {
+                      _selectedElement!.dataBinding = func.id;
+                      if (_selectedElement!.category ==
+                          CustomWidgetElementCategory.text) {
+                        _selectedElement!.text = func.sampleValue;
+                      }
+                      _hasUnsavedChanges = true;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '⚡ Bound ${_selectedElement!.type} to ${func.name}',
+                        ),
+                        backgroundColor: const Color(0xFF1E293B),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  } else {
+                    _addLiveFunctionElement(func);
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF10B981),
+                  side: BorderSide(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                  ),
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+                child: Text(
+                  isTargetCategorySelected ? '⚡ Bind' : '+ Add',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),

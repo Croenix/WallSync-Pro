@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../services/settings_service.dart';
 import '../services/media_session_service.dart';
 import '../services/system_metrics_service.dart';
+import '../services/widget_function_library.dart';
 
 /// Reusable renderer for custom widget layouts.
 /// Used both in live overlay [DesktopWidget] and in the interactive [CustomWidgetBuilder] canvas.
@@ -37,6 +39,7 @@ class CustomWidgetRenderer extends StatelessWidget {
   final Function(String id, double dx, double dy)? onElementMoved;
   final ValueChanged<String>? onDeleteElement;
   final ValueChanged<String>? onDuplicateElement;
+  final void Function(String elementId, String functionId)? onBindFunction;
   final double canvasWidth;
   final double canvasHeight;
 
@@ -68,6 +71,7 @@ class CustomWidgetRenderer extends StatelessWidget {
     this.onElementMoved,
     this.onDeleteElement,
     this.onDuplicateElement,
+    this.onBindFunction,
     this.canvasWidth = 480.0,
     this.canvasHeight = 260.0,
   });
@@ -93,76 +97,145 @@ class CustomWidgetRenderer extends StatelessWidget {
               );
             }
 
-            // Interactive canvas element with dragging & selection
+            // Interactive canvas element with dragging, selection, and drag-and-drop data binding
             return Positioned(
               left: elem.x,
               top: elem.y,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  onSelectElement?.call(elem.id);
+              child: DragTarget<LiveFunctionDefinition>(
+                onWillAcceptWithDetails: (details) {
+                  return true;
                 },
-                onPanUpdate: (details) {
-                  final newX = (elem.x + details.delta.dx).clamp(
-                    0.0,
-                    canvasWidth - 20.0,
-                  );
-                  final newY = (elem.y + details.delta.dy).clamp(
-                    0.0,
-                    canvasHeight - 20.0,
-                  );
-                  onElementMoved?.call(elem.id, newX, newY);
+                onAcceptWithDetails: (details) {
+                  onBindFunction?.call(elem.id, details.data.id);
                 },
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFF38BDF8)
-                          : Colors.white.withValues(alpha: 0.12),
-                      width: isSelected ? 1.8 : 0.8,
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                    color: isSelected
-                        ? const Color(0xFF38BDF8).withValues(alpha: 0.08)
-                        : Colors.transparent,
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(4.0),
-                        child: Opacity(
-                          opacity: elem.opacity.clamp(0.0, 1.0),
-                          child: elementContent,
+                builder: (context, candidateData, rejectedData) {
+                  final isDropTarget = candidateData.isNotEmpty;
+                  final funcName =
+                      isDropTarget ? candidateData.first?.name : null;
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      onSelectElement?.call(elem.id);
+                    },
+                    onPanUpdate: (details) {
+                      final newX = (elem.x + details.delta.dx).clamp(
+                        0.0,
+                        canvasWidth - 20.0,
+                      );
+                      final newY = (elem.y + details.delta.dy).clamp(
+                        0.0,
+                        canvasHeight - 20.0,
+                      );
+                      onElementMoved?.call(elem.id, newX, newY);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isDropTarget
+                              ? const Color(0xFF10B981)
+                              : isSelected
+                              ? const Color(0xFF38BDF8)
+                              : Colors.white.withValues(alpha: 0.12),
+                          width: isDropTarget
+                              ? 2.2
+                              : (isSelected ? 1.8 : 0.8),
                         ),
+                        borderRadius: BorderRadius.circular(6),
+                        color: isDropTarget
+                            ? const Color(0xFF10B981).withValues(alpha: 0.16)
+                            : isSelected
+                            ? const Color(0xFF38BDF8).withValues(alpha: 0.08)
+                            : Colors.transparent,
+                        boxShadow: isDropTarget
+                            ? [
+                                const BoxShadow(
+                                  color: Color(0xFF10B981),
+                                  blurRadius: 14,
+                                  spreadRadius: 1,
+                                ),
+                              ]
+                            : null,
                       ),
-                      if (isSelected) ...[
-                        // Selection handle at top-right
-                        Positioned(
-                          right: -8,
-                          top: -8,
-                          child: Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF38BDF8),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.open_with_rounded,
-                              size: 9,
-                              color: Colors.black,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Opacity(
+                              opacity: elem.opacity.clamp(0.0, 1.0),
+                              child: elementContent,
                             ),
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+                          if (isDropTarget && funcName != null)
+                            Positioned(
+                              top: -24,
+                              left: 0,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981),
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black45,
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.flash_on_rounded,
+                                      size: 11,
+                                      color: Colors.black,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      'Bind: $funcName',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else if (isSelected) ...[
+                            // Selection handle at top-right
+                            Positioned(
+                              right: -8,
+                              top: -8,
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF38BDF8),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.open_with_rounded,
+                                  size: 9,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             );
           })
@@ -195,7 +268,66 @@ class CustomWidgetRenderer extends StatelessWidget {
   }
 
   Widget _buildElement(BuildContext context, CustomWidgetElement elem) {
+    // If element has a live data binding configured, resolve it
+    if (elem.dataBinding != null && elem.dataBinding!.isNotEmpty) {
+      if (elem.category == CustomWidgetElementCategory.image &&
+          elem.dataBinding == 'media.cover_art') {
+        return _buildImageElement(elem);
+      }
+      final liveFunction = LiveWidgetFunctionLibrary.getById(elem.dataBinding!);
+      if (liveFunction != null) {
+        String? prefix;
+        String? suffix;
+        if (elem.bindingFormat != null && elem.bindingFormat!.isNotEmpty) {
+          final parts = elem.bindingFormat!.split(';');
+          for (final part in parts) {
+            if (part.startsWith('prefix:')) {
+              prefix = part.substring('prefix:'.length);
+            } else if (part.startsWith('suffix:')) {
+              suffix = part.substring('suffix:'.length);
+            }
+          }
+        }
+        final resolvedText = liveFunction.resolveText(
+          dateTime: dateTime,
+          cpuUsage: cpuUsage,
+          ramUsage: ramUsage,
+          weatherTemp: weatherTemp,
+          weatherStatus: weatherStatus,
+          weatherLocation: weatherLocation,
+          weatherApparentTemp: weatherApparentTemp,
+          weatherHumidity: weatherHumidity,
+          weatherForecastJson: weatherForecastJson,
+          mediaInfo: mediaInfo,
+          batteryInfo: batteryInfo,
+          diskInfo: diskInfo,
+          weatherUnit: elem.weatherUnit,
+          formatPrefix: prefix,
+          formatSuffix: suffix,
+        );
+        return _styledText(resolvedText, elem);
+      }
+    }
+
     switch (elem.type) {
+      case 'custom_icon':
+        final iconData = IconData(
+          // ignore: non_const_argument_for_const_parameter
+          elem.iconCodePoint ?? 0xe871,
+          // ignore: non_const_argument_for_const_parameter
+          fontFamily: elem.iconFontFamily ?? 'MaterialIcons',
+        );
+        return Icon(
+          iconData,
+          size: elem.fontSize > 0
+              ? elem.fontSize
+              : (elem.width > 0 ? elem.width : 28.0),
+          color: Color(elem.color),
+        );
+
+      case 'custom_image':
+        return _buildImageElement(elem);
+
       case 'hours':
         final hoursStr = DateFormat('hh').format(dateTime);
         return _styledText(hoursStr, elem);
@@ -706,6 +838,108 @@ class CustomWidgetRenderer extends StatelessWidget {
     );
   }
 
+  Widget _buildImageElement(CustomWidgetElement elem) {
+    Widget content;
+    final fit = _resolveBoxFit(elem.imageFit);
+
+    if (elem.dataBinding == 'media.cover_art' &&
+        mediaThumbnailBytes != null &&
+        mediaThumbnailBytes!.isNotEmpty) {
+      content = Image.memory(
+        mediaThumbnailBytes!,
+        width: elem.width,
+        height: elem.height,
+        fit: fit,
+      );
+    } else if (elem.imagePath != null && elem.imagePath!.isNotEmpty) {
+      final file = File(elem.imagePath!);
+      if (file.existsSync()) {
+        content = Image.file(
+          file,
+          width: elem.width,
+          height: elem.height,
+          fit: fit,
+        );
+      } else {
+        content = _buildImagePlaceholder(elem);
+      }
+    } else {
+      content = _buildImagePlaceholder(elem);
+    }
+
+    if (elem.cornerRadius > 0) {
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(elem.cornerRadius),
+        child: content,
+      );
+    }
+
+    if (elem.strokeWidth > 0 && elem.strokeColor != null) {
+      content = Container(
+        width: elem.width,
+        height: elem.height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(elem.cornerRadius),
+          border: Border.all(
+            color: Color(elem.strokeColor!),
+            width: elem.strokeWidth,
+          ),
+        ),
+        child: content,
+      );
+    }
+
+    return content;
+  }
+
+  Widget _buildImagePlaceholder(CustomWidgetElement elem) {
+    return Container(
+      width: elem.width > 0 ? elem.width : 80,
+      height: elem.height > 0 ? elem.height : 80,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(
+          elem.cornerRadius > 0 ? elem.cornerRadius : 8,
+        ),
+        border: Border.all(
+          color: Color(elem.color).withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.image_rounded,
+          size: (elem.height > 0 ? elem.height * 0.4 : 32.0).clamp(16.0, 48.0),
+          color: Color(elem.color).withValues(alpha: 0.6),
+        ),
+      ),
+    );
+  }
+
+  static BoxFit _resolveBoxFit(String fit) {
+    switch (fit) {
+      case 'contain':
+        return BoxFit.contain;
+      case 'fill':
+        return BoxFit.fill;
+      case 'cover':
+      default:
+        return BoxFit.cover;
+    }
+  }
+
+  static TextAlign _resolveTextAlign(String align) {
+    switch (align) {
+      case 'center':
+        return TextAlign.center;
+      case 'right':
+        return TextAlign.right;
+      case 'left':
+      default:
+        return TextAlign.left;
+    }
+  }
+
   Widget _styledText(String text, CustomWidgetElement elem) {
     final shadows = elem.shadowBlur > 0
         ? [
@@ -720,10 +954,14 @@ class CustomWidgetRenderer extends StatelessWidget {
         : null;
     Text textLayer({required Paint? foreground, Color? color}) => Text(
       text,
+      textScaler: TextScaler.noScaling,
+      textAlign: _resolveTextAlign(elem.textAlign),
       style: TextStyle(
         fontFamily: elem.fontFamily,
         fontSize: elem.fontSize,
         fontWeight: elem.isBold ? FontWeight.bold : FontWeight.normal,
+        fontStyle: elem.isItalic ? FontStyle.italic : FontStyle.normal,
+        height: elem.lineHeight > 0 ? elem.lineHeight : null,
         color: color,
         foreground: foreground,
         letterSpacing: elem.letterSpacing,
@@ -764,12 +1002,15 @@ class CustomWidgetRenderer extends StatelessWidget {
       width: elem.width > 0 ? elem.width : null,
       child: Text(
         text,
+        textScaler: TextScaler.noScaling,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontFamily: elem.fontFamily,
           fontSize: elem.fontSize,
           fontWeight: elem.isBold ? FontWeight.bold : FontWeight.normal,
+          fontStyle: elem.isItalic ? FontStyle.italic : FontStyle.normal,
+          height: elem.lineHeight > 0 ? elem.lineHeight : null,
           color: Color(elem.color),
           letterSpacing: elem.letterSpacing,
         ),
@@ -1304,11 +1545,35 @@ class _AnimatedElementState extends State<_AnimatedElement>
             return Transform.scale(scale: 0.94 + phase * 0.12, child: child);
           case 'float':
             return Transform.translate(
-              offset: Offset(0, -4 * math.sin(phase * math.pi)),
+              offset: Offset(0, -5 * math.sin(phase * math.pi)),
               child: child,
             );
           case 'rotate':
             return Transform.rotate(angle: phase * math.pi * 2, child: child);
+          case 'wave':
+            return Transform.translate(
+              offset: Offset(0, -6 * math.sin(phase * math.pi * 2)),
+              child: Transform.rotate(
+                angle: 0.04 * math.cos(phase * math.pi * 2),
+                child: child,
+              ),
+            );
+          case 'marquee':
+            return Transform.translate(
+              offset: Offset((phase - 0.5) * 16.0, 0),
+              child: child,
+            );
+          case 'shimmer':
+          case 'neon_shimmer':
+            return Opacity(
+              opacity: (0.4 + 0.6 * math.sin(phase * math.pi)).clamp(0.2, 1.0),
+              child: child,
+            );
+          case 'typewriter':
+            return Opacity(
+              opacity: phase < 0.5 ? 1.0 : 0.65,
+              child: child,
+            );
           default:
             return child!;
         }

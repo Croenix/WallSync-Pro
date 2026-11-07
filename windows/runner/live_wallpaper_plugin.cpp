@@ -362,6 +362,7 @@ class LiveWallpaperPlugin::Impl {
   bool AttachToDesktop();
   bool SetWidgetDesktopSurface(bool attach_to_desktop);
   bool ShowWidgetWindow();
+  bool RefreshWidgetSurface();
   flutter::EncodableMap VerifyWidgetPresentation(bool expected_topmost);
   bool IsFullscreenForegroundWindow() const;
   bool IsFullscreenForegroundWindowOnMonitor(
@@ -579,6 +580,11 @@ void LiveWallpaperPlugin::Impl::HandleMethodCall(
   }
   if (call.method_name() == "showWidgetWindow") {
     result->Success(flutter::EncodableValue(ShowWidgetWindow()));
+    return;
+  }
+  if (call.method_name() == "refreshWidgetSurface" ||
+      call.method_name() == "forceWidgetRedraw") {
+    result->Success(flutter::EncodableValue(RefreshWidgetSurface()));
     return;
   }
   if (call.method_name() == "verifyWidgetPresentation") {
@@ -2112,6 +2118,39 @@ bool LiveWallpaperPlugin::Impl::ShowWidgetWindow() {
           " isWindow=" + (IsWindow(target) ? "true" : "false") +
           " isVisible=" + (visible ? "true" : "false") +
           " iconic=" + (IsIconic(target) ? "true" : "false"));
+  return true;
+}
+
+bool LiveWallpaperPlugin::Impl::RefreshWidgetSurface() {
+  HWND target = root_window_ ? root_window_ : window_;
+  if (!target || !IsWindow(target)) {
+    return false;
+  }
+
+  if (force_redraw_) {
+    force_redraw_();
+  }
+
+  RedrawWindow(target, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME | RDW_ERASE);
+
+  if (window_ && window_ != target && IsWindow(window_)) {
+    RedrawWindow(window_, nullptr, nullptr,
+                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME | RDW_ERASE);
+  }
+
+  if (widget_desktop_attached_ && widget_desktop_parent_ && IsWindow(widget_desktop_parent_)) {
+    RECT rect{};
+    if (GetWindowRect(target, &rect)) {
+      POINT corners[2] = {{rect.left, rect.top}, {rect.right, rect.bottom}};
+      MapWindowPoints(HWND_DESKTOP, widget_desktop_parent_, corners, 2);
+      RECT parent_rect = {corners[0].x, corners[0].y, corners[1].x, corners[1].y};
+      InvalidateRect(widget_desktop_parent_, &parent_rect, TRUE);
+      UpdateWindow(widget_desktop_parent_);
+    }
+  }
+
+  DwmFlush();
   return true;
 }
 

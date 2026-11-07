@@ -1807,6 +1807,12 @@ class OverlayApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.transparent,
         canvasColor: Colors.transparent,
       ),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: TextScaler.noScaling,
+        ),
+        child: child!,
+      ),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: DesktopWidget(initialSettings: settings, instanceId: instanceId),

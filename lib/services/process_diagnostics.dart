@@ -132,14 +132,6 @@ class ProcessDiagnosticLog {
       }
     }
 
-    Future<List<String>> readLastLines(File? file, {int limit = 8}) async {
-      if (file == null || !await file.exists()) return const [];
-      final lines = await file.readAsLines();
-      return lines.length <= limit
-          ? lines
-          : lines.sublist(lines.length - limit);
-    }
-
     return 'no-startup-stage-recorded';
   }
 

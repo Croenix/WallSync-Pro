@@ -523,6 +523,7 @@ class WindowsTaskbarService extends ChangeNotifier {
     return false;
   }
 
+  // ignore: unused_element
   Future<bool> _legacyEnableCustomTaskbar({bool hideNativeTaskbar = false}) async {
     if (_operationInProgress) {
       logWarning(

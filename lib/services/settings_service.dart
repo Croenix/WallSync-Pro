@@ -343,6 +343,13 @@ class RecentWallpaperItem {
       !pathOrUrl.startsWith('asset://');
 }
 
+enum CustomWidgetElementCategory {
+  text,
+  icon,
+  image,
+  container,
+}
+
 /// Represents an individual drag-and-drop element inside a Custom Widget layout.
 class CustomWidgetElement {
   static const Map<String, String> starterWidgetIds = {
@@ -738,7 +745,7 @@ class CustomWidgetElement {
   /// 'media_source', 'media_status', 'media_artwork', 'media_progress',
   /// 'media_elapsed', 'media_duration', 'media_controls', 'media_animation',
   /// 'wifi_icon', 'bluetooth_icon', 'fluent_calendar', 'custom_text', 'neon_box'
-  final String type;
+  String type;
   double x;
   double y;
   double width;
@@ -769,6 +776,49 @@ class CustomWidgetElement {
   String animationType;
   String weatherUnit;
   List<int>? gradientColors;
+  String? dataBinding;
+  String? bindingFormat;
+  bool isItalic;
+  String textAlign;
+  double lineHeight;
+  int? iconCodePoint;
+  String? iconFontFamily;
+  String? imagePath;
+  String imageFit;
+
+  CustomWidgetElementCategory get category {
+    if (type == 'custom_icon' ||
+        type == 'weather_icon' ||
+        type == 'wifi_icon' ||
+        type == 'bluetooth_icon' ||
+        type == 'media_play_pause' ||
+        type.contains('icon') ||
+        iconCodePoint != null) {
+      return CustomWidgetElementCategory.icon;
+    }
+    if (type == 'custom_image' ||
+        type == 'media_artwork' ||
+        type == 'media_cover' ||
+        type == 'album_art' ||
+        type.contains('image') ||
+        (imagePath != null && imagePath!.isNotEmpty) ||
+        dataBinding == 'media.cover_art') {
+      return CustomWidgetElementCategory.image;
+    }
+    if (type == 'cpu_bar' ||
+        type == 'ram_bar' ||
+        type == 'space_bar' ||
+        type == 'battery_bar' ||
+        type == 'accent_bar' ||
+        type == 'glow_outer' ||
+        type == 'holo_panel' ||
+        type == 'neon_box' ||
+        type == 'media_pill' ||
+        type == 'fluent_calendar') {
+      return CustomWidgetElementCategory.container;
+    }
+    return CustomWidgetElementCategory.text;
+  }
 
   CustomWidgetElement({
     required this.id,
@@ -803,6 +853,15 @@ class CustomWidgetElement {
     this.animationType = 'none',
     this.weatherUnit = 'C',
     this.gradientColors,
+    this.dataBinding,
+    this.bindingFormat,
+    this.isItalic = false,
+    this.textAlign = 'left',
+    this.lineHeight = 1.2,
+    this.iconCodePoint,
+    this.iconFontFamily,
+    this.imagePath,
+    this.imageFit = 'cover',
   });
 
   factory CustomWidgetElement.fromJson(Map<String, dynamic> json) {
@@ -853,6 +912,15 @@ class CustomWidgetElement {
       animationType: json['animationType']?.toString() ?? 'none',
       weatherUnit: json['weatherUnit'] == 'F' ? 'F' : 'C',
       gradientColors: grad,
+      dataBinding: json['dataBinding']?.toString(),
+      bindingFormat: json['bindingFormat']?.toString(),
+      isItalic: json['isItalic'] as bool? ?? false,
+      textAlign: json['textAlign']?.toString() ?? 'left',
+      lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? 1.2,
+      iconCodePoint: (json['iconCodePoint'] as num?)?.toInt(),
+      iconFontFamily: json['iconFontFamily']?.toString(),
+      imagePath: json['imagePath']?.toString(),
+      imageFit: json['imageFit']?.toString() ?? 'cover',
     );
   }
 
@@ -889,6 +957,15 @@ class CustomWidgetElement {
     'animationType': animationType,
     'weatherUnit': weatherUnit,
     if (gradientColors != null) 'gradientColors': gradientColors,
+    if (dataBinding != null) 'dataBinding': dataBinding,
+    if (bindingFormat != null) 'bindingFormat': bindingFormat,
+    'isItalic': isItalic,
+    'textAlign': textAlign,
+    'lineHeight': lineHeight,
+    if (iconCodePoint != null) 'iconCodePoint': iconCodePoint,
+    if (iconFontFamily != null) 'iconFontFamily': iconFontFamily,
+    if (imagePath != null) 'imagePath': imagePath,
+    'imageFit': imageFit,
   };
 
   CustomWidgetElement copyWith({
@@ -924,6 +1001,15 @@ class CustomWidgetElement {
     String? animationType,
     String? weatherUnit,
     List<int>? gradientColors,
+    String? dataBinding,
+    String? bindingFormat,
+    bool? isItalic,
+    String? textAlign,
+    double? lineHeight,
+    int? iconCodePoint,
+    String? iconFontFamily,
+    String? imagePath,
+    String? imageFit,
   }) {
     return CustomWidgetElement(
       id: id ?? this.id,
@@ -962,6 +1048,15 @@ class CustomWidgetElement {
           (this.gradientColors != null
               ? List<int>.from(this.gradientColors!)
               : null),
+      dataBinding: dataBinding ?? this.dataBinding,
+      bindingFormat: bindingFormat ?? this.bindingFormat,
+      isItalic: isItalic ?? this.isItalic,
+      textAlign: textAlign ?? this.textAlign,
+      lineHeight: lineHeight ?? this.lineHeight,
+      iconCodePoint: iconCodePoint ?? this.iconCodePoint,
+      iconFontFamily: iconFontFamily ?? this.iconFontFamily,
+      imagePath: imagePath ?? this.imagePath,
+      imageFit: imageFit ?? this.imageFit,
     );
   }
 

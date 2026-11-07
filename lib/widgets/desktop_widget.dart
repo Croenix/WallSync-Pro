@@ -828,6 +828,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
         _syncMediaServiceState();
         _syncConnectivityService();
         _syncNeonAnimation();
+        if (Platform.isWindows) {
+          unawaited(
+            const MethodChannel('wallsync/live_wallpaper')
+                .invokeMethod('refreshWidgetSurface')
+                .catchError((_) => false),
+          );
+        }
+        WidgetsBinding.instance.scheduleFrame();
         if (updated.weatherLocation != prevLoc &&
             updated.weatherLocation.trim().isNotEmpty) {
           _fetchWeatherAndUpdate();
@@ -1213,35 +1221,35 @@ class _DesktopWidgetState extends State<DesktopWidget>
         _settings.taskbarSettings.nativeTaskbarHideEnabled) {
       return;
     }
+    // Custom layout templates have designer-defined canvas bounds.
+    // Do not alter or inflate custom widget dimensions upon launch.
+    if (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate)) {
+      return;
+    }
     final defaults =
         WidgetSettings.templateDefaults[_settings.widgetTemplate] ??
         {'width': 360.0, 'height': 200.0, 'sizeFactor': 1.0};
-    final baseWidth =
-        WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
-            _settings.width > 0
-        ? _settings.width
-        : defaults['width']!;
-    final baseHeight =
-        WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
-            _settings.height > 0
-        ? _settings.height
-        : defaults['height']!;
+    final baseWidth = defaults['width']!;
+    final baseHeight = defaults['height']!;
 
     final targetWidth =
-        ((isTaskbar ? baseWidth : (baseWidth + 40.0)) * _settings.sizeFactor)
+        (baseWidth * _settings.sizeFactor)
             .clamp(isTaskbar ? 120.0 : 180.0, 1920.0);
     final targetHeight =
-        ((isTaskbar ? baseHeight : (baseHeight + 32.0)) * _settings.sizeFactor)
+        (baseHeight * _settings.sizeFactor)
             .clamp(isTaskbar ? 36.0 : 60.0, 1080.0);
 
-    setState(() {
-      _settings.width = targetWidth;
-      _settings.height = targetHeight;
-    });
-    try {
-      await windowManager.setSize(Size(targetWidth, targetHeight));
-    } catch (_) {}
-    _scheduleWindowBoundsSave(immediate: true);
+    if ((_settings.width - targetWidth).abs() > 1.0 ||
+        (_settings.height - targetHeight).abs() > 1.0) {
+      setState(() {
+        _settings.width = targetWidth;
+        _settings.height = targetHeight;
+      });
+      try {
+        await windowManager.setSize(Size(targetWidth, targetHeight));
+      } catch (_) {}
+      _scheduleWindowBoundsSave(immediate: true);
+    }
   }
 
   void _openDashboard([String? tab]) {
@@ -7951,6 +7959,9 @@ class _DesktopWidgetState extends State<DesktopWidget>
               ),
       );
     } else {
+      final isCustom = WidgetSettings.isCustomLayoutTemplate(
+        _settings.widgetTemplate,
+      );
       mainWidget = Stack(
         children: [
           Positioned.fill(child: _buildBackground(context)),
@@ -7968,25 +7979,38 @@ class _DesktopWidgetState extends State<DesktopWidget>
               },
               onPanEnd: (_) => _endUserWindowInteraction(),
               onPanCancel: () => _endUserWindowInteraction(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: SizedBox(
-                      width: baseWidth,
-                      height: baseHeight,
-                      child: Transform.scale(
-                        scale: _settings.sizeFactor,
-                        child: _buildLayout(),
+              child: isCustom
+                  ? Center(
+                      child: SizedBox(
+                        width: baseWidth,
+                        height: baseHeight,
+                        child: _settings.sizeFactor != 1.0
+                            ? Transform.scale(
+                                scale: _settings.sizeFactor,
+                                child: _buildLayout(),
+                              )
+                            : _buildLayout(),
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: SizedBox(
+                            width: baseWidth,
+                            height: baseHeight,
+                            child: Transform.scale(
+                              scale: _settings.sizeFactor,
+                              child: _buildLayout(),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ),
             ),
           ),
         ],
