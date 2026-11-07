@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/services/media_session_service.dart';
 import 'package:wall_sync/services/settings_service.dart';

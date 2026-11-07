@@ -19,6 +19,7 @@ import 'services/wallpaper_engine.dart';
 import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
 import 'services/windows_taskbar_service.dart';
+import 'services/custom_font_service.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
 import 'widgets/splash_screen.dart';
@@ -707,6 +708,7 @@ void main(List<String> args) async {
       );
     }
     unawaited(WindowsTaskbarService.instance.init());
+    unawaited(CustomFontService.instance.init());
   }
   logInfo(
     'Main',
@@ -1761,6 +1763,7 @@ void main(List<String> args) async {
       if (!isStartupBackground) {
         unawaited(NotificationService.instance.init());
         unawaited(ShortbirdClient().init());
+        unawaited(CustomFontService.instance.checkForUpdatesOnStartup());
       }
       SystemOptimizerService.instance.startBackgroundMemoryOptimizer(
         interval: const Duration(minutes: 5),

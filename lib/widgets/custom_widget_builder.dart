@@ -9,6 +9,8 @@ import '../services/system_connectivity_service.dart';
 import '../services/system_optimizer_service.dart';
 import '../services/weather_service.dart';
 import '../services/widget_function_library.dart';
+import '../services/custom_font_service.dart';
+import 'font_download_dialog.dart';
 import 'custom_widget_renderer.dart';
 
 /// Full-screen Two-Section Custom Widget Studio / Builder.
@@ -80,17 +82,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   String? _customTextControllerElementId;
   final FocusNode _customTextFocusNode = FocusNode();
 
-  final List<String> _availableFonts = [
-    'Montserrat',
-    'Product Sans',
-    'Anurati',
-    'Moving Skate',
-    'Segoe UI',
-    'Consolas',
-    'Impact',
-    'Arial',
-    'Georgia',
-  ];
+  List<String> get _availableFonts =>
+      CustomFontService.instance.availableFontNames;
 
   final List<Color> _quickPalette = const [
     Color(0xFFFFFFFF),
@@ -143,6 +136,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   @override
   void initState() {
     super.initState();
+    CustomFontService.instance.addListener(_onFontsChanged);
+    if (!CustomFontService.instance.isInitialized) {
+      CustomFontService.instance.init();
+    }
     _weatherTemp = widget.initialSettings.weatherTemp;
     _weatherStatus = widget.initialSettings.weatherStatus;
     _weatherLocation = widget.initialSettings.weatherLocationResolved.isNotEmpty
@@ -356,6 +353,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
 
   @override
   void dispose() {
+    CustomFontService.instance.removeListener(_onFontsChanged);
     _clockTimer.cancel();
     _mediaSubscription?.cancel();
     _connectivitySubscription?.cancel();
@@ -365,6 +363,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
     MediaSessionService().stop(owner: 'custom-widget-editor');
     SystemConnectivityService.instance.stop(owner: 'custom-widget-editor');
     super.dispose();
+  }
+
+  void _onFontsChanged() {
+    if (mounted) setState(() {});
   }
 
   CustomWidgetElement? get _selectedElement {
@@ -2481,6 +2483,63 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                       },
                     ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.cloud_download_rounded, size: 13),
+                  label: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Get More Fonts...',
+                        style: TextStyle(fontSize: 10),
+                      ),
+                      if (CustomFontService.instance.hasUpdateAvailable) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF10B981),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF38BDF8),
+                    side: BorderSide(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  onPressed: () async {
+                    final selected = await FontDownloadDialog.show(
+                      context,
+                      currentFont: elem.fontFamily,
+                      onSelectFont: (font) {
+                        setState(() {
+                          elem.fontFamily = font;
+                          _hasUnsavedChanges = true;
+                        });
+                      },
+                    );
+                    if (selected != null && mounted) {
+                      setState(() {
+                        elem.fontFamily = selected;
+                        _hasUnsavedChanges = true;
+                      });
+                    }
+                  },
                 ),
                 const SizedBox(width: 12),
 

@@ -89,6 +89,7 @@ flutter:
     - assets/ocean_breeze.png
     - assets/desert_sunset.png
     - assets/golden_hour.png
+    - assets/font_categories.json
     - shorebird.yaml
 
   fonts:

@@ -24,6 +24,8 @@ import '../services/mpv_runtime_resolver.dart';
 import '../services/shortbird_client.dart';
 import '../services/weather_service.dart';
 import '../services/media_session_service.dart';
+import '../services/custom_font_service.dart';
+import 'font_download_dialog.dart';
 import '../services/diagnostics_service.dart';
 import '../services/launch_popup_service.dart';
 import '../services/overlay_lifecycle_service.dart';
@@ -26099,6 +26101,52 @@ class _DashboardViewState extends State<DashboardView>
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: () => FontDownloadDialog.show(context),
+                  icon: const Icon(Icons.font_download_rounded, size: 16),
+                  label: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Font Cloud Assets',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      if (CustomFontService.instance.hasUpdateAvailable) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'NEW',
+                            style: TextStyle(
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF38BDF8),
+                    side: const BorderSide(color: Color(0xFF38BDF8)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
                       vertical: 12,
                     ),
                     shape: RoundedRectangleBorder(
