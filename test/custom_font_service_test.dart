@@ -178,6 +178,24 @@ void main() {
       expect(fonts, contains('Impact'));
     });
 
+    test('availableFontNames strictly excludes un-downloaded preview fonts', () {
+      final service = CustomFontService.instance;
+      // An un-downloaded font like "Aurelise" or "Miller" must not appear in availableFontNames
+      expect(service.availableFontNames, isNot(contains('NonExistentOrUndownloadedFont')));
+    });
+
+    test('isFamilyDownloaded returns false when font files are not on disk', () {
+      final service = CustomFontService.instance;
+      const unDownloadedFamily = FontFamilyItem(
+        familyName: 'GhostFont',
+        category: 'Display / Decorative',
+        mainFontFile: 'GhostFont.ttf',
+        variants: [FontVariant(fileName: 'GhostFont.ttf')],
+      );
+
+      expect(service.isFamilyDownloaded(unDownloadedFamily), false);
+    });
+
     test('cancelDownload flags batch progress as cancelled', () {
       final service = CustomFontService.instance;
       service.cancelDownload();

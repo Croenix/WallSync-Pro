@@ -1113,7 +1113,6 @@ class _FontDownloadDialogState extends State<FontDownloadDialog> {
       ),
     );
   }
-  }
 
   // ── Sub-component: Footer ────────────────────────────────────────────────
   Widget _buildFooter(int visibleCount, int totalCount) {
