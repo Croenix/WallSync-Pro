@@ -18,10 +18,13 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
   RangeValues _selection = const RangeValues(0, 60);
   String? _error;
   String _status = '';
+  double? _progress;
   bool _isBusy = false;
+  YoutubeWallpaperCancellationToken? _cancellationToken;
 
   @override
   void dispose() {
+    _cancellationToken?.cancel();
     _urlController.dispose();
     super.dispose();
   }
@@ -32,9 +35,15 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
       _error = null;
       _video = null;
       _status = 'Fetching video details...';
+      _progress = null;
     });
+    final cancellationToken = YoutubeWallpaperCancellationToken();
+    _cancellationToken = cancellationToken;
     try {
-      final video = await _service.getVideoDetails(_urlController.text);
+      final video = await _service.getVideoDetails(
+        _urlController.text,
+        cancellationToken: cancellationToken,
+      );
       if (!mounted) return;
       final maxSeconds = video.duration.inMilliseconds / 1000;
       setState(() {
@@ -45,13 +54,20 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error is FormatException
-            ? error.message
-            : 'Could not load this YouTube video: $error';
+        _error = YoutubeWallpaperService.describeError(
+          error,
+          operation: 'load this YouTube video',
+        );
         _status = '';
       });
     } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+          _progress = null;
+          _cancellationToken = null;
+        });
+      }
     }
   }
 
@@ -64,27 +80,61 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
       _isBusy = true;
       _error = null;
       _status = 'Preparing your wallpaper clip...';
+      _progress = null;
     });
+    final cancellationToken = YoutubeWallpaperCancellationToken();
+    _cancellationToken = cancellationToken;
     try {
       final clip = await _service.createClip(
         video: video,
         start: start,
         end: end,
+        cancellationToken: cancellationToken,
         onStatus: (status) {
-          if (mounted) setState(() => _status = status);
+          if (mounted) {
+            setState(() {
+              _status = status;
+              _progress = null;
+            });
+          }
+        },
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _status = progress.message;
+              _progress = progress.fraction;
+            });
+          }
         },
       );
       if (mounted) Navigator.of(context).pop<File>(clip);
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error is FormatException
-            ? error.message
-            : 'Could not create the wallpaper clip: $error';
+        _error = YoutubeWallpaperService.describeError(
+          error,
+          operation: 'create the wallpaper clip',
+        );
       });
     } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+          _progress = null;
+          _cancellationToken = null;
+        });
+      }
     }
+  }
+
+  void _cancelCurrentOperation() {
+    final token = _cancellationToken;
+    if (token == null || token.isCancelled) return;
+    setState(() {
+      _status = 'Canceling and removing incomplete files...';
+      _progress = null;
+    });
+    token.cancel();
   }
 
   @override
@@ -112,6 +162,16 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
                 'Import a YouTube video and save a clip of up to 60 seconds '
                 'for offline playback.',
                 style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'The highest available resolution is preserved without '
+                're-encoding (up to 8K when available). Source streams are '
+                'downloaded before trimming because YouTube does not provide '
+                'reliable time-indexed byte ranges for these streams. '
+                'High-resolution imports may need substantial time and '
+                'temporary disk space.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -220,6 +280,8 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
               ],
               if (_status.isNotEmpty) ...[
                 const SizedBox(height: 12),
+                LinearProgressIndicator(value: _progress),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     const SizedBox(
@@ -243,8 +305,8 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
               ],
               const SizedBox(height: 12),
               const Text(
-                'YouTube streams may be limited to 360p. Only use videos you '
-                'have permission to save.',
+                'Playback at very high resolutions depends on your Windows '
+                'video decoder. Only save videos you have permission to use.',
                 style: TextStyle(color: Colors.white38, fontSize: 11),
               ),
             ],
@@ -253,8 +315,10 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _isBusy ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          onPressed: _isBusy
+              ? _cancelCurrentOperation
+              : () => Navigator.of(context).pop(),
+          child: Text(_isBusy ? 'Cancel operation' : 'Cancel'),
         ),
         FilledButton.icon(
           onPressed: _isBusy || video == null ? null : _createClip,

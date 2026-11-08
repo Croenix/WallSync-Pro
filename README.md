@@ -18,8 +18,13 @@ fullscreen or Windows Battery Saver is active.
 
 The video wallpaper source panel can also fetch YouTube video details, select
 a segment up to 60 seconds, and save the trimmed clip locally for offline
-playback. YouTube downloads may be limited to 360p; only save videos you have
-permission to use.
+playback. It selects the highest available adaptive video stream (up to 8K
+when the source provides it), downloads a matching audio stream, and remuxes
+both without re-encoding. High-resolution imports can require substantial
+download time and temporary disk space because source streams are downloaded
+before trimming; playback depends on the codecs supported by the Windows video
+decoder. YouTube may temporarily rate-limit requests from a network; if that
+happens, wait before trying again. Only save videos you have permission to use.
 
 The FFmpeg Windows runtime is staged during the Flutter native-assets build.
 Keep the checkout path short (for example, `C:\src\WallSync-Pro`) to avoid
