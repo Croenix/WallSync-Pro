@@ -72,8 +72,12 @@ class YoutubeWallpaperCancelledException implements Exception {
 
 class YoutubeWallpaperService {
   static const maxClipDuration = Duration(minutes: 1);
+  static const maxVideoSizeBytes = 95 * 1024 * 1024;
   static Future<void>? _ffmpegInitialization;
   static const _durationTolerance = Duration(seconds: 2);
+
+  static bool isWithinVideoSizeLimit(int bytes) =>
+      bytes > 0 && bytes <= maxVideoSizeBytes;
 
   static void _log(String message, {Object? error, StackTrace? stackTrace}) {
     developer.log(
@@ -209,7 +213,9 @@ class YoutubeWallpaperService {
       final selectedStreams = _selectBestStreams(manifest);
       if (selectedStreams == null) {
         throw const FormatException(
-          'No compatible video and audio streams were found for this video.',
+          'No compatible YouTube streams were found under the 95 MB limit. '
+          'The limit applies to the complete source streams, not just the '
+          'selected clip.',
         );
       }
 
@@ -261,9 +267,11 @@ class YoutubeWallpaperService {
       final videoBytes = selectedStreams.video.size.totalBytes;
       final audioBytes = selectedStreams.audio?.size.totalBytes ?? 0;
       final totalBytes = videoBytes + audioBytes;
-      if (videoBytes <= 0 || totalBytes <= 0) {
+      if (!isWithinVideoSizeLimit(videoBytes) ||
+          !isWithinVideoSizeLimit(totalBytes)) {
         throw const FormatException(
-          'YouTube did not report a valid size for the selected streams.',
+          'The selected YouTube video and audio streams exceed the 95 MB '
+          'download limit.',
         );
       }
 
@@ -278,6 +286,7 @@ class YoutubeWallpaperService {
         selectedStreams.video,
         videoSource,
         cancellationToken: cancellationToken,
+        maxBytes: maxVideoSizeBytes - downloadedBytes,
         onBytes: (received, expected) {
           final combined = downloadedBytes + received;
           onProgress?.call(
@@ -298,6 +307,7 @@ class YoutubeWallpaperService {
           audio,
           separateAudioSource!,
           cancellationToken: cancellationToken,
+          maxBytes: maxVideoSizeBytes - downloadedBytes,
           onBytes: (received, expected) {
             final combined = downloadedBytes + received;
             onProgress?.call(
@@ -406,6 +416,11 @@ class YoutubeWallpaperService {
         throw FileSystemException(
           'FFmpeg finished without creating a wallpaper clip.',
           tempClip.path,
+        );
+      }
+      if (await tempClip.length() > maxVideoSizeBytes) {
+        throw const FormatException(
+          'The processed wallpaper clip exceeds the 95 MB file-size limit.',
         );
       }
 
@@ -521,8 +536,19 @@ class YoutubeWallpaperService {
       final defaultAudio = matchingAudio
           .where((audio) => audio.audioTrack?.audioIsDefault ?? true)
           .toList();
-      final audio = (defaultAudio.isEmpty ? matchingAudio : defaultAudio)
-          .withHighestBitrate();
+      final audioCandidates =
+          (defaultAudio.isEmpty ? matchingAudio : defaultAudio)
+              .where(
+                (audio) =>
+                    isWithinVideoSizeLimit(video.size.totalBytes) &&
+                    isWithinVideoSizeLimit(audio.size.totalBytes) &&
+                    isWithinVideoSizeLimit(
+                      video.size.totalBytes + audio.size.totalBytes,
+                    ),
+              )
+              .toList();
+      if (audioCandidates.isEmpty) continue;
+      final audio = audioCandidates.withHighestBitrate();
 
       return _SelectedYoutubeStreams(
         video: video,
@@ -535,7 +561,11 @@ class YoutubeWallpaperService {
     }
 
     final muxedStreams = manifest.muxed
-        .where((stream) => _supportedExtension(stream.container.name) != null)
+        .where(
+          (stream) =>
+              _supportedExtension(stream.container.name) != null &&
+              isWithinVideoSizeLimit(stream.size.totalBytes),
+        )
         .toList();
     if (muxedStreams.isEmpty) return null;
 
@@ -562,12 +592,13 @@ class YoutubeWallpaperService {
     StreamInfo streamInfo,
     File destination, {
     required YoutubeWallpaperCancellationToken? cancellationToken,
+    required int maxBytes,
     required void Function(int received, int expected) onBytes,
   }) async {
     final expectedBytes = streamInfo.size.totalBytes;
-    if (expectedBytes <= 0) {
+    if (expectedBytes <= 0 || expectedBytes > maxBytes) {
       throw const FormatException(
-        'YouTube reported an invalid size for a selected stream.',
+        'The selected YouTube stream exceeds the 95 MB download limit.',
       );
     }
     final sink = destination.openWrite();
@@ -592,6 +623,11 @@ class YoutubeWallpaperService {
         cancellationToken?.throwIfCancelled();
         final chunk = stream.current;
         receivedBytes += chunk.length;
+        if (receivedBytes > maxBytes) {
+          throw const FormatException(
+            'The YouTube download exceeded the 95 MB size limit.',
+          );
+        }
         if (receivedBytes > expectedBytes) {
           throw FormatException(
             'YouTube returned more bytes than its reported stream size '
@@ -634,7 +670,15 @@ class YoutubeWallpaperService {
     Duration requestedDuration, {
     YoutubeWallpaperCancellationToken? cancellationToken,
   }) async {
-    if (!await file.exists() || await file.length() == 0) return false;
+    if (!await file.exists()) return false;
+    final fileSize = await file.length();
+    if (fileSize == 0 || fileSize > maxVideoSizeBytes) {
+      _log(
+        'Media file size is outside the allowed limit for ${file.path}: '
+        '${_formatBytes(fileSize)}.',
+      );
+      return false;
+    }
     cancellationToken?.throwIfCancelled();
     final probeSession = FFprobeKit.createSession(
       '-v error -show_entries format=duration:stream=codec_type,width,height '

@@ -169,8 +169,9 @@ class _YoutubeWallpaperDialogState extends State<YoutubeWallpaperDialog> {
                 're-encoding (up to 8K when available). Source streams are '
                 'downloaded before trimming because YouTube does not provide '
                 'reliable time-indexed byte ranges for these streams. '
-                'High-resolution imports may need substantial time and '
-                'temporary disk space.',
+                'The combined source downloads and saved clip are each '
+                'limited to 95 MB. A short selected segment can still be '
+                'unavailable if its complete source streams exceed that cap.',
                 style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
               const SizedBox(height: 16),

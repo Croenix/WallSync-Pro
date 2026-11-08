@@ -4,6 +4,24 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart'
 import 'package:wall_sync/services/youtube_wallpaper_service.dart';
 
 void main() {
+  group('YoutubeWallpaperService size limit', () {
+    test('accepts sizes up to 95 MB and rejects larger streams', () {
+      expect(YoutubeWallpaperService.maxVideoSizeBytes, 95 * 1024 * 1024);
+      expect(
+        YoutubeWallpaperService.isWithinVideoSizeLimit(
+          YoutubeWallpaperService.maxVideoSizeBytes,
+        ),
+        isTrue,
+      );
+      expect(
+        YoutubeWallpaperService.isWithinVideoSizeLimit(
+          YoutubeWallpaperService.maxVideoSizeBytes + 1,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('YoutubeWallpaperCancellationToken', () {
     test('notifies listeners and throws after cancellation', () {
       final token = YoutubeWallpaperCancellationToken();
