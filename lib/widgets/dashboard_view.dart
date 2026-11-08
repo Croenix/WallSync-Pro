@@ -184,11 +184,43 @@ class _DashboardViewState extends State<DashboardView>
   MediaInfo _mediaInfo = MediaInfo(title: '', artist: '', status: 'Closed');
   final ValueNotifier<int> _playbackPositionNotifier = ValueNotifier<int>(0);
   Uint8List? _thumbnailBytes;
+  String? _checkedWallpaperPreviewPath;
+  Future<bool>? _wallpaperPreviewExists;
   int _dashboardBuildCount = 0;
   Future<StorageSnapshot>? _diagnosticsStorageSnapshot;
   String _diagHistorySeverityFilter = 'ALL';
   String _diagHistoryCategoryFilter = 'ALL';
   Duration? _diagHistoryTimeRangeFilter;
+
+  Future<bool> _wallpaperPreviewFileExists(String path) {
+    if (_checkedWallpaperPreviewPath != path ||
+        _wallpaperPreviewExists == null) {
+      _checkedWallpaperPreviewPath = path;
+      _wallpaperPreviewExists = File(path).exists();
+    }
+    return _wallpaperPreviewExists!;
+  }
+
+  Widget _buildWallpaperPreviewFile(
+    String? path, {
+    required int cacheWidth,
+    Widget fallback = const SizedBox.shrink(),
+  }) {
+    if (path == null || path.isEmpty) return fallback;
+    return FutureBuilder<bool>(
+      future: _wallpaperPreviewFileExists(path),
+      builder: (context, snapshot) {
+        if (snapshot.data != true) return fallback;
+        return Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          cacheWidth: cacheWidth,
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        );
+      },
+    );
+  }
+
   final Map<String, Future<File?>> _recentThumbnailFutures = {};
   final Map<String, String> _lastSyncedSettingsJsonByWidget = {};
   final Map<String, int> _settingsSyncRevisionByWidget = {};
@@ -5724,13 +5756,7 @@ class _DashboardViewState extends State<DashboardView>
                               fallbackUrl: heroWp.thumbnailUrl ?? heroWp.url,
                               fit: BoxFit.cover,
                             ))
-                    : (localPath != null && File(localPath).existsSync()
-                          ? Image.file(
-                              File(localPath),
-                              fit: BoxFit.cover,
-                              cacheWidth: 800,
-                            )
-                          : const SizedBox.shrink()),
+                    : _buildWallpaperPreviewFile(localPath, cacheWidth: 800),
               ),
             ),
             // Obsidian Multi-Stop Gradient Filter
@@ -6049,19 +6075,16 @@ class _DashboardViewState extends State<DashboardView>
                                         heroWp.thumbnailUrl ?? heroWp.url,
                                     fit: BoxFit.cover,
                                   ))
-                          else if (localPath != null &&
-                              File(localPath).existsSync())
-                            Image.file(
-                              File(localPath),
-                              fit: BoxFit.cover,
-                              cacheWidth: 400,
-                            )
                           else
-                            const Center(
-                              child: Icon(
-                                Icons.wallpaper_rounded,
-                                color: Colors.white30,
-                                size: 32,
+                            _buildWallpaperPreviewFile(
+                              localPath,
+                              cacheWidth: 400,
+                              fallback: const Center(
+                                child: Icon(
+                                  Icons.wallpaper_rounded,
+                                  color: Colors.white30,
+                                  size: 32,
+                                ),
                               ),
                             ),
                           Container(

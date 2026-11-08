@@ -83,8 +83,8 @@ class LiveWallpaperManager {
         result['windowVisible'] != true) {
       return false;
     }
-    final width = result['width'];
-    final height = result['height'];
+    final width = result['windowWidth'] ?? result['width'];
+    final height = result['windowHeight'] ?? result['height'];
     return width is int && width > 0 && height is int && height > 0;
   }
 
@@ -134,8 +134,8 @@ class LiveWallpaperManager {
     // Media validation: Ensure media file exists and is accessible before launching MPV
     if (!targetPath.startsWith('http://') && !targetPath.startsWith('https://')) {
       final file = File(targetPath);
-      if (file.existsSync()) {
-        final size = file.lengthSync();
+      if (await file.exists()) {
+        final size = await file.length();
         if (size < 1024) {
           throw FormatException('Video wallpaper file is incomplete or corrupt ($size bytes): $targetPath');
         }
@@ -253,8 +253,8 @@ class LiveWallpaperManager {
         'Transition #${transitionId ?? '-'} MPV startup was cancelled.',
       );
     }
-    final width = result?['width'];
-    final height = result?['height'];
+    final width = result?['windowWidth'] ?? result?['width'];
+    final height = result?['windowHeight'] ?? result?['height'];
     final pidVal = result?['pid'];
     if (pidVal is int && pidVal > 0) {
       _mpvPid = pidVal;

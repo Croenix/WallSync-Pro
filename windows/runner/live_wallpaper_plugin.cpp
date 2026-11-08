@@ -444,6 +444,7 @@ class LiveWallpaperPlugin::Impl {
   HWND widget_desktop_parent_ = nullptr;
 
   HANDLE mpv_process_handle_ = nullptr;
+  HANDLE mpv_job_handle_ = nullptr;
   DWORD mpv_pid_ = 0;
   HWND mpv_hwnd_ = nullptr;
   bool mpv_window_attached_ = false;
@@ -1482,7 +1483,7 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
 
   BOOL success = CreateProcessW(
       nullptr, cmd_line_writable.data(), nullptr, nullptr, TRUE,
-      CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS, nullptr,
+      CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED, nullptr,
       mpv_directory.c_str(), &si, &pi);
 
   if (stderr_write != nullptr) {
@@ -1519,11 +1520,79 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::StartMpv(const flutter::Encodab
     failure[flutter::EncodableValue("lookupMs")] = flutter::EncodableValue(mpv_executable_lookup_ms_);
     return failure;
   }
+
+  HANDLE mpv_job = CreateJobObjectW(nullptr, nullptr);
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_limits{};
+  job_limits.BasicLimitInformation.LimitFlags =
+      JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  DWORD job_error = ERROR_SUCCESS;
+  if (mpv_job == nullptr) {
+    job_error = GetLastError();
+  } else if (!SetInformationJobObject(
+                 mpv_job, JobObjectExtendedLimitInformation, &job_limits,
+                 sizeof(job_limits))) {
+    job_error = GetLastError();
+  } else if (!AssignProcessToJobObject(mpv_job, pi.hProcess)) {
+    job_error = GetLastError();
+  }
+  if (job_error != ERROR_SUCCESS) {
+    LogProcessDiagnostic(
+        "mpv_job_assignment",
+        "result=failed error=" + std::to_string(job_error));
+    if (mpv_job != nullptr) CloseHandle(mpv_job);
+    TerminateProcess(pi.hProcess, job_error);
+    WaitForSingleObject(pi.hProcess, 1000);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    if (mpv_stderr_read_ != nullptr &&
+        mpv_stderr_read_ != INVALID_HANDLE_VALUE) {
+      CloseHandle(mpv_stderr_read_);
+      mpv_stderr_read_ = nullptr;
+    }
+    flutter::EncodableMap failure;
+    failure[flutter::EncodableValue("stage")] =
+        flutter::EncodableValue("process_ownership");
+    failure[flutter::EncodableValue("error")] = flutter::EncodableValue(
+        "Could not safely assign the MPV wallpaper process to its lifetime "
+        "job object.");
+    failure[flutter::EncodableValue("win32Error")] =
+        flutter::EncodableValue(static_cast<int>(job_error));
+    return failure;
+  }
+
+  if (ResumeThread(pi.hThread) == static_cast<DWORD>(-1)) {
+    const DWORD resume_error = GetLastError();
+    LogProcessDiagnostic(
+        "mpv_process_resume",
+        "result=failed error=" + std::to_string(resume_error));
+    CloseHandle(mpv_job);
+    TerminateProcess(pi.hProcess, resume_error);
+    WaitForSingleObject(pi.hProcess, 1000);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    if (mpv_stderr_read_ != nullptr &&
+        mpv_stderr_read_ != INVALID_HANDLE_VALUE) {
+      CloseHandle(mpv_stderr_read_);
+      mpv_stderr_read_ = nullptr;
+    }
+    flutter::EncodableMap failure;
+    failure[flutter::EncodableValue("stage")] =
+        flutter::EncodableValue("process_resume");
+    failure[flutter::EncodableValue("error")] =
+        flutter::EncodableValue("Could not resume the MPV wallpaper process.");
+    failure[flutter::EncodableValue("win32Error")] =
+        flutter::EncodableValue(static_cast<int>(resume_error));
+    return failure;
+  }
+  LogProcessDiagnostic("mpv_job_assignment",
+                       "result=success pid=" +
+                           std::to_string(pi.dwProcessId));
   mpv_process_launch_ms_ = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - mpv_launch_started_).count();
 
   CloseHandle(pi.hThread);
   mpv_process_handle_ = pi.hProcess;
+  mpv_job_handle_ = mpv_job;
   mpv_pid_ = pi.dwProcessId;
 
   flutter::EncodableMap result;
@@ -1754,8 +1823,10 @@ flutter::EncodableMap LiveWallpaperPlugin::Impl::PollMpvStart() {
   flutter::EncodableMap result;
   result[flutter::EncodableValue("success")] = flutter::EncodableValue(true);
   result[flutter::EncodableValue("pid")] = flutter::EncodableValue(static_cast<int>(mpv_pid_));
-  result[flutter::EncodableValue("width")] = flutter::EncodableValue(mpv_width_ > 0 ? mpv_width_ : 1920);
-  result[flutter::EncodableValue("height")] = flutter::EncodableValue(mpv_height_ > 0 ? mpv_height_ : 1080);
+  result[flutter::EncodableValue("windowWidth")] =
+      flutter::EncodableValue(mpv_width_);
+  result[flutter::EncodableValue("windowHeight")] =
+      flutter::EncodableValue(mpv_height_);
   add_phase_times(result);
   return result;
 }
@@ -1842,6 +1913,8 @@ bool LiveWallpaperPlugin::Impl::StopMpv() {
     SetParent(mpv_hwnd_, nullptr);
   }
 
+  HANDLE job_to_release = mpv_job_handle_;
+  mpv_job_handle_ = nullptr;
   if (mpv_process_handle_) {
     DWORD exit_code = 0;
     const BOOL got_code = GetExitCodeProcess(mpv_process_handle_, &exit_code);
@@ -1862,24 +1935,36 @@ bool LiveWallpaperPlugin::Impl::StopMpv() {
       if (wait_status == WAIT_TIMEOUT) {
         HANDLE proc_to_wait = mpv_process_handle_;
         mpv_process_handle_ = nullptr;
-        std::thread([proc_to_wait]() {
+        HANDLE job_to_wait = job_to_release;
+        job_to_release = nullptr;
+        std::thread([proc_to_wait, job_to_wait]() {
           DWORD status = WaitForSingleObject(proc_to_wait, 1500);
           if (status == WAIT_TIMEOUT) {
             TerminateProcess(proc_to_wait, 0);
             WaitForSingleObject(proc_to_wait, 1000);
           }
+          if (job_to_wait != nullptr) CloseHandle(job_to_wait);
           CloseHandle(proc_to_wait);
         }).detach();
       } else {
         CloseHandle(mpv_process_handle_);
         mpv_process_handle_ = nullptr;
+        if (job_to_release != nullptr) {
+          CloseHandle(job_to_release);
+          job_to_release = nullptr;
+        }
       }
     } else {
       CloseHandle(mpv_process_handle_);
       mpv_process_handle_ = nullptr;
+      if (job_to_release != nullptr) {
+        CloseHandle(job_to_release);
+        job_to_release = nullptr;
+      }
     }
   }
 
+  if (job_to_release != nullptr) CloseHandle(job_to_release);
   if (mpv_pipe_handle_ != INVALID_HANDLE_VALUE && mpv_pipe_handle_ != nullptr) {
     CloseHandle(mpv_pipe_handle_);
     mpv_pipe_handle_ = INVALID_HANDLE_VALUE;

@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 
@@ -23,54 +23,128 @@ class _MpvThumbnailExtractPayload {
   });
 }
 
-Future<bool> _runMpvThumbnailExtractWorker(_MpvThumbnailExtractPayload payload) async {
-  try {
-    // Attempt 1: 1.0 second (avoids black intro frame)
-    await Process.run(payload.mpvPath, [
+Future<bool> _runMpvThumbnailExtract(
+  _MpvThumbnailExtractPayload payload,
+) async {
+  const timeout = Duration(seconds: 8);
+  final stopwatch = Stopwatch()..start();
+
+  for (final startSeconds in const [1, 0]) {
+    final remaining = timeout - stopwatch.elapsed;
+    if (remaining <= Duration.zero) return false;
+    final generated = File(payload.targetFilePath);
+    if (await generated.exists()) await generated.delete();
+    final process = await Process.start(payload.mpvPath, [
       payload.resolvedSource,
       '--no-audio',
       '--no-config',
-      '--start=1',
-      '--frames=1',
+      '--start=$startSeconds',
+      '--length=2',
+      '--speed=8',
       '--vo=image',
       '--vo-image-format=jpg',
       '--vo-image-outdir=${payload.tempOutDirPath}',
+      '--vf=scale=640:-2',
       '--vd-lavc-threads=1',
       '--demuxer-max-bytes=4MiB',
       '--demuxer-max-back-bytes=0',
       '--cache=no',
       '--priority=belownormal',
-    ]).timeout(const Duration(seconds: 12));
+    ]);
+    final stdout = StringBuffer();
+    final stderr = StringBuffer();
+    final stdoutSubscription = process.stdout
+        .transform(utf8.decoder)
+        .listen((chunk) => _appendDiagnostic(stdout, chunk));
+    final stderrSubscription = process.stderr
+        .transform(utf8.decoder)
+        .listen((chunk) => _appendDiagnostic(stderr, chunk));
+    final exitFuture = process.exitCode;
+    var exited = false;
+    int? exitCode;
+    var previousLength = -1;
+    var stableLengthChecks = 0;
+    var generatedFrameReady = false;
+    try {
+      while (stopwatch.elapsed < timeout) {
+        if (await generated.exists()) {
+          final length = await generated.length();
+          if (length > 500) {
+            stableLengthChecks = length == previousLength
+                ? stableLengthChecks + 1
+                : 0;
+            previousLength = length;
+            if (stableLengthChecks >= 1) {
+              generatedFrameReady = true;
+              break;
+            }
+          }
+        }
 
-    var generated = File('${payload.tempOutDirPath}\\00000001.jpg');
-    if (!await generated.exists() || await generated.length() == 0) {
-      await Process.run(payload.mpvPath, [
-        payload.resolvedSource,
-        '--no-audio',
-        '--no-config',
-        '--start=0',
-        '--frames=1',
-        '--vo=image',
-        '--vo-image-format=jpg',
-        '--vo-image-outdir=${payload.tempOutDirPath}',
-      ]).timeout(const Duration(seconds: 12));
-      generated = File('${payload.tempOutDirPath}\\00000001.jpg');
+        final remaining = timeout - stopwatch.elapsed;
+        if (remaining <= Duration.zero) break;
+        exitCode = await Future.any<int?>([
+          exitFuture.then<int?>((code) => code),
+          Future<void>.delayed(
+            remaining < const Duration(milliseconds: 100)
+                ? remaining
+                : const Duration(milliseconds: 100),
+          ).then<int?>((_) => null),
+        ]);
+        if (exitCode != null) {
+          exited = true;
+          break;
+        }
+      }
+
+      if (generatedFrameReady && !exited) {
+        process.kill();
+        await exitFuture.timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => -1,
+        );
+      } else if (!exited) {
+        process.kill();
+        exitCode = await exitFuture.timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => -1,
+        );
+      }
+    } finally {
+      await stdoutSubscription.cancel();
+      await stderrSubscription.cancel();
     }
 
-    if (await generated.exists() && await generated.length() > 500) {
-      final targetFile = File(payload.targetFilePath);
-      if (await targetFile.exists()) {
-        try {
-          await targetFile.delete();
-        } catch (_) {}
-      }
-      await generated.rename(targetFile.path);
+    if (generatedFrameReady && await generated.exists()) {
       return true;
     }
-    return false;
-  } catch (_) {
-    return false;
+    logWarning(
+      'VideoThumbnailService',
+      'MPV did not produce a thumbnail at $startSeconds seconds '
+          '(exit code ${exitCode ?? 'unknown'}): '
+          '${_diagnosticText(stdout, stderr)}',
+    );
+    if (!exited) return false;
   }
+  return false;
+}
+
+void _appendDiagnostic(StringBuffer buffer, String chunk) {
+  const maxLength = 2048;
+  final remaining = maxLength - buffer.length;
+  if (remaining > 0) {
+    buffer.write(
+      chunk.length <= remaining ? chunk : chunk.substring(0, remaining),
+    );
+  }
+}
+
+String _diagnosticText(StringBuffer stdout, StringBuffer stderr) {
+  final output = [
+    stdout.toString().trim(),
+    stderr.toString().trim(),
+  ].where((text) => text.isNotEmpty).join('\n');
+  return output.isEmpty ? 'No process output was captured.' : output;
 }
 
 /// High-performance video thumbnail generator and cache.
@@ -87,11 +161,33 @@ class VideoThumbnailService {
   final Set<String> _negativeCache = {};
   final Map<String, Future<File?>> _inFlight = {};
   final Map<String, Future<File?>> _cacheLookupsInFlight = {};
+  final Queue<Completer<void>> _extractionWaiters = Queue<Completer<void>>();
+  int _activeExtractions = 0;
+  static const _maxConcurrentExtractions = 2;
 
   /// Generates a deterministic cache key for a video path or URL.
   static String hashKey(String input) {
     final normalized = VideoWallpaperCache.normalizeVideoUrl(input.trim());
     return sha256.convert(utf8.encode(normalized)).toString();
+  }
+
+  Future<String> _cacheKeyFor(String input) async {
+    final normalized = VideoWallpaperCache.normalizeVideoUrl(input.trim());
+    final file = File(input.trim());
+    late final FileStat stat;
+    try {
+      stat = await file.stat();
+    } on FileSystemException {
+      return hashKey(input);
+    }
+    if (stat.type != FileSystemEntityType.file) return hashKey(input);
+    return sha256
+        .convert(
+          utf8.encode(
+            '$normalized|${stat.size}|${stat.modified.microsecondsSinceEpoch}',
+          ),
+        )
+        .toString();
   }
 
   /// Locates the bundled mpv.exe binary via [MpvRuntimeResolver].
@@ -110,11 +206,15 @@ class VideoThumbnailService {
   }
 
   /// Checks for a valid cached thumbnail without blocking the calling isolate.
-  Future<File?> getCachedThumbnailFile(String videoPathOrUrl) {
+  Future<File?> getCachedThumbnailFile(String videoPathOrUrl) async {
     final trimmed = videoPathOrUrl.trim();
-    if (trimmed.isEmpty) return Future<File?>.value();
+    if (trimmed.isEmpty) return null;
 
-    final key = hashKey(trimmed);
+    final key = await _cacheKeyFor(trimmed);
+    return _getCachedThumbnailFile(key);
+  }
+
+  Future<File?> _getCachedThumbnailFile(String key) {
     final pending = _cacheLookupsInFlight[key];
     if (pending != null) return pending;
 
@@ -129,11 +229,8 @@ class VideoThumbnailService {
 
   Future<File?> _readCachedThumbnail(String key) async {
     if (_negativeCache.contains(key)) return null;
-    final appData =
-        Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
-    final path =
-        _memoryCache[key] ??
-        '$appData\\com.example\\wallsync\\video_thumbnails\\$key.jpg';
+    final directory = await getThumbnailDirectory();
+    final path = _memoryCache[key] ?? '${directory.path}\\$key.jpg';
     final targetFile = File(path);
     try {
       if (await targetFile.exists() && await targetFile.length() > 500) {
@@ -194,11 +291,11 @@ class VideoThumbnailService {
     final trimmed = videoPathOrUrl.trim();
     if (trimmed.isEmpty) return null;
 
-    final key = hashKey(trimmed);
+    final key = await _cacheKeyFor(trimmed);
 
     // 1. Check in-memory & on-disk cache
     if (!forceRegenerate) {
-      final existing = await getCachedThumbnailFile(trimmed);
+      final existing = await _getCachedThumbnailFile(key);
       if (existing != null) {
         return existing;
       }
@@ -241,32 +338,31 @@ class VideoThumbnailService {
 
     final tempOutDir = Directory('${thumbDir.path}\\temp_$key');
     if (await tempOutDir.exists()) {
-      try {
-        await tempOutDir.delete(recursive: true);
-      } catch (_) {}
+      await tempOutDir.delete(recursive: true);
     }
     await tempOutDir.create(recursive: true);
-
-    final resolvedSource = await _resolveVideoSource(input);
-    if (resolvedSource.isEmpty) {
-      return null;
-    }
+    final generatedFile = File('${tempOutDir.path}\\00000001.jpg');
 
     final sw = Stopwatch()..start();
     try {
+      final resolvedSource = await _resolveVideoSource(input);
+      if (resolvedSource.isEmpty) return null;
+
       final payload = _MpvThumbnailExtractPayload(
         mpvPath: mpvPath,
         resolvedSource: resolvedSource,
         tempOutDirPath: tempOutDir.path,
-        targetFilePath: targetFile.path,
+        targetFilePath: generatedFile.path,
       );
 
-      final extracted = await Isolate.run(
-        () => _runMpvThumbnailExtractWorker(payload),
+      final extracted = await _withExtractionSlot(
+        () => _runMpvThumbnailExtract(payload),
       );
 
       final durationMs = sw.elapsedMilliseconds;
-      if (extracted && await targetFile.exists()) {
+      if (extracted && await generatedFile.exists()) {
+        if (await targetFile.exists()) await targetFile.delete();
+        await generatedFile.rename(targetFile.path);
         _memoryCache[key] = targetFile.path;
         _negativeCache.remove(key);
         if (durationMs > 3000) {
@@ -282,6 +378,10 @@ class VideoThumbnailService {
         }
         return targetFile;
       }
+      logWarning(
+        'VideoThumbnailService',
+        'Thumbnail extraction did not create an image for $input.',
+      );
     } catch (e, st) {
       logError(
         'VideoThumbnailService',
@@ -293,10 +393,35 @@ class VideoThumbnailService {
       if (await tempOutDir.exists()) {
         try {
           await tempOutDir.delete(recursive: true);
-        } catch (_) {}
+        } on FileSystemException catch (error, stackTrace) {
+          logWarning(
+            'VideoThumbnailService',
+            'Could not clean thumbnail extraction directory '
+                '${tempOutDir.path}: $error\n$stackTrace',
+          );
+        }
       }
     }
 
     return null;
+  }
+
+  Future<T> _withExtractionSlot<T>(Future<T> Function() action) async {
+    if (_activeExtractions >= _maxConcurrentExtractions) {
+      final waiter = Completer<void>();
+      _extractionWaiters.addLast(waiter);
+      await waiter.future;
+    } else {
+      _activeExtractions++;
+    }
+    try {
+      return await action();
+    } finally {
+      if (_extractionWaiters.isNotEmpty) {
+        _extractionWaiters.removeFirst().complete();
+      } else {
+        _activeExtractions--;
+      }
+    }
   }
 }

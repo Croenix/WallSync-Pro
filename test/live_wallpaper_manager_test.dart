@@ -22,8 +22,8 @@ void main() {
                 'frameDecoded': true,
                 'windowAttached': true,
                 'windowVisible': true,
-                'width': 1920,
-                'height': 1080,
+                'windowWidth': 1920,
+                'windowHeight': 1080,
               };
       },
       isCancelled: () => false,
@@ -70,11 +70,30 @@ void main() {
     expect(
       LiveWallpaperManager.startupResultIsReadyForTesting({
         ...ready,
-        'width': 0,
+        'windowWidth': 0,
       }),
       isFalse,
     );
   });
+
+  test(
+    'startup readiness accepts legacy window dimensions during migration',
+    () {
+      const legacy = <String, dynamic>{
+        'success': true,
+        'frameDecoded': true,
+        'windowAttached': true,
+        'windowVisible': true,
+        'width': 1920,
+        'height': 1080,
+      };
+
+      expect(
+        LiveWallpaperManager.startupResultIsReadyForTesting(legacy),
+        isTrue,
+      );
+    },
+  );
 
   test(
     'startup polling stops before another native poll when cancelled',
@@ -371,116 +390,126 @@ void main() {
     }
   });
 
-  test('two identical video requests arriving during startup reuse in-flight operation', () async {
-    if (!Platform.isWindows) return;
-    final manager = LiveWallpaperManager();
-    var startCallCount = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(LiveWallpaperManager.channel, (call) async {
-          switch (call.method) {
-            case 'startMpv':
-              startCallCount++;
-              await Future.delayed(const Duration(milliseconds: 30));
-              return const {
-                'success': true,
-                'frameDecoded': true,
-                'windowAttached': true,
-                'windowVisible': true,
-                'width': 1920,
-                'height': 1080,
-                'pid': 12345,
-              };
-            case 'getPlaybackPolicy':
-              return const {'fullscreen': false, 'batterySaver': false};
-            case 'stopMpv':
-              return true;
-            default:
-              throw MissingPluginException('Unexpected method ${call.method}');
-          }
-        });
-    try {
-      final settings = WidgetSettings(
-        activeWallpaperType: 'video',
-        activeWallpaperPath: r'C:\wallpapers\duplicate_test.mp4',
-      );
-
-      // Launch two identical requests almost simultaneously
-      final future1 = manager.start(settings);
-      final future2 = manager.start(settings);
-
-      await Future.wait([future1, future2]);
-
-      // Only 1 native start call should have occurred
-      expect(startCallCount, 1);
-      expect(manager.mpvPid, 12345);
-    } finally {
-      manager.dispose();
+  test(
+    'two identical video requests arriving during startup reuse in-flight operation',
+    () async {
+      if (!Platform.isWindows) return;
+      final manager = LiveWallpaperManager();
+      var startCallCount = 0;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(LiveWallpaperManager.channel, null);
-    }
-  });
+          .setMockMethodCallHandler(LiveWallpaperManager.channel, (call) async {
+            switch (call.method) {
+              case 'startMpv':
+                startCallCount++;
+                await Future.delayed(const Duration(milliseconds: 30));
+                return const {
+                  'success': true,
+                  'frameDecoded': true,
+                  'windowAttached': true,
+                  'windowVisible': true,
+                  'width': 1920,
+                  'height': 1080,
+                  'pid': 12345,
+                };
+              case 'getPlaybackPolicy':
+                return const {'fullscreen': false, 'batterySaver': false};
+              case 'stopMpv':
+                return true;
+              default:
+                throw MissingPluginException(
+                  'Unexpected method ${call.method}',
+                );
+            }
+          });
+      try {
+        final settings = WidgetSettings(
+          activeWallpaperType: 'video',
+          activeWallpaperPath: r'C:\wallpapers\duplicate_test.mp4',
+        );
 
-  test('different target supersedes in-flight startup safely without corrupting newer process', () async {
-    if (!Platform.isWindows) return;
-    final manager = LiveWallpaperManager();
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(LiveWallpaperManager.channel, (call) async {
-          switch (call.method) {
-            case 'startMpv':
-              final path = (call.arguments as Map)['path'] as String?;
-              final pid = path?.contains('videoB') == true ? 20002 : 10001;
-              return {
-                'pending': true,
-                'pid': pid,
-              };
-            case 'pollMpvStart':
-              await Future.delayed(const Duration(milliseconds: 20));
-              return const {
-                'success': true,
-                'frameDecoded': true,
-                'windowAttached': true,
-                'windowVisible': true,
-                'width': 1920,
-                'height': 1080,
-                'pid': 20002,
-              };
-            case 'getPlaybackPolicy':
-              return const {'fullscreen': false, 'batterySaver': false};
-            case 'stopMpv':
-              return true;
-            default:
-              throw MissingPluginException('Unexpected method ${call.method}');
-          }
-        });
-    try {
-      await manager.stop();
-      final settingsA = WidgetSettings(
-        activeWallpaperType: 'video',
-        activeWallpaperPath: r'C:\wallpapers\videoA.mp4',
-      );
-      final settingsB = WidgetSettings(
-        activeWallpaperType: 'video',
-        activeWallpaperPath: r'C:\wallpapers\videoB.mp4',
-      );
+        // Launch two identical requests almost simultaneously
+        final future1 = manager.start(settings);
+        final future2 = manager.start(settings);
 
-      // Start A, then immediately supersede with B
-      final futureA = manager.start(settingsA);
-      await Future.delayed(const Duration(milliseconds: 5));
-      final futureB = manager.start(settingsB);
+        await Future.wait([future1, future2]);
 
-      // Future A should fail with MpvStartupCancelledException
-      await expectLater(futureA, throwsA(isA<MpvStartupCancelledException>()));
+        // Only 1 native start call should have occurred
+        expect(startCallCount, 1);
+        expect(manager.mpvPid, 12345);
+      } finally {
+        manager.dispose();
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(LiveWallpaperManager.channel, null);
+      }
+    },
+  );
 
-      // Future B should succeed
-      await futureB;
-      expect(manager.mpvPid, 20002);
-      expect(manager.currentPath, r'C:\wallpapers\videoB.mp4');
-    } finally {
-      manager.dispose();
+  test(
+    'different target supersedes in-flight startup safely without corrupting newer process',
+    () async {
+      if (!Platform.isWindows) return;
+      final manager = LiveWallpaperManager();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(LiveWallpaperManager.channel, null);
-    }
-  });
+          .setMockMethodCallHandler(LiveWallpaperManager.channel, (call) async {
+            switch (call.method) {
+              case 'startMpv':
+                final path = (call.arguments as Map)['path'] as String?;
+                final pid = path?.contains('videoB') == true ? 20002 : 10001;
+                return {'pending': true, 'pid': pid};
+              case 'pollMpvStart':
+                await Future.delayed(const Duration(milliseconds: 20));
+                return const {
+                  'success': true,
+                  'frameDecoded': true,
+                  'windowAttached': true,
+                  'windowVisible': true,
+                  'width': 1920,
+                  'height': 1080,
+                  'pid': 20002,
+                };
+              case 'getPlaybackPolicy':
+                return const {'fullscreen': false, 'batterySaver': false};
+              case 'stopMpv':
+                return true;
+              default:
+                throw MissingPluginException(
+                  'Unexpected method ${call.method}',
+                );
+            }
+          });
+      try {
+        await manager.stop();
+        final settingsA = WidgetSettings(
+          activeWallpaperType: 'video',
+          activeWallpaperPath: r'C:\wallpapers\videoA.mp4',
+        );
+        final settingsB = WidgetSettings(
+          activeWallpaperType: 'video',
+          activeWallpaperPath: r'C:\wallpapers\videoB.mp4',
+        );
+
+        // Start A, then immediately supersede with B
+        final futureA = manager.start(settingsA);
+        await Future.delayed(const Duration(milliseconds: 5));
+        final futureB = manager.start(settingsB);
+
+        // Future A should fail with MpvStartupCancelledException
+        await expectLater(
+          futureA,
+          throwsA(isA<MpvStartupCancelledException>()),
+        );
+
+        // Future B should succeed
+        await futureB;
+        expect(manager.mpvPid, 20002);
+        expect(manager.currentPath, r'C:\wallpapers\videoB.mp4');
+      } finally {
+        manager.dispose();
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(LiveWallpaperManager.channel, null);
+      }
+    },
+  );
 
   test('cancellation immediately before and after window attachment', () async {
     // 1. Before window attached
@@ -545,31 +574,43 @@ void main() {
 
     final attempt1 = await runStartupAttempt();
     expect(attempt1?['pending'], isTrue);
-    expect(LiveWallpaperManager.startupResultIsReadyForTesting(attempt1), isFalse);
+    expect(
+      LiveWallpaperManager.startupResultIsReadyForTesting(attempt1),
+      isFalse,
+    );
 
     final attempt2 = await runStartupAttempt();
-    expect(LiveWallpaperManager.startupResultIsReadyForTesting(attempt2), isTrue);
+    expect(
+      LiveWallpaperManager.startupResultIsReadyForTesting(attempt2),
+      isTrue,
+    );
     expect(attempt2?['pid'], 54321);
   });
 
-  test('cached static wallpaper completes successfully without unnecessary delayed polling', () {
-    // Immediate verification succeeds when activePath matches requestedPath
-    final immediateConfirmed = WallpaperEngine.wallpaperStateConfirmedForTesting(
-      setCallSucceeded: true,
-      stateQuerySucceeded: true,
-      activePath: r'C:\Users\User\AppData\Local\WALLSYNC\cached_wallpapers\wallpaper1.jpg',
-      requestedPath: r'C:\Users\User\AppData\Local\WALLSYNC\cached_wallpapers\wallpaper1.jpg',
-    );
-    expect(immediateConfirmed, isTrue);
+  test(
+    'cached static wallpaper completes successfully without unnecessary delayed polling',
+    () {
+      // Immediate verification succeeds when activePath matches requestedPath
+      final immediateConfirmed = WallpaperEngine.wallpaperStateConfirmedForTesting(
+        setCallSucceeded: true,
+        stateQuerySucceeded: true,
+        activePath:
+            r'C:\Users\User\AppData\Local\WALLSYNC\cached_wallpapers\wallpaper1.jpg',
+        requestedPath:
+            r'C:\Users\User\AppData\Local\WALLSYNC\cached_wallpapers\wallpaper1.jpg',
+      );
+      expect(immediateConfirmed, isTrue);
 
-    // Immediate verification also succeeds across canonical path differences (slashes, casing)
-    final canonicalConfirmed = WallpaperEngine.wallpaperStateConfirmedForTesting(
-      setCallSucceeded: true,
-      stateQuerySucceeded: true,
-      activePath: r'C:\USERS\USER\APPDATA\LOCAL\WALLSYNC\CACHED_WALLPAPERS\WALLPAPER1.JPG',
-      requestedPath: r'c:/users/user/appdata/local/wallsync/cached_wallpapers/wallpaper1.jpg',
-    );
-    expect(canonicalConfirmed, isTrue);
-  });
+      // Immediate verification also succeeds across canonical path differences (slashes, casing)
+      final canonicalConfirmed = WallpaperEngine.wallpaperStateConfirmedForTesting(
+        setCallSucceeded: true,
+        stateQuerySucceeded: true,
+        activePath:
+            r'C:\USERS\USER\APPDATA\LOCAL\WALLSYNC\CACHED_WALLPAPERS\WALLPAPER1.JPG',
+        requestedPath:
+            r'c:/users/user/appdata/local/wallsync/cached_wallpapers/wallpaper1.jpg',
+      );
+      expect(canonicalConfirmed, isTrue);
+    },
+  );
 }
-
