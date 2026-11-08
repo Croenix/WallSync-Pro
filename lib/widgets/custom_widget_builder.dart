@@ -10,6 +10,7 @@ import '../services/system_optimizer_service.dart';
 import '../services/weather_service.dart';
 import '../services/widget_function_library.dart';
 import '../services/custom_font_service.dart';
+import '../services/custom_asset_service.dart';
 import 'font_download_dialog.dart';
 import 'custom_widget_renderer.dart';
 
@@ -2494,7 +2495,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                         'Get More Fonts...',
                         style: TextStyle(fontSize: 10),
                       ),
-                      if (CustomFontService.instance.hasUpdateAvailable) ...[
+                      if (CustomFontService.instance.hasUpdateAvailable ||
+                          CustomAssetService.instance.hasUpdateAvailable) ...[
                         const SizedBox(width: 4),
                         Container(
                           width: 6,
@@ -2887,6 +2889,79 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Cloud Icons & GIFs Picker Action
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.cloud_download_rounded, size: 14),
+                  label: const Text(
+                    'Cloud Icons & GIFs',
+                    style: TextStyle(fontSize: 10.5),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF10B981),
+                    side: BorderSide(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: () async {
+                    final selectedPath = await FontDownloadDialog.show(
+                      context,
+                      initialTab: CloudStudioTab.icons,
+                      onSelectAsset: (path) {
+                        setState(() {
+                          elem.type = 'custom_icon';
+                          elem.imagePath = path;
+                          _hasUnsavedChanges = true;
+                        });
+                      },
+                    );
+                    if (selectedPath != null && mounted) {
+                      setState(() {
+                        elem.type = 'custom_icon';
+                        elem.imagePath = selectedPath;
+                        _hasUnsavedChanges = true;
+                      });
+                    }
+                  },
+                ),
+                if (elem.imagePath != null && elem.imagePath!.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      elem.imagePath!.split(RegExp(r'[\\/]')).last,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF10B981),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.clear_rounded,
+                      size: 14,
+                      color: Colors.redAccent,
+                    ),
+                    tooltip: 'Remove cloud asset & revert to standard glyph',
+                    onPressed: () {
+                      setState(() {
+                        elem.imagePath = null;
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 10),
+
             // Icon Picker Palette Grid
             Row(
               children: [
@@ -3129,6 +3204,46 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                       setState(() {
                         elem.type = 'custom_image';
                         elem.imagePath = path;
+                        elem.dataBinding = null;
+                        _hasUnsavedChanges = true;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.animation_rounded, size: 14),
+                  label: const Text(
+                    'Cloud GIFs & Icons',
+                    style: TextStyle(fontSize: 10.5),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF38BDF8),
+                    side: BorderSide(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                  ),
+                  onPressed: () async {
+                    final selectedPath = await FontDownloadDialog.show(
+                      context,
+                      initialTab: CloudStudioTab.gifs,
+                      onSelectAsset: (path) {
+                        setState(() {
+                          elem.type = 'custom_image';
+                          elem.imagePath = path;
+                          elem.dataBinding = null;
+                          _hasUnsavedChanges = true;
+                        });
+                      },
+                    );
+                    if (selectedPath != null && mounted) {
+                      setState(() {
+                        elem.type = 'custom_image';
+                        elem.imagePath = selectedPath;
                         elem.dataBinding = null;
                         _hasUnsavedChanges = true;
                       });

@@ -25,6 +25,7 @@ import '../services/shortbird_client.dart';
 import '../services/weather_service.dart';
 import '../services/media_session_service.dart';
 import '../services/custom_font_service.dart';
+import '../services/custom_asset_service.dart';
 import 'font_download_dialog.dart';
 import '../services/diagnostics_service.dart';
 import '../services/launch_popup_service.dart';
@@ -26119,7 +26120,8 @@ class _DashboardViewState extends State<DashboardView>
                         'Font Cloud Assets',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                       ),
-                      if (CustomFontService.instance.hasUpdateAvailable) ...[
+                      if (CustomFontService.instance.hasUpdateAvailable ||
+                          CustomAssetService.instance.hasUpdateAvailable) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(

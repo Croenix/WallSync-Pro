@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import '../services/settings_service.dart';
 import '../services/media_session_service.dart';
@@ -311,6 +312,9 @@ class CustomWidgetRenderer extends StatelessWidget {
 
     switch (elem.type) {
       case 'custom_icon':
+        if (elem.imagePath != null && elem.imagePath!.isNotEmpty) {
+          return _buildImageElement(elem);
+        }
         final iconData = IconData(
           // ignore: non_const_argument_for_const_parameter
           elem.iconCodePoint ?? 0xe871,
@@ -854,12 +858,26 @@ class CustomWidgetRenderer extends StatelessWidget {
     } else if (elem.imagePath != null && elem.imagePath!.isNotEmpty) {
       final file = File(elem.imagePath!);
       if (file.existsSync()) {
-        content = Image.file(
-          file,
-          width: elem.width,
-          height: elem.height,
-          fit: fit,
-        );
+        final isSvg = elem.imagePath!.toLowerCase().endsWith('.svg');
+        if (isSvg) {
+          content = SvgPicture.file(
+            file,
+            width: elem.width > 0 ? elem.width : null,
+            height: elem.height > 0 ? elem.height : null,
+            fit: fit,
+            colorFilter: (elem.color != 0 && elem.color != 0xFFFFFFFF)
+                ? ColorFilter.mode(Color(elem.color), BlendMode.srcIn)
+                : null,
+          );
+        } else {
+          content = Image.file(
+            file,
+            width: elem.width > 0 ? elem.width : null,
+            height: elem.height > 0 ? elem.height : null,
+            fit: fit,
+            gaplessPlayback: true,
+          );
+        }
       } else {
         content = _buildImagePlaceholder(elem);
       }
