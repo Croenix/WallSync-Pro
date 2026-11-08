@@ -52,6 +52,8 @@ dependencies:
   tray_manager: 0.8.0
   archive: ^4.5.2
   flutter_svg: ^2.3.2
+  youtube_explode_dart: ^3.1.0
+  ffmpeg_kit_extended_flutter: 1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -106,6 +108,13 @@ flutter:
     - family: Anurati
       fonts:
         - asset: assets/fonts/Anurati-Regular.otf
+
+hooks:
+  user_defines:
+    ffmpeg_kit_extended_flutter:
+      type: "video"
+      gpl: false
+      small: true
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

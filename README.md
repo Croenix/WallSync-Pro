@@ -16,6 +16,15 @@ controls. The Windows runner's native MethodChannel plugin attaches the
 wallpaper window behind desktop icons and pauses playback while another app is
 fullscreen or Windows Battery Saver is active.
 
+The video wallpaper source panel can also fetch YouTube video details, select
+a segment up to 60 seconds, and save the trimmed clip locally for offline
+playback. YouTube downloads may be limited to 360p; only save videos you have
+permission to use.
+
+The FFmpeg Windows runtime is staged during the Flutter native-assets build.
+Keep the checkout path short (for example, `C:\src\WallSync-Pro`) to avoid
+Windows path-length issues while extracting the runtime.
+
 The desktop-window discovery and raised-desktop attachment behavior is adapted
 from [Lively Wallpaper](https://github.com/lively-community/lively), specifically
 `WinDesktopCore.cs` and `DesktopUtil.cs` at revision

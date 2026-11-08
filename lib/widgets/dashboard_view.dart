@@ -46,6 +46,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/legacy.dart';
 import 'desktop_widget.dart';
 import 'live_video_preview.dart';
+import 'youtube_wallpaper_dialog.dart';
 import 'custom_widget_renderer.dart';
 import 'custom_widget_builder.dart';
 import '../models/desktop_studio_template.dart';
@@ -8177,6 +8178,17 @@ class _DashboardViewState extends State<DashboardView>
     });
   }
 
+  Future<void> _importYouTubeWallpaper() async {
+    if (_isVideoWallpaperBusy || _isSelectingVideo) return;
+    final clip = await showDialog<File>(
+      context: context,
+      builder: (context) => const YoutubeWallpaperDialog(),
+    );
+    if (clip != null && mounted) {
+      await _applyVideoWallpaper(clip.path);
+    }
+  }
+
   Future<void> _applyVideoWallpaperNow(String pathOrUrl, int requestId) async {
     setState(() => _isVideoWallpaperBusy = true);
     var playbackSettingsSyncFailed = false;
@@ -9794,6 +9806,27 @@ class _DashboardViewState extends State<DashboardView>
                     const Text(
                       'Supports high bitrate 4K, 60fps, MP4, WebM, MKV, MOV',
                       style: TextStyle(fontSize: 10, color: Colors.white38),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _isVideoWallpaperBusy || _isSelectingVideo
+                          ? null
+                          : _importYouTubeWallpaper,
+                      icon: const Icon(Icons.smart_display_rounded, size: 16),
+                      label: const Text('Create from YouTube'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFFF6B6B),
+                        side: BorderSide(
+                          color: const Color(0xFFFF6B6B).withValues(alpha: 0.4),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -26118,7 +26151,10 @@ class _DashboardViewState extends State<DashboardView>
                     children: [
                       const Text(
                         'Font Cloud Assets',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                       if (CustomFontService.instance.hasUpdateAvailable ||
                           CustomAssetService.instance.hasUpdateAvailable) ...[

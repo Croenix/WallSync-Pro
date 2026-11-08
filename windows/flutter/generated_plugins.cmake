@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  ffmpeg_kit_extended_flutter
   screen_retriever_windows
   url_launcher_windows
   webview_windows
