@@ -23,7 +23,10 @@ void main() {
 
       final config = LaunchPopupConfig.fromJson(json);
       expect(config.enabled, isTrue);
-      expect(config.imageUrl, 'https://res.cloudinary.com/test/image/upload/poster.jpg');
+      expect(
+        config.imageUrl,
+        'https://res.cloudinary.com/test/image/upload/poster.jpg',
+      );
       expect(config.actionText, 'Get Started');
       expect(config.actionUrl, 'https://wallsync.app/promo');
       expect(config.id, 'popup_special_1');
@@ -31,15 +34,15 @@ void main() {
 
       final mapped = config.toJson();
       expect(mapped['enabled'], isTrue);
-      expect(mapped['imageUrl'], 'https://res.cloudinary.com/test/image/upload/poster.jpg');
+      expect(
+        mapped['imageUrl'],
+        'https://res.cloudinary.com/test/image/upload/poster.jpg',
+      );
       expect(mapped['actionText'], 'Get Started');
     });
 
     test('uses sensible defaults for missing or empty optional values', () {
-      final json = <String, dynamic>{
-        'enabled': false,
-        'imageUrl': '',
-      };
+      final json = <String, dynamic>{'enabled': false, 'imageUrl': ''};
 
       final config = LaunchPopupConfig.fromJson(json);
       expect(config.enabled, isFalse);
@@ -51,20 +54,26 @@ void main() {
   });
 
   group('LaunchPopupService connectivity and enable rules', () {
-    test('returns null when unreachable or offline (popup NEVER shown without connection)', () async {
-      // By querying an unreachable port/host, the service must return null
-      final config = await LaunchPopupService.instance.fetchConfig();
-      // Since no local test server is started on the test port, it must safely resolve to null
-      expect(config, isNull);
-    });
+    test(
+      'returns null when unreachable or offline (popup NEVER shown without connection)',
+      () async {
+        // By querying an unreachable port/host, the service must return null
+        final config = await LaunchPopupService.instance.fetchConfig();
+        // Since no local test server is started on the test port, it must safely resolve to null
+        expect(config, isNull);
+      },
+    );
 
-    test('one-time session guard enforces single display per app launch session', () {
-      expect(LaunchPopupService.instance.hasShownThisSession, isFalse);
+    test(
+      'one-time session guard enforces single display per app launch session',
+      () {
+        expect(LaunchPopupService.instance.hasShownThisSession, isFalse);
 
-      // Once resetSessionForTesting is called
-      LaunchPopupService.instance.resetSessionForTesting();
-      expect(LaunchPopupService.instance.hasShownThisSession, isFalse);
-    });
+        // Once resetSessionForTesting is called
+        LaunchPopupService.instance.resetSessionForTesting();
+        expect(LaunchPopupService.instance.hasShownThisSession, isFalse);
+      },
+    );
   });
 
   group('LaunchPopupDialog Widget', () {
@@ -79,9 +88,7 @@ void main() {
 
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: LaunchPopupDialog(config: testConfig),
-          ),
+          home: Scaffold(body: LaunchPopupDialog(config: testConfig)),
         ),
       );
 
@@ -136,5 +143,45 @@ void main() {
         expect(find.byType(LaunchPopupDialog), findsNothing);
       },
     );
+
+    testWidgets('does not present an insecure action URL as a link', (
+      tester,
+    ) async {
+      const testConfig = LaunchPopupConfig(
+        enabled: true,
+        imageUrl: 'https://example.com/poster.jpg',
+        actionText: 'Open insecure link',
+        actionUrl: 'http://example.com/promo',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => const LaunchPopupDialog(config: testConfig),
+                  );
+                },
+                child: const Text('Open popup'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open popup'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Close'), findsOneWidget);
+      expect(find.text('Open insecure link'), findsNothing);
+      expect(find.byIcon(Icons.open_in_new_rounded), findsNothing);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LaunchPopupDialog), findsNothing);
+    });
   });
 }

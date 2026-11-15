@@ -4,7 +4,7 @@
     ".write": false,
     "wallpapers": {
       ".read": true,
-      ".write": true
+      ".write": false
     },
     "update": {
       ".read": true
@@ -22,11 +22,11 @@
     },
     "popup": {
       ".read": true,
-      ".write": true
+      ".write": false
     },
     "popup_pro": {
       ".read": true,
-      ".write": true
+      ".write": false
     },
     "bugs": {
       ".read": "auth != null && auth.uid === 'JaFeCtCVcbSruaViANZOVWcKQOj1'",

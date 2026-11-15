@@ -25,7 +25,7 @@ try {
 }
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = '127.0.0.1';
 const FIREBASE_RTDB_BASE_URL = (process.env.FIREBASE_RTDB_URL || 'https://wallsync-e043c-default-rtdb.firebaseio.com').replace(/\/+$/, '');
 const STATIC_DIR = path.resolve(__dirname);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -33,23 +33,30 @@ const ASSETS_DIR = path.join(PROJECT_ROOT, 'assets');
 const DATA_DIR = path.join(STATIC_DIR, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const WALLPAPERS_FILE = path.join(DATA_DIR, 'wallpapers.json');
-const CLOUDINARY_FILE = path.join(DATA_DIR, 'cloudinary.json');
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json');
 const POPUP_FILE = path.join(DATA_DIR, 'popup.json');
 const POPUP_PRO_FILE = path.join(DATA_DIR, 'popup_pro.json');
+const PUBLIC_FILES = new Map([
+    ['/', 'index.html'],
+    ['/index.html', 'index.html'],
+    ['/app.js', 'app.js'],
+    ['/styles.css', 'styles.css'],
+    ['/favicon.png', 'favicon.png'],
+    ['/logo.png', 'logo.png'],
+]);
+const ALLOWED_ORIGINS = new Set([
+    `http://localhost:${PORT}`,
+    `http://127.0.0.1:${PORT}`,
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]);
 
 function getCloudinaryConfig() {
-    let fileConfig = {};
-    if (fs.existsSync(CLOUDINARY_FILE)) {
-        try {
-            fileConfig = JSON.parse(fs.readFileSync(CLOUDINARY_FILE, 'utf8'));
-        } catch (_) {}
-    }
     return {
-        cloudName: (process.env.CLOUDINARY_CLOUD_NAME || fileConfig.cloudName || 'wallsync').trim(),
-        uploadPreset: (process.env.CLOUDINARY_UPLOAD_PRESET || fileConfig.uploadPreset || '').trim(),
-        apiKey: (process.env.CLOUDINARY_API_KEY || fileConfig.apiKey || '').trim(),
-        apiSecret: (process.env.CLOUDINARY_API_SECRET || fileConfig.apiSecret || '').trim(),
+        cloudName: (process.env.CLOUDINARY_CLOUD_NAME || 'wallsync').trim(),
+        uploadPreset: (process.env.CLOUDINARY_UPLOAD_PRESET || '').trim(),
+        apiKey: (process.env.CLOUDINARY_API_KEY || '').trim(),
+        apiSecret: (process.env.CLOUDINARY_API_SECRET || '').trim(),
     };
 }
 
@@ -437,8 +444,7 @@ function sendJson(res, statusCode, data) {
     res.writeHead(statusCode, {
         'Content-Type': 'application/json; charset=utf-8',
         'Content-Length': Buffer.byteLength(jsonStr),
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
     res.end(jsonStr);
@@ -488,9 +494,25 @@ if (statsInterval.unref) statsInterval.unref();
 
 // Create HTTP server
 const server = http.createServer(async (req, res) => {
-    // CORS headers for all requests
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    const host = req.headers.host;
+    const allowedHosts = new Set([
+        `localhost:${PORT}`,
+        `127.0.0.1:${PORT}`,
+        `[::1]:${PORT}`,
+    ]);
+    if (!host || !allowedHosts.has(host)) {
+        return sendJson(res, 403, { error: 'Host is not allowed' });
+    }
+
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+        return sendJson(res, 403, { error: 'Origin is not allowed' });
+    }
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
@@ -783,7 +805,6 @@ const server = http.createServer(async (req, res) => {
             'Content-Type': 'text/event-stream; charset=utf-8',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
         });
         res.flushHeaders?.();
 
@@ -1134,24 +1155,9 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/cloudinary-config - Save Cloudinary configuration
     if (pathname === '/api/cloudinary-config' && req.method === 'POST') {
-        try {
-            const body = await parseJsonBody(req);
-            const current = getCloudinaryConfig();
-            const updated = {
-                cloudName: (body.cloudName !== undefined ? body.cloudName : current.cloudName).trim(),
-                uploadPreset: (body.uploadPreset !== undefined ? body.uploadPreset : current.uploadPreset).trim(),
-                apiKey: (body.apiKey !== undefined ? body.apiKey : current.apiKey).trim(),
-                apiSecret: (body.apiSecret !== undefined ? body.apiSecret : current.apiSecret).trim(),
-            };
-            fs.writeFileSync(CLOUDINARY_FILE, JSON.stringify(updated, null, 2), 'utf8');
-            return sendJson(res, 200, {
-                success: true,
-                cloudName: updated.cloudName,
-                uploadPreset: updated.uploadPreset,
-            });
-        } catch (err) {
-            return sendJson(res, 400, { error: err.message });
-        }
+        return sendJson(res, 410, {
+            error: 'Cloudinary configuration must be managed through environment variables or Firebase secrets.',
+        });
     }
 
     // POST /api/sign-upload - Sign upload or provide upload preset for direct Cloudinary upload
@@ -1356,9 +1362,23 @@ window.WALLSYNC_FIREBASE_CONFIG = {
 
     // Serve application assets from WALLSYNC/assets
     if (pathname.startsWith('/assets/')) {
-        const assetRel = pathname.replace(/^\/assets\//, '');
-        const assetFilePath = path.join(ASSETS_DIR, assetRel);
-        if (assetFilePath.startsWith(ASSETS_DIR) && fs.existsSync(assetFilePath)) {
+        let assetRel;
+        try {
+            assetRel = decodeURIComponent(pathname.slice('/assets/'.length));
+        } catch (_) {
+            res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('400 Bad Request');
+            return;
+        }
+        const assetFilePath = path.resolve(ASSETS_DIR, assetRel);
+        const relativeAssetPath = path.relative(ASSETS_DIR, assetFilePath);
+        if (
+            relativeAssetPath &&
+            relativeAssetPath !== '..' &&
+            !relativeAssetPath.startsWith(`..${path.sep}`) &&
+            !path.isAbsolute(relativeAssetPath) &&
+            fs.existsSync(assetFilePath)
+        ) {
             const ext = path.extname(assetFilePath).toLowerCase();
             const contentType = MIME_TYPES[ext] || 'application/octet-stream';
             res.writeHead(200, { 'Content-Type': contentType });
@@ -1367,15 +1387,13 @@ window.WALLSYNC_FIREBASE_CONFIG = {
         }
     }
 
-    // Static files router
-    let filePath = path.join(STATIC_DIR, pathname === '/' ? 'index.html' : pathname);
-
-    // Security check: prevent directory traversal
-    if (!filePath.startsWith(STATIC_DIR)) {
-        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('403 Forbidden');
+    const publicFile = PUBLIC_FILES.get(pathname);
+    if (!publicFile) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('404 Not Found');
         return;
     }
+    const filePath = path.join(STATIC_DIR, publicFile);
 
     fs.stat(filePath, (err, stats) => {
         if (err || !stats.isFile()) {
@@ -1474,14 +1492,10 @@ async function syncServerUrlToFirebase(urlToPublish, force = false) {
 
 // Start listening
 server.listen(PORT, HOST, () => {
-    const localIp = getNetworkIp();
-    const dynamicServerUrl = process.env.PUBLIC_SERVER_URL || `http://${localIp}:${PORT}`;
-
     console.log(`====================================================`);
     console.log(`  WallSync Admin Server is running!`);
     console.log(`  Local URL:        http://127.0.0.1:${PORT}`);
-    console.log(`  Network URL:      http://${HOST}:${PORT}`);
-    console.log(`  Live Dynamic IP:  ${dynamicServerUrl}`);
+    console.log(`  Network access:   disabled (loopback only)`);
     console.log(`  Live Sync API:    http://127.0.0.1:${PORT}/api/sync/heartbeat`);
     console.log(`  Users Stats API:  http://127.0.0.1:${PORT}/api/users/stats`);
     console.log(`====================================================`);

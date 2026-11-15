@@ -212,36 +212,11 @@ try {
         }
       }
 
-      // Inline PowerShell fallback
-      final sanitizedTitle = cleanTitle
-          .replaceAll("'", "''")
-          .replaceAll('"', '`"');
-      final sanitizedMessage = cleanMessage
-          .replaceAll("'", "''")
-          .replaceAll('"', '`"');
-      final inlineCmd =
-          '''
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-\$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-\$textNodes = \$template.GetElementsByTagName('text')
-\$textNodes.Item(0).AppendChild(\$template.CreateTextNode('$sanitizedTitle')) | Out-Null
-\$textNodes.Item(1).AppendChild(\$template.CreateTextNode('$sanitizedMessage')) | Out-Null
-\$toast = [Windows.UI.Notifications.ToastNotification]::new(\$template)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('WallSync').Show(\$toast)
-''';
-
-      await Process.run('powershell', [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        inlineCmd,
-      ]);
-
-      if (id != null && id.isNotEmpty) {
-        await markAsSeen(id);
-      }
-      return true;
+      logError(
+        'NotificationService',
+        'Toast helper script is unavailable or exited unsuccessfully',
+      );
+      return false;
     } catch (e, st) {
       logError(
         'NotificationService',

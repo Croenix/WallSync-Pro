@@ -32,13 +32,13 @@ Keep the checkout path short (for example, `C:\src\WallSync-Pro`) to avoid
 Windows path-length issues while extracting the runtime.
 
 The desktop-window discovery and raised-desktop attachment behavior is adapted
-from [Lively Wallpaper](https://github.com/lively-community/lively), specifically
-`WinDesktopCore.cs` and `DesktopUtil.cs` at revision
-`25a0a5f4ed1988ff42117d3a17feb321062237fe` (GPL-3.0; license text in
-`LICENSES/LIVELY-GPL-3.0.txt`). Lively's player embeds a native WebView2 window;
-WallSync keeps its Flutter/WebView2 renderer and moves the Flutter view HWND,
-rather than copying Lively's player application. Distributions containing this
-derived native attachment code must comply with GPL-3.0.
+from the upstream GPL-3.0 project source files `WinDesktopCore.cs` and
+`DesktopUtil.cs` at revision `25a0a5f4ed1988ff42117d3a17feb321062237fe`
+([source repository](https://github.com/lively-community/lively); license text
+in `LICENSES/LIVELY-GPL-3.0.txt`). WallSync keeps its Flutter/WebView2 renderer
+and moves the Flutter view HWND rather than copying the upstream player.
+Distributions containing this derived native attachment code must comply with
+GPL-3.0.
 
 ## Windows taskbar and dock
 
@@ -98,13 +98,14 @@ not put them in the panel or Realtime Database.
    If serving the panel elsewhere, set it to the exact origin, then serve
    `admin_panel` over HTTP. Do not open the panel using a `file://` URL.
 
-The Admin Panel server loads `admin_panel/.env` automatically when it starts.
-Copy `admin_panel/.env.example` to create a settings template. Set `PORT`,
-`HOST`, `PUBLIC_SERVER_URL`, `FIREBASE_RTDB_URL`, and `FIREBASE_WEB_API_KEY` as
-needed; optional Cloudinary settings are also supported. When set, the server
-uses the Web API key to provide Firebase Authentication configuration to the
-browser. The actual `.env` file is git-ignored. Alternatively, provide
-`admin_panel/firebase-config.js` as described above.
+The optional Node.js Admin Panel server is for local development only and binds
+to `127.0.0.1`; it is not an internet-facing admin API. Use the authenticated
+`adminApi` Cloud Function for deployed administration. To run locally, copy
+`admin_panel/.env.example` to `admin_panel/.env` and set `PORT`,
+`FIREBASE_RTDB_URL`, and `FIREBASE_WEB_API_KEY` as needed. Cloudinary secrets
+must be configured as Firebase Function secrets or server environment
+variables; the local server does not save credentials to disk. Alternatively,
+provide `admin_panel/firebase-config.js` as described above.
 
 New user reports are written to `/reports`; older submissions may remain under
 `/bugs`. The Admin Panel reads and manages both paths. Clients can create

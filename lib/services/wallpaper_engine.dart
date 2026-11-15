@@ -664,7 +664,7 @@ class WallpaperEngine {
     return wallpaperApplied;
   }
 
-  /// Starts the live video wallpaper using Lively's MPV player architecture.
+  /// Starts a live video wallpaper using the MPV player.
   Future<bool> startAnimatedWallpaper(
     String path, {
     WidgetSettings? settings,
@@ -674,7 +674,7 @@ class WallpaperEngine {
     if (!Platform.isWindows) return false;
     logInfo(
       'WallpaperEngine',
-      'Starting live video wallpaper with Lively MPV engine: $path',
+      'Starting live video wallpaper with MPV engine: $path',
     );
     final sw = Stopwatch()..start();
 

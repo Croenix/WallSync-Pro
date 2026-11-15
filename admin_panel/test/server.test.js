@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const dataDir = path.join(__dirname, '..', 'data');
-const preservedDataFiles = ['cloudinary.json', 'popup.json', 'popup_pro.json', 'wallpapers.json'].map((name) => {
+const preservedDataFiles = ['popup.json', 'popup_pro.json', 'wallpapers.json'].map((name) => {
     const filePath = path.join(dataDir, name);
     return {
         filePath,
@@ -112,6 +112,34 @@ test('GET / serves index.html', async () => {
     assert.equal(res.statusCode, 200);
     assert.match(res.headers['content-type'], /text\/html/);
     assert.match(res.body, /WallSync/);
+});
+
+test('server binds only to loopback and does not serve private files', async () => {
+    assert.equal(server.address().address, '127.0.0.1');
+
+    for (const pathname of [
+        '/server.js',
+        '/.env',
+        '/data/users.json',
+        '/data/cloudinary.json',
+    ]) {
+        const res = await request({ path: pathname, method: 'GET' });
+        assert.equal(res.statusCode, 404, `${pathname} should not be served`);
+    }
+
+    const hostileOriginRes = await request({
+        path: '/api/status',
+        method: 'GET',
+        headers: { Origin: 'https://attacker.example' },
+    });
+    assert.equal(hostileOriginRes.statusCode, 403);
+
+    const hostileHostRes = await request({
+        path: '/api/status',
+        method: 'GET',
+        headers: { Host: 'attacker.example:3099' },
+    });
+    assert.equal(hostileHostRes.statusCode, 403);
 });
 
 test('POST /api/sync/heartbeat requires clientId', async () => {
@@ -329,30 +357,31 @@ test('POST /api/database/update modifies wallpaper metadata', async () => {
     );
 });
 
-test('POST and GET /api/cloudinary-config manages Cloudinary settings', async () => {
-    const payload = {
-        cloudName: 'test-cloud',
-        uploadPreset: 'test-preset',
-    };
-
+test('Cloudinary config is read from environment and cannot be saved to disk', async () => {
+    const cloudinaryFile = path.join(dataDir, 'cloudinary.json');
+    const cloudinaryContents = fs.existsSync(cloudinaryFile)
+        ? fs.readFileSync(cloudinaryFile)
+        : null;
     const postRes = await request(
         {
             path: '/api/cloudinary-config',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
         },
-        payload,
+        { cloudName: 'test-cloud', uploadPreset: 'test-preset', apiSecret: 'must-not-persist' },
     );
-    assert.equal(postRes.statusCode, 200);
-    assert.equal(postRes.json.success, true);
-    assert.equal(postRes.json.cloudName, 'test-cloud');
-    assert.equal(postRes.json.uploadPreset, 'test-preset');
+    assert.equal(postRes.statusCode, 410);
 
     const getRes = await request({ path: '/api/cloudinary-config', method: 'GET' });
     assert.equal(getRes.statusCode, 200);
     assert.equal(getRes.json.success, true);
     assert.equal(getRes.json.cloudName, 'test-cloud');
     assert.equal(getRes.json.uploadPreset, 'test-preset');
+    if (cloudinaryContents === null) {
+        assert.equal(fs.existsSync(cloudinaryFile), false);
+    } else {
+        assert.deepEqual(fs.readFileSync(cloudinaryFile), cloudinaryContents);
+    }
 });
 
 test('POST /api/sign-upload returns upload preset when preset is configured', async () => {

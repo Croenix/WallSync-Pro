@@ -15,16 +15,24 @@ class LaunchPopupDialog extends StatelessWidget {
 
   const LaunchPopupDialog({super.key, required this.config});
 
-  bool get _hasActionUrl => config.actionUrl.trim().isNotEmpty;
-
-  void _onActionPressed(BuildContext context) {
-    Navigator.of(context).pop();
-    if (_hasActionUrl) {
-      try {
-        final uri = Uri.parse(config.actionUrl.trim());
-        launchUrl(uri, mode: LaunchMode.externalApplication);
-      } catch (_) {}
+  Uri? get _actionUri {
+    final uri = Uri.tryParse(config.actionUrl.trim());
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return null;
     }
+    return uri;
+  }
+
+  bool get _hasActionUrl => _actionUri != null;
+
+  Future<void> _onActionPressed(BuildContext context) async {
+    Navigator.of(context).pop();
+    final uri = _actionUri;
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -88,9 +96,10 @@ class LaunchPopupDialog extends StatelessWidget {
                                 height: 260,
                                 alignment: Alignment.center,
                                 child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes != null
+                                  value:
+                                      loadingProgress.expectedTotalBytes != null
                                       ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
+                                            loadingProgress.expectedTotalBytes!
                                       : null,
                                   strokeWidth: 2.5,
                                   color: const Color(0xFF38BDF8),
@@ -108,13 +117,17 @@ class LaunchPopupDialog extends StatelessWidget {
                                     Icon(
                                       Icons.broken_image_rounded,
                                       size: 48,
-                                      color: Colors.white.withValues(alpha: 0.4),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.4,
+                                      ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
                                       'Poster unavailable',
                                       style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.6),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.6,
+                                        ),
                                         fontSize: 13,
                                       ),
                                     ),
@@ -163,7 +176,10 @@ class LaunchPopupDialog extends StatelessWidget {
 
                 // Bottom Action Button Row
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF131625),
                     border: Border(
@@ -186,7 +202,9 @@ class LaunchPopupDialog extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                                color: const Color(
+                                  0xFF2563EB,
+                                ).withValues(alpha: 0.35),
                                 blurRadius: 14,
                                 offset: const Offset(0, 4),
                               ),
@@ -210,8 +228,8 @@ class LaunchPopupDialog extends StatelessWidget {
                                   !_hasActionUrl
                                       ? 'Close'
                                       : config.actionText.isNotEmpty
-                                          ? config.actionText
-                                          : 'Continue',
+                                      ? config.actionText
+                                      : 'Continue',
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,

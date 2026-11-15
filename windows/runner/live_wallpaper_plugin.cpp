@@ -1,6 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
-// Desktop window discovery and raised-desktop behavior adapted from Lively
-// Wallpaper's WinDesktopCore.cs and DesktopUtil.cs (GPL-3.0).
+// Desktop window discovery and raised-desktop behavior adapted from upstream
+// WinDesktopCore.cs and DesktopUtil.cs (GPL-3.0).
 
 #include "live_wallpaper_plugin.h"
 #include "process_diagnostics.h"

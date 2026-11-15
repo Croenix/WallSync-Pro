@@ -47,6 +47,7 @@ app.*.map.json
 # Admin panel Firebase client configuration (contains public project identifiers)
 /admin_panel/firebase-config.js
 /admin_panel/.env
+/admin_panel/data/*.json
 /functions/node_modules/
 /functions/.env*
 /functions/.secret.local
