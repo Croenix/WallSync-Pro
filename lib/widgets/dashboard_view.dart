@@ -34,6 +34,7 @@ import '../services/process_diagnostics.dart';
 import '../services/system_metrics_service.dart';
 import '../services/system_connectivity_service.dart';
 import '../services/system_optimizer_service.dart';
+import '../services/device_optimization_service.dart';
 import '../services/discord_ipc_service.dart';
 import '../services/steam_monitor_service.dart';
 import 'animated_backgrounds.dart';
@@ -63,11 +64,13 @@ import '../services/windows_taskbar_service.dart';
 class DashboardView extends StatefulWidget {
   final WidgetSettings initialSettings;
   final bool isStartupBackground;
+  final bool startMinimized;
   final String? initialTab;
   const DashboardView({
     super.key,
     required this.initialSettings,
     this.isStartupBackground = false,
+    this.startMinimized = false,
     this.initialTab,
   });
 
@@ -141,6 +144,7 @@ class _DashboardViewState extends State<DashboardView>
   final Set<String> _applyingWallpaperIds = {};
   final Set<String> _explicitWallpaperDownloads = {};
   int _wallpaperLoadGeneration = 0;
+  Timer? _deferredServicesTimer;
   int _wallpaperTransitionGeneration = 0;
   Future<void> _wallpaperTransitionTail = Future<void>.value();
   String _wallpaperTransitionState = 'idle';
@@ -1047,6 +1051,9 @@ class _DashboardViewState extends State<DashboardView>
   DateTime _previewDateTime = DateTime.now();
   late final ValueNotifier<DateTime> _previewDateTimeNotifier;
   bool _isWindowVisible = true;
+  bool _isWindowFocused = true;
+  late final ValueNotifier<bool> _tickerActivity;
+  bool _frameTimingsAttached = false;
   bool _showDashboardDecorations = false;
 
   // Debounce timer for settings saves (avoids hammering file+registry on every slider tick)
@@ -1187,13 +1194,19 @@ class _DashboardViewState extends State<DashboardView>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addTimingsCallback(_recordFrameTimings);
+    _isWindowVisible = !widget.startMinimized;
+    _tickerActivity = ValueNotifier<bool>(_isWindowVisible);
+    DiagnosticsService.instance.setWindowVisible(_isWindowVisible);
+    if (_isWindowVisible) _attachFrameTimings();
     _tabCtrl = TabController(length: 3, vsync: this);
     _tabCtrl.addListener(_handleTabControllerChanged);
 
     _settings = widget.initialSettings;
     if (widget.initialTab != null && widget.initialTab!.isNotEmpty) {
       _currentMainTab = widget.initialTab!;
+    }
+    if (_currentMainTab == 'widgets') {
+      unawaited(CustomFontService.instance.ensureFontsForSettings(_settings));
     }
     _syncConnectivityService();
     _activeTemplate = widget.initialSettings.widgetTemplate;
@@ -1354,31 +1367,7 @@ class _DashboardViewState extends State<DashboardView>
     }
 
     _updateSystemStats();
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || !_isWindowVisible) return;
-      final now = DateTime.now();
-      bool shouldUpdate =
-          _settings.showSeconds ||
-          now.minute != _previewDateTime.minute ||
-          now.hour != _previewDateTime.hour;
-      if ((_settings.widgetTemplate == 'robik' ||
-              _settings.widgetTemplate == 'neon') &&
-          timer.tick % 2 == 0) {
-        shouldUpdate = true;
-      }
-      if (_settings.activeWallpaperType == 'video' &&
-          !_settings.videoWallpaperPaused) {
-        _videoElapsedSeconds++;
-      }
-      if (shouldUpdate) {
-        _previewDateTime = now;
-        if (_settings.widgetTemplate == 'robik' ||
-            _settings.widgetTemplate == 'neon') {
-          _updateSystemStats();
-        }
-        _previewDateTimeNotifier.value = now;
-      }
-    });
+    if (_isWindowVisible) _startClockTimer();
 
     windowManager.addListener(this);
     trayManager.addListener(this);
@@ -1407,35 +1396,147 @@ class _DashboardViewState extends State<DashboardView>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _dashboardDecorationsTimer = Timer(const Duration(milliseconds: 300), () {
-        if (mounted) setState(() => _showDashboardDecorations = true);
-      });
-      _checkOverlayStatus();
-      _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-        if (_isWindowVisible) _checkOverlayStatus();
-      });
+      if (_isWindowVisible) {
+        _dashboardDecorationsTimer = Timer(
+          const Duration(milliseconds: 300),
+          () {
+            _dashboardDecorationsTimer = null;
+            if (mounted && _isWindowVisible) {
+              setState(() => _showDashboardDecorations = true);
+            }
+          },
+        );
+        _checkOverlayStatus();
+        _startStatusTimer();
+      }
       if (!widget.isStartupBackground) {
         unawaited(_loadWallpapers());
       }
-      // Stagger non-critical background services to leave event loop 100% free for initial frame rendering
-      Timer(const Duration(milliseconds: 800), () {
-        if (!mounted) return;
-        unawaited(_initSettingsWatcher());
-        unawaited(_initSystemTray());
-        SystemOptimizerService.instance.startBackgroundMemoryOptimizer();
-      });
-      if (!widget.isStartupBackground) {
+      _scheduleDeferredServices();
+    });
+  }
+
+  void _startClockTimer() {
+    if (_clockTimer != null || !_isWindowVisible) return;
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || !_isWindowVisible) return;
+      final now = DateTime.now();
+      bool shouldUpdate =
+          _settings.showSeconds ||
+          now.minute != _previewDateTime.minute ||
+          now.hour != _previewDateTime.hour;
+      if ((_settings.widgetTemplate == 'robik' ||
+              _settings.widgetTemplate == 'neon') &&
+          timer.tick % 2 == 0) {
+        shouldUpdate = true;
+      }
+      if (_settings.activeWallpaperType == 'video' &&
+          !_settings.videoWallpaperPaused) {
+        _videoElapsedSeconds++;
+      }
+      if (shouldUpdate) {
+        _previewDateTime = now;
+        if (_settings.widgetTemplate == 'robik' ||
+            _settings.widgetTemplate == 'neon') {
+          _updateSystemStats();
+        }
+        _previewDateTimeNotifier.value = now;
+      }
+    });
+  }
+
+  void _startStatusTimer() {
+    if (_statusTimer != null || !_isWindowVisible) return;
+    _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && _isWindowVisible) _checkOverlayStatus();
+    });
+  }
+
+  void _scheduleDeferredServices() {
+    if (!mounted || !_isWindowVisible || _deferredServicesTimer != null) return;
+    _deferredServicesTimer = Timer(const Duration(milliseconds: 800), () {
+      _deferredServicesTimer = null;
+      if (!mounted || !_isWindowVisible) return;
+      if (_settingsWatcher == null) unawaited(_initSettingsWatcher());
+      unawaited(_initSystemTray());
+      SystemOptimizerService.instance.startBackgroundMemoryOptimizer();
+
+      if (!widget.isStartupBackground && _updateCheckTimer == null) {
         _updateCheckTimer = Timer(const Duration(milliseconds: 1500), () {
-          if (mounted) {
-            unawaited(_checkAutoResumeLiveWallpaper());
-            unawaited(_checkForUpdates());
-          }
+          _updateCheckTimer = null;
+          if (!mounted || !_isWindowVisible) return;
+          unawaited(_checkAutoResumeLiveWallpaper());
+          unawaited(_checkForUpdates());
         });
+      }
+      if (!widget.isStartupBackground && _launchPopupTimer == null) {
         _launchPopupTimer = Timer(const Duration(milliseconds: 3500), () {
-          if (mounted) LaunchPopupService.instance.checkAndShowPopup(context);
+          _launchPopupTimer = null;
+          if (mounted && _isWindowVisible) {
+            LaunchPopupService.instance.checkAndShowPopup(context);
+          }
         });
       }
     });
+  }
+
+  void _attachFrameTimings() {
+    if (_frameTimingsAttached) return;
+    WidgetsBinding.instance.addTimingsCallback(_recordFrameTimings);
+    _frameTimingsAttached = true;
+  }
+
+  void _detachFrameTimings() {
+    if (!_frameTimingsAttached) return;
+    WidgetsBinding.instance.removeTimingsCallback(_recordFrameTimings);
+    _frameTimingsAttached = false;
+  }
+
+  void _setWindowActivity({bool? visible, bool? focused}) {
+    final wasVisible = _isWindowVisible;
+    if (visible != null) _isWindowVisible = visible;
+    if (focused != null) _isWindowFocused = focused;
+    final active = _isWindowVisible && _isWindowFocused;
+    if (_tickerActivity.value != active) _tickerActivity.value = active;
+    if (active) {
+      _backgroundFlowController.repeat();
+    } else {
+      _backgroundFlowController.stop();
+    }
+    if (wasVisible == _isWindowVisible) return;
+
+    DiagnosticsService.instance.setWindowVisible(_isWindowVisible);
+    if (_isWindowVisible) {
+      _attachFrameTimings();
+      _startClockTimer();
+      _startStatusTimer();
+      _scheduleDeferredServices();
+      unawaited(_checkOverlayStatus());
+      if (!_showDashboardDecorations &&
+          _dashboardDecorationsTimer == null &&
+          mounted) {
+        _dashboardDecorationsTimer = Timer(
+          const Duration(milliseconds: 300),
+          () {
+            _dashboardDecorationsTimer = null;
+            if (mounted && _isWindowVisible) {
+              setState(() => _showDashboardDecorations = true);
+            }
+          },
+        );
+      }
+      _syncMediaServiceState();
+      _syncConnectivityService();
+    } else {
+      _detachFrameTimings();
+      _clockTimer?.cancel();
+      _clockTimer = null;
+      _dashboardDecorationsTimer?.cancel();
+      _statusTimer?.cancel();
+      _statusTimer = null;
+      _syncMediaServiceState();
+      _syncConnectivityService();
+    }
   }
 
   int _compareVersionStrings(String v1, String v2) {
@@ -1716,7 +1817,8 @@ class _DashboardViewState extends State<DashboardView>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeTimingsCallback(_recordFrameTimings);
+    _detachFrameTimings();
+    _tickerActivity.dispose();
     if (_wallpaperTransitionState != 'idle') {
       logInfo(
         'DashboardView',
@@ -1729,6 +1831,7 @@ class _DashboardViewState extends State<DashboardView>
     _clockTimer?.cancel();
     _dashboardDecorationsTimer?.cancel();
     _updateCheckTimer?.cancel();
+    _deferredServicesTimer?.cancel();
     _launchPopupTimer?.cancel();
     _overlayRecoveryTimer?.cancel();
     _overlayRecoveryStabilityTimer?.cancel();
@@ -2131,9 +2234,7 @@ class _DashboardViewState extends State<DashboardView>
         'hidden',
         reason: 'close_to_tray',
       );
-      _isWindowVisible = false;
-      DiagnosticsService.instance.setWindowVisible(false);
-      _backgroundFlowController.stop();
+      _setWindowActivity(visible: false, focused: false);
       unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
       unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
       await windowManager.hide();
@@ -2181,9 +2282,7 @@ class _DashboardViewState extends State<DashboardView>
         'hidden',
         reason: 'minimize_to_tray',
       );
-      _isWindowVisible = false;
-      DiagnosticsService.instance.setWindowVisible(false);
-      _backgroundFlowController.stop();
+      _setWindowActivity(visible: false, focused: false);
       unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
       unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
       unawaited(windowManager.hide());
@@ -2198,9 +2297,7 @@ class _DashboardViewState extends State<DashboardView>
         'minimized',
         reason: 'taskbar_minimize',
       );
-      _isWindowVisible = false;
-      DiagnosticsService.instance.setWindowVisible(false);
-      _backgroundFlowController.stop();
+      _setWindowActivity(visible: false, focused: false);
       unawaited(SystemOptimizerService.instance.setWindowCloaked(true));
       unawaited(SystemOptimizerService.instance.boostProcessPriority(false));
       unawaited(SystemOptimizerService.instance.optimizeMemory());
@@ -2211,14 +2308,20 @@ class _DashboardViewState extends State<DashboardView>
   @override
   void onWindowRestore() {
     DiagnosticsService.instance.recordWindowEvent('restored');
-    _isWindowVisible = true;
-    DiagnosticsService.instance.setWindowVisible(true);
+    _setWindowActivity(visible: true);
     unawaited(SystemOptimizerService.instance.setWindowCloaked(false));
     unawaited(SystemOptimizerService.instance.boostProcessPriority(true));
-    if (mounted) {
-      _backgroundFlowController.repeat();
-    }
     unawaited(SystemOptimizerService.instance.setLowPowerMode(false));
+  }
+
+  @override
+  void onWindowFocus() {
+    _setWindowActivity(focused: true);
+  }
+
+  @override
+  void onWindowBlur() {
+    _setWindowActivity(focused: false);
   }
 
   @override
@@ -2260,8 +2363,7 @@ class _DashboardViewState extends State<DashboardView>
   }
 
   Future<void> _showAndRestoreDashboard() async {
-    _isWindowVisible = true;
-    DiagnosticsService.instance.setWindowVisible(true);
+    _setWindowActivity(visible: true);
     unawaited(SystemOptimizerService.instance.setWindowCloaked(false));
     unawaited(SystemOptimizerService.instance.boostProcessPriority(true));
     final isVisible = await windowManager.isVisible();
@@ -2270,9 +2372,6 @@ class _DashboardViewState extends State<DashboardView>
     }
     await windowManager.restore();
     await windowManager.focus();
-    if (mounted) {
-      _backgroundFlowController.repeat();
-    }
   }
 
   Future<void> _toggleLiveWallpaperPlayback() async {
@@ -3656,6 +3755,11 @@ class _DashboardViewState extends State<DashboardView>
         WidgetSettings.isCustomLayoutTemplate(s.widgetTemplate) &&
         s.customElements != _settings.customElements;
     final shouldSaveImmediately = templateChanged || customElementsChanged;
+    if (s.imageCacheLimitMb != _settings.imageCacheLimitMb) {
+      DeviceOptimizationService.instance.applyImageCacheLimit(
+        s.imageCacheLimitMb,
+      );
+    }
 
     setState(() {
       _settings = s;
@@ -3724,17 +3828,19 @@ class _DashboardViewState extends State<DashboardView>
 
   void _syncMediaServiceState() {
     final bool needMedia =
-        (_settings.widgetTemplate == 'sleep_weather' &&
-            _settings.showMediaControl) ||
-        (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
-            _settings.customElements.any(
-              (element) => MediaElementType.contains(element.type),
-            )) ||
-        _settings.savedCustomWidgets.any(
-          (widget) => widget.elements.any(
-            (element) => MediaElementType.contains(element.type),
-          ),
-        );
+        (_isWindowVisible &&
+        _currentMainTab == 'widgets' &&
+        ((_settings.widgetTemplate == 'sleep_weather' &&
+                _settings.showMediaControl) ||
+            (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+                _settings.customElements.any(
+                  (element) => MediaElementType.contains(element.type),
+                )) ||
+            _settings.savedCustomWidgets.any(
+              (widget) => widget.elements.any(
+                (element) => MediaElementType.contains(element.type),
+              ),
+            )));
     if (needMedia) {
       MediaSessionService().start(owner: 'dashboard');
     } else {
@@ -3744,18 +3850,21 @@ class _DashboardViewState extends State<DashboardView>
 
   void _syncConnectivityService() {
     final needsConnectivity =
-        (WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
-            _settings.customElements.any(
-              (element) =>
-                  element.type == 'wifi_icon' ||
-                  element.type == 'bluetooth_icon',
-            )) ||
-        _settings.savedCustomWidgets.any(
-          (widget) => widget.elements.any(
-            (element) =>
-                element.type == 'wifi_icon' || element.type == 'bluetooth_icon',
-          ),
-        );
+        (_isWindowVisible &&
+        _currentMainTab == 'widgets' &&
+        ((WidgetSettings.isCustomLayoutTemplate(_settings.widgetTemplate) &&
+                _settings.customElements.any(
+                  (element) =>
+                      element.type == 'wifi_icon' ||
+                      element.type == 'bluetooth_icon',
+                )) ||
+            _settings.savedCustomWidgets.any(
+              (widget) => widget.elements.any(
+                (element) =>
+                    element.type == 'wifi_icon' ||
+                    element.type == 'bluetooth_icon',
+              ),
+            )));
     final service = SystemConnectivityService.instance;
     if (needsConnectivity && _connectivitySubscription == null) {
       _connectivity = service.current;
@@ -4460,7 +4569,7 @@ class _DashboardViewState extends State<DashboardView>
     for (final timing in timings) {
       final buildMs = timing.buildDuration.inMicroseconds / 1000;
       final rasterMs = timing.rasterDuration.inMicroseconds / 1000;
-      if (buildMs < 32 && rasterMs < 32) continue;
+      if (timing.totalSpan <= const Duration(milliseconds: 100)) continue;
       logPerf(
         'DashboardView',
         '[FRAME] build=${buildMs.toStringAsFixed(1)}ms '
@@ -4657,35 +4766,42 @@ class _DashboardViewState extends State<DashboardView>
     );
     final buildDuration = buildSw.elapsedMilliseconds;
     syncBuildMs = buildDuration;
-    if (buildDuration > 35) {
+    if (buildDuration > 100) {
       logInfo(
         'DashboardView',
         '[PERF] DashboardView active build #$_dashboardBuildCount completed in ${buildDuration}ms',
       );
     }
     developer.Timeline.finishSync();
-    return Focus(
-      autofocus: true,
-      onKeyEvent: (node, event) {
-        if (event is KeyDownEvent) {
-          if (HardwareKeyboard.instance.isControlPressed &&
-              HardwareKeyboard.instance.isAltPressed &&
-              HardwareKeyboard.instance.isShiftPressed &&
-              event.logicalKey == LogicalKeyboardKey.keyR) {
-            WindowsTaskbarService.instance.restoreWindowsTaskbar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Emergency Taskbar Restoration Triggered (Ctrl+Alt+Shift+R)',
-                ),
-                duration: Duration(seconds: 3),
-              ),
-            );
-            return KeyEventResult.handled;
-          }
-        }
-        return KeyEventResult.ignored;
-      },
+    return ValueListenableBuilder<bool>(
+      valueListenable: _tickerActivity,
+      builder: (context, tickerActive, child) => TickerMode(
+        enabled: tickerActive,
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent) {
+              if (HardwareKeyboard.instance.isControlPressed &&
+                  HardwareKeyboard.instance.isAltPressed &&
+                  HardwareKeyboard.instance.isShiftPressed &&
+                  event.logicalKey == LogicalKeyboardKey.keyR) {
+                WindowsTaskbarService.instance.restoreWindowsTaskbar();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Emergency Taskbar Restoration Triggered (Ctrl+Alt+Shift+R)',
+                    ),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                return KeyEventResult.handled;
+              }
+            }
+            return KeyEventResult.ignored;
+          },
+          child: child!,
+        ),
+      ),
       child: result,
     );
   }
@@ -5155,6 +5271,11 @@ class _DashboardViewState extends State<DashboardView>
           _currentMainTab = tabKey;
         }
       });
+      if (tabKey == 'widgets') {
+        unawaited(CustomFontService.instance.ensureFontsForSettings(_settings));
+      }
+      _syncMediaServiceState();
+      _syncConnectivityService();
     }
 
     if (compact) {
@@ -32665,37 +32786,48 @@ class _SafeNetworkImageState extends State<SafeNetworkImage> {
     }
 
     if (_localFile != null) {
-      return Image.file(
-        _localFile!,
-        fit: widget.fit,
-        gaplessPlayback: true,
-        cacheWidth: 320,
-        cacheHeight: 240,
-        errorBuilder: (context, error, stackTrace) {
-          if (!_cacheInvalidated) {
-            _cacheInvalidated = true;
-            unawaited(
-              _firebaseService.invalidateThumbnailCache(
-                _loadedUrl ?? widget.url,
-              ),
-            );
-          }
-          logError(
-            'SafeNetworkImage',
-            'Image.file failed to render for cached thumbnail: ${_localFile!.path}',
-            error,
-            stackTrace,
-          );
-          if (widget.errorBuilder != null) {
-            return widget.errorBuilder!(context, error, stackTrace);
-          }
-          return Container(
-            color: Colors.black45,
-            child: const Icon(
-              Icons.broken_image,
-              color: Colors.white24,
-              size: 32,
-            ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final width = constraints.maxWidth.isFinite
+              ? (constraints.maxWidth * dpr).ceil().clamp(1, 2048).toInt()
+              : 320;
+          final height = constraints.maxHeight.isFinite
+              ? (constraints.maxHeight * dpr).ceil().clamp(1, 2048).toInt()
+              : 240;
+          return Image.file(
+            _localFile!,
+            fit: widget.fit,
+            gaplessPlayback: true,
+            cacheWidth: width,
+            cacheHeight: height,
+            errorBuilder: (context, error, stackTrace) {
+              if (!_cacheInvalidated) {
+                _cacheInvalidated = true;
+                unawaited(
+                  _firebaseService.invalidateThumbnailCache(
+                    _loadedUrl ?? widget.url,
+                  ),
+                );
+              }
+              logError(
+                'SafeNetworkImage',
+                'Image.file failed to render for cached thumbnail: ${_localFile!.path}',
+                error,
+                stackTrace,
+              );
+              if (widget.errorBuilder != null) {
+                return widget.errorBuilder!(context, error, stackTrace);
+              }
+              return Container(
+                color: Colors.black45,
+                child: const Icon(
+                  Icons.broken_image,
+                  color: Colors.white24,
+                  size: 32,
+                ),
+              );
+            },
           );
         },
       );

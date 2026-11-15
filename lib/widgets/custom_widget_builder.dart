@@ -138,9 +138,9 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
   void initState() {
     super.initState();
     CustomFontService.instance.addListener(_onFontsChanged);
-    if (!CustomFontService.instance.isInitialized) {
-      CustomFontService.instance.init();
-    }
+    unawaited(
+      CustomFontService.instance.ensureFontsForSettings(widget.initialSettings),
+    );
     _weatherTemp = widget.initialSettings.weatherTemp;
     _weatherStatus = widget.initialSettings.weatherStatus;
     _weatherLocation = widget.initialSettings.weatherLocationResolved.isNotEmpty
@@ -1635,7 +1635,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                       final box = context.findRenderObject() as RenderBox?;
                       final offset = box != null ? details.offset : null;
                       if (details.data is CustomWidgetElement) {
-                        _addElement(details.data as CustomWidgetElement, offset);
+                        _addElement(
+                          details.data as CustomWidgetElement,
+                          offset,
+                        );
                       } else if (details.data is LiveFunctionDefinition) {
                         _addLiveFunctionElement(
                           details.data as LiveFunctionDefinition,
@@ -1662,8 +1665,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                           border: Border.all(
                             color: isHovered
                                 ? (isLiveFuncDrop
-                                    ? const Color(0xFF10B981)
-                                    : const Color(0xFF43E97B))
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFF43E97B))
                                 : Colors.white.withValues(alpha: 0.15),
                             width: isHovered ? 2.0 : 1.0,
                           ),
@@ -1671,12 +1674,12 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                             BoxShadow(
                               color: isHovered
                                   ? (isLiveFuncDrop
-                                      ? const Color(0xFF10B981).withValues(
-                                          alpha: 0.35,
-                                        )
-                                      : const Color(0xFF43E97B).withValues(
-                                          alpha: 0.25,
-                                        ))
+                                        ? const Color(
+                                            0xFF10B981,
+                                          ).withValues(alpha: 0.35)
+                                        : const Color(
+                                            0xFF43E97B,
+                                          ).withValues(alpha: 0.25))
                                   : Colors.black.withValues(alpha: 0.5),
                               blurRadius: isHovered ? 24 : 16,
                               spreadRadius: isHovered ? 2 : 0,
@@ -1754,9 +1757,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                                 onDeleteElement: _deleteElement,
                                 onDuplicateElement: _duplicateElement,
                                 onBindFunction: (elementId, functionId) {
-                                  final func = LiveWidgetFunctionLibrary.getById(
-                                    functionId,
-                                  );
+                                  final func =
+                                      LiveWidgetFunctionLibrary.getById(
+                                        functionId,
+                                      );
                                   setState(() {
                                     final elem = _elements.firstWhere(
                                       (e) => e.id == elementId,
@@ -1776,7 +1780,9 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                                         content: Text(
                                           '⚡ Bound element to live function: ${func.name}',
                                         ),
-                                        backgroundColor: const Color(0xFF1E293B),
+                                        backgroundColor: const Color(
+                                          0xFF1E293B,
+                                        ),
                                         duration: const Duration(seconds: 2),
                                       ),
                                     );
@@ -1793,10 +1799,11 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: (isLiveFuncDrop
-                                              ? const Color(0xFF10B981)
-                                              : const Color(0xFF43E97B))
-                                          .withValues(alpha: 0.2),
+                                      color:
+                                          (isLiveFuncDrop
+                                                  ? const Color(0xFF10B981)
+                                                  : const Color(0xFF43E97B))
+                                              .withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
                                         color: isLiveFuncDrop
@@ -1937,8 +1944,9 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
               CustomWidgetElementCategory.text => _buildTextControls(elem),
               CustomWidgetElementCategory.icon => _buildIconControls(elem),
               CustomWidgetElementCategory.image => _buildImageControls(elem),
-              CustomWidgetElementCategory.container =>
-                _buildContainerControls(elem),
+              CustomWidgetElementCategory.container => _buildContainerControls(
+                elem,
+              ),
             },
           ],
         ),
@@ -2114,7 +2122,11 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
           onPressed: () => _deleteElement(elem.id),
         ),
         IconButton(
-          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white38),
+          icon: const Icon(
+            Icons.close_rounded,
+            size: 16,
+            color: Colors.white38,
+          ),
           tooltip: 'Deselect',
           visualDensity: VisualDensity.compact,
           onPressed: () => setState(() => _selectedElementId = null),
@@ -2190,11 +2202,11 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                 width: 150,
                 height: 26,
                 child: TextField(
-                  controller: TextEditingController(
-                    text: elem.bindingFormat ?? '',
-                  )..selection = TextSelection.collapsed(
-                      offset: (elem.bindingFormat ?? '').length,
-                    ),
+                  controller:
+                      TextEditingController(text: elem.bindingFormat ?? '')
+                        ..selection = TextSelection.collapsed(
+                          offset: (elem.bindingFormat ?? '').length,
+                        ),
                   style: const TextStyle(fontSize: 10.5, color: Colors.white),
                   decoration: InputDecoration(
                     hintText: 'prefix:RAM ;suffix:%',
@@ -2217,7 +2229,9 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                   ),
                   onSubmitted: (val) {
                     setState(() {
-                      elem.bindingFormat = val.trim().isEmpty ? null : val.trim();
+                      elem.bindingFormat = val.trim().isEmpty
+                          ? null
+                          : val.trim();
                       _hasUnsavedChanges = true;
                     });
                   },
@@ -2255,9 +2269,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.06),
-          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
         ),
         child: Row(
           children: [
@@ -2277,7 +2289,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                 ),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF10B981).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(5),
@@ -2317,9 +2332,9 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(
-                                alpha: 0.15,
-                              ),
+                              color: const Color(
+                                0xFF10B981,
+                              ).withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(3),
                             ),
                             child: Text(
@@ -2467,7 +2482,10 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                           ? elem.fontFamily
                           : 'Montserrat',
                       dropdownColor: const Color(0xFF1E2235),
-                      style: const TextStyle(fontSize: 11.5, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.white,
+                      ),
                       items: _availableFonts.map((f) {
                         return DropdownMenuItem(
                           value: f,
@@ -3084,9 +3102,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
                 SizedBox(
                   width: 100,
                   child: Slider(
-                    value:
-                        (elem.fontSize > 0 ? elem.fontSize : elem.width)
-                            .clamp(12.0, 120.0),
+                    value: (elem.fontSize > 0 ? elem.fontSize : elem.width)
+                        .clamp(12.0, 120.0),
                     min: 12.0,
                     max: 120.0,
                     activeColor: const Color(0xFFA855F7),
@@ -4120,9 +4137,7 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: matchingFuncs
-                .map(_buildLiveFunctionToolboxItem)
-                .toList(),
+            children: matchingFuncs.map(_buildLiveFunctionToolboxItem).toList(),
           ),
         );
       }
@@ -5332,7 +5347,8 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
       diskInfo: _systemMetrics.disk,
     );
 
-    final isTargetCategorySelected = _selectedElement != null &&
+    final isTargetCategorySelected =
+        _selectedElement != null &&
         _selectedElement!.category == func.targetCategory;
 
     return Draggable<LiveFunctionDefinition>(
@@ -5355,7 +5371,11 @@ class _CustomWidgetBuilderViewState extends State<CustomWidgetBuilderView> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF10B981)),
+              const Icon(
+                Icons.bolt_rounded,
+                size: 16,
+                color: Color(0xFF10B981),
+              ),
               const SizedBox(width: 6),
               Text(
                 func.name,

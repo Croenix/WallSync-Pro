@@ -19,8 +19,9 @@ import 'services/wallpaper_engine.dart';
 import 'services/system_optimizer_service.dart';
 import 'services/shortbird_client.dart';
 import 'services/windows_taskbar_service.dart';
-import 'services/custom_font_service.dart';
 import 'services/custom_asset_service.dart';
+import 'services/custom_font_service.dart';
+import 'services/device_optimization_service.dart';
 import 'widgets/desktop_widget.dart';
 import 'widgets/dashboard_view.dart';
 import 'widgets/splash_screen.dart';
@@ -497,7 +498,7 @@ void main(List<String> args) async {
   if (isOverlayMode) {
     logInfo(
       'OverlayStartup',
-      'Startup trigger re+ceived; source=$startupTrigger, pid=$pid.',
+      'Startup trigger received; source=$startupTrigger, pid=$pid.',
     );
     logPerf(
       'OverlayStartup',
@@ -582,6 +583,11 @@ void main(List<String> args) async {
     'result=started path="${settingsFile.path}"',
   );
   final settings = await settingsService.loadSettings();
+  if (!isOverlayMode && !isWallpaperMode) {
+    DeviceOptimizationService.instance.applyImageCacheLimit(
+      settings.imageCacheLimitMb,
+    );
+  }
   final settingsLoadMs = settingsLoadStopwatch.elapsedMilliseconds;
   await processDiagnostics.record(
     'configuration_loading',
@@ -700,17 +706,6 @@ void main(List<String> args) async {
       await flushPendingLogs();
       exit(0);
     }
-    // Keep optional server discovery from delaying dashboard startup offline.
-    if (!isStartupBackground) {
-      unawaited(
-        ApiConfig.init().then((_) {
-          ApiService.instance.startHeartbeat(settings: settings);
-        }),
-      );
-    }
-    unawaited(WindowsTaskbarService.instance.init());
-    unawaited(CustomFontService.instance.init());
-    unawaited(CustomAssetService.instance.init());
   }
   logInfo(
     'Main',
@@ -1763,10 +1758,27 @@ void main(List<String> args) async {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!isStartupBackground) {
-        unawaited(NotificationService.instance.init());
-        unawaited(ShortbirdClient().init());
-        unawaited(CustomFontService.instance.checkForUpdatesOnStartup());
-        unawaited(CustomAssetService.instance.checkForUpdatesOnStartup());
+        Timer(const Duration(milliseconds: 500), () {
+          unawaited(NotificationService.instance.init());
+        });
+        Timer(const Duration(seconds: 2), () {
+          unawaited(WindowsTaskbarService.instance.init());
+        });
+        Timer(const Duration(seconds: 4), () {
+          unawaited(CustomAssetService.instance.init());
+        });
+        Timer(const Duration(seconds: 7), () {
+          unawaited(
+            ApiConfig.init().then((_) {
+              ApiService.instance.startHeartbeat(settings: settings);
+            }),
+          );
+          unawaited(ShortbirdClient().init());
+        });
+        Timer(const Duration(seconds: 10), () {
+          unawaited(CustomFontService.instance.checkForUpdatesOnStartup());
+          unawaited(CustomAssetService.instance.checkForUpdatesOnStartup());
+        });
       }
       SystemOptimizerService.instance.startBackgroundMemoryOptimizer(
         interval: const Duration(minutes: 5),
@@ -1814,9 +1826,7 @@ class OverlayApp extends StatelessWidget {
         canvasColor: Colors.transparent,
       ),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.noScaling,
-        ),
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
         child: child!,
       ),
       home: Scaffold(
@@ -1934,6 +1944,7 @@ class _DashboardAppState extends State<DashboardApp> {
             : DashboardView(
                 initialSettings: widget.settings,
                 isStartupBackground: widget.isStartupBackground,
+                startMinimized: widget.startMinimized,
                 initialTab: widget.initialTab,
               ),
       ),

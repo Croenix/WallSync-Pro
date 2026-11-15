@@ -197,8 +197,7 @@ class MemorySnapshot {
 
   /// True when Windows system RAM is under high pressure (less than 500 MB free or >= 90% load).
   bool get isSystemMemoryConstrained =>
-      systemAvailPhysBytes < 500 * 1024 * 1024 ||
-      systemMemoryLoadPercent >= 90;
+      systemAvailPhysBytes < 500 * 1024 * 1024 || systemMemoryLoadPercent >= 90;
 
   /// True when Windows kernel has trimmed working set pages to pagefile under memory pressure.
   /// (Indicated by resident RSS significantly below session peak while private commit remains elevated).
@@ -414,10 +413,11 @@ class SmoothnessSnapshot {
     'p90FrameTimeMs': p90FrameTimeMs.toStringAsFixed(2),
     'p99FrameTimeMs': p99FrameTimeMs.toStringAsFixed(2),
     'recentFrameSamples': recentFrameSamples,
-    'cumulativeSmoothnessPercentage':
-        cumulativeSmoothnessPercentage.toStringAsFixed(1),
-    'rollingSmoothnessPercentage':
-        rollingSmoothnessPercentage.toStringAsFixed(1),
+    'cumulativeSmoothnessPercentage': cumulativeSmoothnessPercentage
+        .toStringAsFixed(1),
+    'rollingSmoothnessPercentage': rollingSmoothnessPercentage.toStringAsFixed(
+      1,
+    ),
     'smoothnessPercentage': cumulativeSmoothnessPercentage.toStringAsFixed(1),
   };
 
@@ -522,9 +522,19 @@ class DiagnosticsService {
   final List<String> _recentRawFrameSamples = [];
   final List<DiagnosticLogEntry> _historyEntries = [];
   bool _isWindowVisible = true;
+  bool _frameTimingCallbackAttached = false;
   bool get isWindowVisible => _isWindowVisible;
   void setWindowVisible(bool visible) {
+    if (_isWindowVisible == visible) return;
     _isWindowVisible = visible;
+    if (!_initialized || !kDebugMode) return;
+    if (visible && !_frameTimingCallbackAttached) {
+      SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+      _frameTimingCallbackAttached = true;
+    } else if (!visible && _frameTimingCallbackAttached) {
+      SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
+      _frameTimingCallbackAttached = false;
+    }
   }
 
   int? _overlayPid;
@@ -609,7 +619,10 @@ class DiagnosticsService {
 
     // 1. Initialize Frame Timings Callback for Smoothness / Jank tracking
     try {
-      SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+      if (_isWindowVisible) {
+        SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+        _frameTimingCallbackAttached = true;
+      }
       logInfo(
         'DiagnosticsService',
         'Frame timing listener attached for 60 FPS smoothness analysis.',
@@ -737,7 +750,8 @@ class DiagnosticsService {
       recordHistoryEntry(
         severity: 'WARN',
         category: 'Frame',
-        message: 'Severe frame active compute: ${activeMs.toStringAsFixed(1)}ms '
+        message:
+            'Severe frame active compute: ${activeMs.toStringAsFixed(1)}ms '
             '(UI: ${buildMs.toStringAsFixed(1)}ms, Raster: ${rasterMs.toStringAsFixed(1)}ms)',
         smoothness: _eligibleFrames > 0
             ? (((_eligibleFrames - _jankFrames) * 100.0) / _eligibleFrames)
@@ -792,7 +806,8 @@ class DiagnosticsService {
         recordHistoryEntry(
           severity: 'WARN',
           category: 'Watchdog',
-          message: 'UI Event Loop Gap: ${hangMs}ms stall (${_activeOperations.length} active ops)',
+          message:
+              'UI Event Loop Gap: ${hangMs}ms stall (${_activeOperations.length} active ops)',
         );
         logWarning('DiagnosticsService', note);
       }
@@ -856,7 +871,8 @@ class DiagnosticsService {
         final String widgetId;
         if (fileName == 'overlay.pid') {
           widgetId = 'default';
-        } else if (fileName.startsWith('overlay_') && fileName.endsWith('.pid')) {
+        } else if (fileName.startsWith('overlay_') &&
+            fileName.endsWith('.pid')) {
           widgetId = fileName.substring(8, fileName.length - 4);
         } else {
           widgetId = 'unknown';
@@ -888,7 +904,8 @@ class DiagnosticsService {
             // Unparseable record: only remove if file is older than 10s to avoid race with writes
             try {
               final stat = await pidFile.stat();
-              if (DateTime.now().difference(stat.modified) > const Duration(seconds: 10)) {
+              if (DateTime.now().difference(stat.modified) >
+                  const Duration(seconds: 10)) {
                 if (await pidFile.exists()) await pidFile.delete();
               }
             } catch (_) {}
@@ -1079,8 +1096,9 @@ class DiagnosticsService {
         }
         overlayRss = totalOverlayRss > 0 ? totalOverlayRss : null;
         overlayPrivate = totalOverlayPrivate > 0 ? totalOverlayPrivate : null;
-        overlayCommitCharge =
-            totalOverlayCommit > 0 ? totalOverlayCommit : null;
+        overlayCommitCharge = totalOverlayCommit > 0
+            ? totalOverlayCommit
+            : null;
       } else {
         final overlaySample = queryPid(overlayPid);
         if (overlaySample != null) {
@@ -1335,15 +1353,25 @@ class DiagnosticsService {
     double rollingSmooth = 100.0;
     if (_recentFrameDurations.isNotEmpty) {
       final sorted = List<double>.from(_recentFrameDurations)..sort();
-      final int p50Idx = (sorted.length * 0.50).floor().clamp(0, sorted.length - 1);
-      final int p90Idx = (sorted.length * 0.90).floor().clamp(0, sorted.length - 1);
-      final int p99Idx = (sorted.length * 0.99).floor().clamp(0, sorted.length - 1);
+      final int p50Idx = (sorted.length * 0.50).floor().clamp(
+        0,
+        sorted.length - 1,
+      );
+      final int p90Idx = (sorted.length * 0.90).floor().clamp(
+        0,
+        sorted.length - 1,
+      );
+      final int p99Idx = (sorted.length * 0.99).floor().clamp(
+        0,
+        sorted.length - 1,
+      );
       p50 = sorted[p50Idx];
       p90 = sorted[p90Idx];
       p99 = sorted[p99Idx];
 
-      final smoothRecentCount =
-          _recentFrameDurations.where((d) => d <= 16.66).length;
+      final smoothRecentCount = _recentFrameDurations
+          .where((d) => d <= 16.66)
+          .length;
       rollingSmooth =
           (smoothRecentCount * 100.0) / _recentFrameDurations.length;
     }
@@ -1465,10 +1493,7 @@ class DiagnosticsService {
           '[SLOW OPERATION RESOLVED] "$name" completed in $durationMs ms',
         );
       } else {
-        logDebug(
-          tag,
-          '[OP COMPLETED] "$name" in $durationMs ms',
-        );
+        logDebug(tag, '[OP COMPLETED] "$name" in $durationMs ms');
       }
       timelineTask.finish(
         arguments: {'durationMs': durationMs, 'success': true},
@@ -1633,7 +1658,9 @@ class DiagnosticsService {
         );
       }
       if (mem.overlayWidgets.isNotEmpty) {
-        buffer.writeln('Overlay Active Instances:${mem.overlayWidgets.length} processes');
+        buffer.writeln(
+          'Overlay Active Instances:${mem.overlayWidgets.length} processes',
+        );
         for (final w in mem.overlayWidgets) {
           buffer.writeln(
             '  * [${w.widgetId}] PID ${w.pid}: Working Set ${w.workingSetMb.toStringAsFixed(1)} MB | Private Commit ${w.privateMb.toStringAsFixed(1)} MB',
@@ -1858,15 +1885,24 @@ class DiagnosticsService {
     final hwndStr = hwnd != null ? ' | hwnd=0x${hwnd.toRadixString(16)}' : '';
     final exeStr = executable != null ? ' | exe="$executable"' : '';
     final argsStr = (args != null && args.isNotEmpty) ? ' | args=$args' : '';
-    final workDirStr = workingDirectory != null ? ' | workDir="$workingDirectory"' : '';
+    final workDirStr = workingDirectory != null
+        ? ' | workDir="$workingDirectory"'
+        : '';
     final pidFileStr = pidFilePath != null ? ' | pidFile="$pidFilePath"' : '';
-    final pidCreatedStr = pidFileCreated != null ? ' | pidCreated=$pidFileCreated' : '';
+    final pidCreatedStr = pidFileCreated != null
+        ? ' | pidCreated=$pidFileCreated'
+        : '';
     final ipcStr = ipcStatus != null ? ' | ipcStatus=$ipcStatus' : '';
-    final timeoutStr = timeoutReason != null ? ' | timeoutReason="$timeoutReason"' : '';
+    final timeoutStr = timeoutReason != null
+        ? ' | timeoutReason="$timeoutReason"'
+        : '';
     final detailStr = details != null ? ' | details=$details' : '';
     final message =
         'WidgetLifecycle widget="$widgetId" | stage=$stage$pidStr$exitStr$hwndStr$exeStr$argsStr$workDirStr$pidFileStr$pidCreatedStr$ipcStr$timeoutStr$detailStr';
-    final isFailure = stage == 'failed' || stage == 'exited' || (exitCode != null && exitCode != 0);
+    final isFailure =
+        stage == 'failed' ||
+        stage == 'exited' ||
+        (exitCode != null && exitCode != 0);
     recordHistoryEntry(
       severity: isFailure ? 'WARN' : 'INFO',
       category: 'WidgetLifecycle',
@@ -1929,7 +1965,8 @@ class DiagnosticsService {
   Future<File> exportTxtReport([String? fileName]) async {
     final report = await generateTxtReport();
     final exportDir = await getExportDirectory();
-    final name = fileName ??
+    final name =
+        fileName ??
         'WallSync_Report_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.txt';
     final file = File('${exportDir.path}\\$name');
     await file.writeAsString(report, flush: true);
@@ -2012,7 +2049,8 @@ class DiagnosticsService {
   Future<File> exportDetailedReport([String? fileName]) async {
     final report = await generateDetailedReport();
     final exportDir = await getExportDirectory();
-    final name = fileName ??
+    final name =
+        fileName ??
         'WallSync_Detailed_Trace_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.txt';
     final file = File('${exportDir.path}\\$name');
     await file.writeAsString(report, flush: true);
@@ -2068,7 +2106,8 @@ class DiagnosticsService {
   Future<File> exportCsvFile([String? fileName]) async {
     final csv = await generateCsvData();
     final exportDir = await getExportDirectory();
-    final name = fileName ??
+    final name =
+        fileName ??
         'WallSync_Metrics_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.csv';
     final file = File('${exportDir.path}\\$name');
     await file.writeAsString(csv, flush: true);
@@ -2182,7 +2221,8 @@ class DiagnosticsService {
   Future<File> exportJsonFile([String? fileName]) async {
     final json = await generateJsonReport();
     final exportDir = await getExportDirectory();
-    final name = fileName ??
+    final name =
+        fileName ??
         'WallSync_Diagnostics_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.json';
     final file = File('${exportDir.path}\\$name');
     await file.writeAsString(json, flush: true);
@@ -2220,14 +2260,17 @@ class DiagnosticsService {
     buffer.writeln(
       '• Stability: ${_hangEvents.isEmpty ? 'Optimal (0 watchdog hangs)' : '${_hangEvents.length} event-loop stalls recorded'}',
     );
-    buffer.writeln('• Active Operations: ${_activeOperations.length} in flight');
+    buffer.writeln(
+      '• Active Operations: ${_activeOperations.length} in flight',
+    );
     return buffer.toString().trim();
   }
 
   /// Generates a complete ZIP support package containing TXT, CSV, JSON, and logs.
   Future<File> generateSupportPackageZip([String? fileName]) async {
     final exportDir = await getExportDirectory();
-    final name = fileName ??
+    final name =
+        fileName ??
         'WallSync_Support_Package_${DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '_')}.zip';
     final zipFile = File('${exportDir.path}\\$name');
 
@@ -2253,7 +2296,9 @@ class DiagnosticsService {
         final logBytes = await logFile.readAsBytes();
         if (logBytes.length > 5 * 1024 * 1024) {
           final trimmed = logBytes.sublist(logBytes.length - 2 * 1024 * 1024);
-          archive.addFile(ArchiveFile('app_debug.log', trimmed.length, trimmed));
+          archive.addFile(
+            ArchiveFile('app_debug.log', trimmed.length, trimmed),
+          );
         } else {
           archive.addFile(
             ArchiveFile('app_debug.log', logBytes.length, logBytes),
@@ -2286,7 +2331,9 @@ class DiagnosticsService {
           Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
       final logFile = File('$appData\\com.example\\wallsync\\app_debug.log');
       if (await logFile.exists()) {
-        final oldBackup = File('$appData\\com.example\\wallsync\\app_debug.old');
+        final oldBackup = File(
+          '$appData\\com.example\\wallsync\\app_debug.old',
+        );
         if (await oldBackup.exists()) {
           try {
             await oldBackup.delete();
@@ -2298,7 +2345,10 @@ class DiagnosticsService {
         await logFile.writeAsString('', flush: true);
       }
     } catch (_) {}
-    logInfo('DiagnosticsService', 'All diagnostics and metric histories cleared.');
+    logInfo(
+      'DiagnosticsService',
+      'All diagnostics and metric histories cleared.',
+    );
   }
 
   void dispose() {

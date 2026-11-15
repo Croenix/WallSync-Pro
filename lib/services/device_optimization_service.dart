@@ -34,28 +34,31 @@ class OptimizationResult {
   double get afterWorkingSetMb => workingSetAfterMb;
 
   Map<String, dynamic> toJson() => {
-        'success': success,
-        'workingSetBeforeMb': workingSetBeforeMb,
-        'workingSetAfterMb': workingSetAfterMb,
-        'workingSetFreedMb': workingSetFreedMb,
-        'privateBytesBeforeMb': privateBytesBeforeMb,
-        'privateBytesAfterMb': privateBytesAfterMb,
-        'privateBytesFreedMb': privateBytesFreedMb,
-        'ramFreedMb': workingSetFreedMb,
-        'beforeWorkingSetMb': workingSetBeforeMb,
-        'afterWorkingSetMb': workingSetAfterMb,
-        'actionsTaken': actionsTaken,
-        'timestamp': timestamp.toIso8601String(),
-      };
+    'success': success,
+    'workingSetBeforeMb': workingSetBeforeMb,
+    'workingSetAfterMb': workingSetAfterMb,
+    'workingSetFreedMb': workingSetFreedMb,
+    'privateBytesBeforeMb': privateBytesBeforeMb,
+    'privateBytesAfterMb': privateBytesAfterMb,
+    'privateBytesFreedMb': privateBytesFreedMb,
+    'ramFreedMb': workingSetFreedMb,
+    'beforeWorkingSetMb': workingSetBeforeMb,
+    'afterWorkingSetMb': workingSetAfterMb,
+    'actionsTaken': actionsTaken,
+    'timestamp': timestamp.toIso8601String(),
+  };
 
   factory OptimizationResult.fromJson(Map<String, dynamic> json) {
-    final wsFreed = (json['workingSetFreedMb'] as num?)?.toDouble() ??
+    final wsFreed =
+        (json['workingSetFreedMb'] as num?)?.toDouble() ??
         (json['ramFreedMb'] as num?)?.toDouble() ??
         0.0;
-    final beforeWs = (json['workingSetBeforeMb'] as num?)?.toDouble() ??
+    final beforeWs =
+        (json['workingSetBeforeMb'] as num?)?.toDouble() ??
         (json['beforeWorkingSetMb'] as num?)?.toDouble() ??
         0.0;
-    final afterWs = (json['workingSetAfterMb'] as num?)?.toDouble() ??
+    final afterWs =
+        (json['workingSetAfterMb'] as num?)?.toDouble() ??
         (json['afterWorkingSetMb'] as num?)?.toDouble() ??
         0.0;
     return OptimizationResult(
@@ -69,9 +72,8 @@ class OptimizationResult {
           (json['privateBytesAfterMb'] as num?)?.toDouble() ?? 0.0,
       privateBytesFreedMb:
           (json['privateBytesFreedMb'] as num?)?.toDouble() ?? 0.0,
-      actionsTaken: (json['actionsTaken'] as List?)
-              ?.whereType<String>()
-              .toList() ??
+      actionsTaken:
+          (json['actionsTaken'] as List?)?.whereType<String>().toList() ??
           const [],
       timestamp: json['timestamp'] != null
           ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
@@ -175,6 +177,14 @@ class DeviceOptimizationService {
   final SystemOptimizerService _optimizer = SystemOptimizerService.instance;
   Map<String, dynamic>? _lastPreOptimizationSnapshot;
 
+  void applyImageCacheLimit(int limitMb) {
+    final safeLimitMb = limitMb.clamp(8, 64).toInt();
+    final imageCache = PaintingBinding.instance.imageCache;
+    imageCache
+      ..maximumSizeBytes = safeLimitMb * 1024 * 1024
+      ..maximumSize = safeLimitMb;
+  }
+
   /// Applies a preset performance profile ('balanced', 'performance', 'power_saver', 'high_quality').
   Future<WidgetSettings> applyProfile({
     required String profileId,
@@ -184,9 +194,7 @@ class DeviceOptimizationService {
     final config = PerformanceProfileConfig.profiles[profileId];
     if (config == null) return currentSettings;
 
-    // Apply Flutter image cache boundaries
-    PaintingBinding.instance.imageCache.maximumSizeBytes =
-        config.imageCacheLimitMb * 1024 * 1024;
+    applyImageCacheLimit(config.imageCacheLimitMb);
 
     // Apply native power and priority modes
     if (config.lowPowerMode) {
@@ -199,13 +207,15 @@ class DeviceOptimizationService {
       await _optimizer.boostProcessPriority(false);
     }
 
-    final updated = await settingsService.updateSettings((c) => c.copyWith(
-          performanceProfile: profileId,
-          wallpaperFpsLimit: config.wallpaperFpsLimit,
-          widgetRefreshIntervalMs: config.widgetRefreshIntervalMs,
-          pauseInactiveAnimations: config.pauseInactiveAnimations,
-          imageCacheLimitMb: config.imageCacheLimitMb,
-        ));
+    final updated = await settingsService.updateSettings(
+      (c) => c.copyWith(
+        performanceProfile: profileId,
+        wallpaperFpsLimit: config.wallpaperFpsLimit,
+        widgetRefreshIntervalMs: config.widgetRefreshIntervalMs,
+        pauseInactiveAnimations: config.pauseInactiveAnimations,
+        imageCacheLimitMb: config.imageCacheLimitMb,
+      ),
+    );
 
     logInfo(
       'DeviceOptimizationService',
@@ -236,11 +246,16 @@ class DeviceOptimizationService {
       beforePrivate = (diagMem.processPrivateBytes ?? 0) / (1024.0 * 1024.0);
       final metrics = await _optimizer.getPerformanceMetrics();
       if (metrics != null) {
-        if (metrics.processWorkingSetMb != null && metrics.processWorkingSetMb! > 0) {
-          beforeWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
+        if (metrics.processWorkingSetMb != null &&
+            metrics.processWorkingSetMb! > 0) {
+          beforeWs =
+              metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
         }
-        if (metrics.processPrivateBytesMb != null && metrics.processPrivateBytesMb! > 0) {
-          beforePrivate = metrics.processPrivateBytesMb! + (metrics.mpvPrivateBytesMb ?? 0.0);
+        if (metrics.processPrivateBytesMb != null &&
+            metrics.processPrivateBytesMb! > 0) {
+          beforePrivate =
+              metrics.processPrivateBytesMb! +
+              (metrics.mpvPrivateBytesMb ?? 0.0);
         }
       }
       final procs = await _optimizer.getProcessList();
@@ -293,7 +308,8 @@ class DeviceOptimizationService {
         }
         if (trimmedCount > 0) {
           actions.add(
-              'Compacted working sets for $trimmedCount background overlay/MPV processes');
+            'Compacted working sets for $trimmedCount background overlay/MPV processes',
+          );
         }
       } catch (_) {}
     }
@@ -318,11 +334,16 @@ class DeviceOptimizationService {
       afterPrivate = (diagMem.processPrivateBytes ?? 0) / (1024.0 * 1024.0);
       final metrics = await _optimizer.getPerformanceMetrics();
       if (metrics != null) {
-        if (metrics.processWorkingSetMb != null && metrics.processWorkingSetMb! > 0) {
-          afterWs = metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
+        if (metrics.processWorkingSetMb != null &&
+            metrics.processWorkingSetMb! > 0) {
+          afterWs =
+              metrics.processWorkingSetMb! + (metrics.mpvWorkingSetMb ?? 0.0);
         }
-        if (metrics.processPrivateBytesMb != null && metrics.processPrivateBytesMb! > 0) {
-          afterPrivate = metrics.processPrivateBytesMb! + (metrics.mpvPrivateBytesMb ?? 0.0);
+        if (metrics.processPrivateBytesMb != null &&
+            metrics.processPrivateBytesMb! > 0) {
+          afterPrivate =
+              metrics.processPrivateBytesMb! +
+              (metrics.mpvPrivateBytesMb ?? 0.0);
         }
       }
       final procs = await _optimizer.getProcessList();
@@ -338,10 +359,10 @@ class DeviceOptimizationService {
       if (procPrivTotal > 0) afterPrivate = procPrivTotal;
     } catch (_) {}
 
-    final double wsFreed =
-        beforeWs > afterWs ? (beforeWs - afterWs) : 0.0;
-    final double privateFreed =
-        beforePrivate > afterPrivate ? (beforePrivate - afterPrivate) : 0.0;
+    final double wsFreed = beforeWs > afterWs ? (beforeWs - afterWs) : 0.0;
+    final double privateFreed = beforePrivate > afterPrivate
+        ? (beforePrivate - afterPrivate)
+        : 0.0;
 
     final result = OptimizationResult(
       success: true,
@@ -356,8 +377,9 @@ class DeviceOptimizationService {
     );
 
     // Record in persistent history
-    final history =
-        List<Map<String, dynamic>>.from(currentSettings.optimizationHistory);
+    final history = List<Map<String, dynamic>>.from(
+      currentSettings.optimizationHistory,
+    );
     history.insert(0, result.toJson());
     if (history.length > 20) {
       history.removeRange(20, history.length);
@@ -370,13 +392,13 @@ class DeviceOptimizationService {
       logInfo(
         'DeviceOptimizationService',
         'Optimization complete. Freed ${result.workingSetFreedMb.toStringAsFixed(1)} MB Working Set '
-        '(${result.privateBytesFreedMb.toStringAsFixed(1)} MB private commit) across ${actions.length} actions.',
+            '(${result.privateBytesFreedMb.toStringAsFixed(1)} MB private commit) across ${actions.length} actions.',
       );
     } else {
       logInfo(
         'DeviceOptimizationService',
         'Optimization complete. Working set stable at ${result.workingSetAfterMb.toStringAsFixed(1)} MB '
-        'across ${actions.length} actions (all caches flushed and heaps compacted).',
+            'across ${actions.length} actions (all caches flushed and heaps compacted).',
       );
     }
     return result;
@@ -391,14 +413,16 @@ class DeviceOptimizationService {
     await _optimizer.setLowPowerMode(false);
     await _optimizer.boostProcessPriority(false);
 
-    return await settingsService.updateSettings((c) => c.copyWith(
-          performanceProfile: 'balanced',
-          wallpaperFpsLimit: 60,
-          widgetRefreshIntervalMs: 1000,
-          pauseInactiveAnimations: true,
-          imageCacheLimitMb: 24,
-          autoSizing: true,
-        ));
+    return await settingsService.updateSettings(
+      (c) => c.copyWith(
+        performanceProfile: 'balanced',
+        wallpaperFpsLimit: 60,
+        widgetRefreshIntervalMs: 1000,
+        pauseInactiveAnimations: true,
+        imageCacheLimitMb: 24,
+        autoSizing: true,
+      ),
+    );
   }
 
   /// Undoes the last optimization settings configuration if a pre-optimization state is stored.
@@ -409,18 +433,17 @@ class DeviceOptimizationService {
     final snapshot = _lastPreOptimizationSnapshot;
     if (snapshot == null) return null;
 
-    final updated = await settingsService.updateSettings((c) => c.copyWith(
-          performanceProfile: snapshot['performanceProfile'] as String?,
-          wallpaperFpsLimit: snapshot['wallpaperFpsLimit'] as int?,
-          widgetRefreshIntervalMs:
-              snapshot['widgetRefreshIntervalMs'] as int?,
-          pauseInactiveAnimations:
-              snapshot['pauseInactiveAnimations'] as bool?,
-          imageCacheLimitMb: snapshot['imageCacheLimitMb'] as int?,
-        ));
+    final updated = await settingsService.updateSettings(
+      (c) => c.copyWith(
+        performanceProfile: snapshot['performanceProfile'] as String?,
+        wallpaperFpsLimit: snapshot['wallpaperFpsLimit'] as int?,
+        widgetRefreshIntervalMs: snapshot['widgetRefreshIntervalMs'] as int?,
+        pauseInactiveAnimations: snapshot['pauseInactiveAnimations'] as bool?,
+        imageCacheLimitMb: snapshot['imageCacheLimitMb'] as int?,
+      ),
+    );
 
     _lastPreOptimizationSnapshot = null;
     return updated;
   }
 }
-

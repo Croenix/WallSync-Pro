@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import '../services/settings_service.dart';
+import '../services/custom_font_service.dart';
 import 'animated_backgrounds.dart';
 import '../services/weather_service.dart';
 import '../services/media_session_service.dart';
@@ -580,6 +581,7 @@ class _DesktopWidgetState extends State<DesktopWidget>
             _startupError = 'Widget settings could not be loaded.';
             _isLoading = false;
           });
+          unawaited(CustomFontService.instance.ensureFontsForSettings(loaded));
         }
         return;
       }
@@ -825,14 +827,15 @@ class _DesktopWidgetState extends State<DesktopWidget>
               updated.editorMode &&
               !updated.widgetTemplate.startsWith('taskbar_');
         });
+        unawaited(CustomFontService.instance.ensureFontsForSettings(updated));
         _syncMediaServiceState();
         _syncConnectivityService();
         _syncNeonAnimation();
         if (Platform.isWindows) {
           unawaited(
-            const MethodChannel('wallsync/live_wallpaper')
-                .invokeMethod('refreshWidgetSurface')
-                .catchError((_) => false),
+            const MethodChannel(
+              'wallsync/live_wallpaper',
+            ).invokeMethod('refreshWidgetSurface').catchError((_) => false),
           );
         }
         WidgetsBinding.instance.scheduleFrame();
@@ -1232,12 +1235,14 @@ class _DesktopWidgetState extends State<DesktopWidget>
     final baseWidth = defaults['width']!;
     final baseHeight = defaults['height']!;
 
-    final targetWidth =
-        (baseWidth * _settings.sizeFactor)
-            .clamp(isTaskbar ? 120.0 : 180.0, 1920.0);
-    final targetHeight =
-        (baseHeight * _settings.sizeFactor)
-            .clamp(isTaskbar ? 36.0 : 60.0, 1080.0);
+    final targetWidth = (baseWidth * _settings.sizeFactor).clamp(
+      isTaskbar ? 120.0 : 180.0,
+      1920.0,
+    );
+    final targetHeight = (baseHeight * _settings.sizeFactor).clamp(
+      isTaskbar ? 36.0 : 60.0,
+      1080.0,
+    );
 
     if ((_settings.width - targetWidth).abs() > 1.0 ||
         (_settings.height - targetHeight).abs() > 1.0) {

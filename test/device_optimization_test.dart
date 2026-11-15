@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/services/settings_service.dart';
 import 'package:wall_sync/services/system_optimizer_service.dart';
@@ -11,10 +12,10 @@ void main() {
   late SettingsService settingsService;
 
   setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp('wallsync_device_opt_test_');
-    settingsService = SettingsService(
-      instanceId: 'test_opt_instance',
+    tempDir = await Directory.systemTemp.createTemp(
+      'wallsync_device_opt_test_',
     );
+    settingsService = SettingsService(instanceId: 'test_opt_instance');
   });
 
   tearDown(() async {
@@ -54,7 +55,7 @@ void main() {
             'afterWorkingSetMb': 207.5,
             'actionsTaken': ['Trimmed working set'],
             'timestamp': '2026-10-31T12:00:00.000',
-          }
+          },
         ],
       );
 
@@ -92,6 +93,25 @@ void main() {
   });
 
   group('DeviceOptimizationService Profiles and Actions', () {
+    test('image cache bounds follow the selected memory limit', () {
+      final service = DeviceOptimizationService.instance;
+      service.applyImageCacheLimit(12);
+
+      expect(
+        PaintingBinding.instance.imageCache.maximumSizeBytes,
+        equals(12 * 1024 * 1024),
+      );
+      expect(PaintingBinding.instance.imageCache.maximumSize, equals(12));
+
+      service.applyImageCacheLimit(80);
+      expect(
+        PaintingBinding.instance.imageCache.maximumSizeBytes,
+        equals(64 * 1024 * 1024),
+      );
+      expect(PaintingBinding.instance.imageCache.maximumSize, equals(64));
+      service.applyImageCacheLimit(24);
+    });
+
     test('PerformanceProfileConfig contains all 4 standard profiles', () {
       final profiles = PerformanceProfileConfig.profiles;
       expect(profiles.containsKey('balanced'), isTrue);
@@ -135,12 +155,14 @@ void main() {
     });
 
     test('restoreDefaults resets to balanced baseline', () async {
-      await settingsService.updateSettings((c) => c.copyWith(
-            performanceProfile: 'custom',
-            wallpaperFpsLimit: 15,
-            widgetRefreshIntervalMs: 5000,
-            autoSizing: false,
-          ));
+      await settingsService.updateSettings(
+        (c) => c.copyWith(
+          performanceProfile: 'custom',
+          wallpaperFpsLimit: 15,
+          widgetRefreshIntervalMs: 5000,
+          autoSizing: false,
+        ),
+      );
 
       final restored = await DeviceOptimizationService.instance.restoreDefaults(
         settingsService: settingsService,
@@ -156,9 +178,9 @@ void main() {
       final current = await settingsService.loadSettings();
       final result = await DeviceOptimizationService.instance
           .optimizeOverallPerformance(
-        currentSettings: current,
-        settingsService: settingsService,
-      );
+            currentSettings: current,
+            settingsService: settingsService,
+          );
 
       expect(result.success, isTrue);
       expect(result.ramFreedMb, isNonNegative);

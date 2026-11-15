@@ -256,10 +256,7 @@ class WallpaperEngine {
   }
 
   Future<Directory> prepareOverlayRuntime() =>
-      _appRuntimeService.prepareRuntime(
-        'OverlayRuntime',
-        allowHardLinks: false,
-      );
+      _appRuntimeService.prepareRuntime('OverlayRuntime');
 
   /// Sets a static high-resolution image as the Windows desktop wallpaper.
   Future<bool> setStaticWallpaper(
@@ -279,7 +276,8 @@ class WallpaperEngine {
 
     final imageFile = File(path);
     var validationMs = 0;
-    final isPreValidated = skipValidation || FirebaseService.isCachedWallpaperPathValidated(path);
+    final isPreValidated =
+        skipValidation || FirebaseService.isCachedWallpaperPathValidated(path);
     if (!isPreValidated) {
       final validationStopwatch = Stopwatch()..start();
       final imageExists = await imageFile.exists();
@@ -648,7 +646,10 @@ class WallpaperEngine {
             'SPI verification=${systemParametersInfoVerifyMs}ms).',
       );
       if (!(isCancelled?.call() ?? false)) {
-        await _restoreVideoAfterFailedStaticApply(previousSettings, transitionId);
+        await _restoreVideoAfterFailedStaticApply(
+          previousSettings,
+          transitionId,
+        );
       }
     } else {
       logError(

@@ -173,6 +173,7 @@ class CustomFontService extends ChangeNotifier {
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
+  Future<void>? _initFuture;
 
   Directory? _customFontsDirectory;
   Directory? _fontsFolder;
@@ -187,6 +188,7 @@ class CustomFontService extends ChangeNotifier {
 
   final Set<String> _downloadedFileNames = <String>{};
   final Set<String> _loadedFamilies = <String>{};
+  final Map<String, Future<bool>> _familyLoadsInFlight = {};
   Set<String> get loadedFamilies => Set.unmodifiable(_loadedFamilies);
 
   String? _lastLocalCommitSha;
@@ -220,7 +222,18 @@ class CustomFontService extends ChangeNotifier {
   }
 
   /// Initialize local font cache directory, load categories, and register downloaded fonts.
-  Future<void> init() async {
+  Future<void> init() {
+    if (_isInitialized) return Future<void>.value();
+    final pending = _initFuture;
+    if (pending != null) return pending;
+    final initialization = _initialize();
+    _initFuture = initialization;
+    return initialization.whenComplete(() {
+      if (identical(_initFuture, initialization)) _initFuture = null;
+    });
+  }
+
+  Future<void> _initialize() async {
     if (_isInitialized) return;
 
     try {
@@ -251,7 +264,12 @@ class CustomFontService extends ChangeNotifier {
       );
       notifyListeners();
     } catch (e, st) {
-      logError('CustomFontService', 'Failed to initialize CustomFontService', e, st);
+      logError(
+        'CustomFontService',
+        'Failed to initialize CustomFontService',
+        e,
+        st,
+      );
     }
   }
 
@@ -276,7 +294,8 @@ class CustomFontService extends ChangeNotifier {
 
     try {
       final remoteSha = await _fetchLatestCommitSha();
-      final hasShaDiff = remoteSha != null &&
+      final hasShaDiff =
+          remoteSha != null &&
           remoteSha.isNotEmpty &&
           remoteSha != _lastLocalCommitSha;
 
@@ -355,7 +374,7 @@ class CustomFontService extends ChangeNotifier {
         await localJson.writeAsString(remoteJsonStr);
       }
 
-      _refreshDownloadedFileNames();
+      await _refreshDownloadedFileNames();
       notifyListeners();
       return true;
     } catch (e) {
@@ -389,11 +408,16 @@ class CustomFontService extends ChangeNotifier {
             (await previewFile.length()) > 0 &&
             (!await targetFile.exists() || (await targetFile.length()) == 0)) {
           await previewFile.copy(targetFile.path);
-        } else if (!await targetFile.exists() || (await targetFile.length()) == 0) {
-          final url = '$fontsRawBaseUrl/${Uri.encodeComponent(variant.fileName)}';
+        } else if (!await targetFile.exists() ||
+            (await targetFile.length()) == 0) {
+          final url =
+              '$fontsRawBaseUrl/${Uri.encodeComponent(variant.fileName)}';
           final success = await _downloadFileDirect(url, targetFile);
           if (!success) {
-            logWarning('CustomFontService', 'Failed to download ${variant.fileName}');
+            logWarning(
+              'CustomFontService',
+              'Failed to download ${variant.fileName}',
+            );
             return false;
           }
         }
@@ -408,7 +432,11 @@ class CustomFontService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      logError('CustomFontService', 'Error downloading family ${family.familyName}', e);
+      logError(
+        'CustomFontService',
+        'Error downloading family ${family.familyName}',
+        e,
+      );
       return false;
     }
   }
@@ -610,7 +638,9 @@ class CustomFontService extends ChangeNotifier {
   bool isFamilyDownloaded(FontFamilyItem family) {
     if (_fontsFolder == null) return false;
     if (family.variants.isNotEmpty) {
-      return family.variants.every((v) => _downloadedFileNames.contains(v.fileName));
+      return family.variants.every(
+        (v) => _downloadedFileNames.contains(v.fileName),
+      );
     }
     return _downloadedFileNames.contains(family.mainFontFile);
   }
@@ -628,7 +658,20 @@ class CustomFontService extends ChangeNotifier {
   }
 
   /// Dynamically registers a font family with Flutter's runtime engine using FontLoader.
-  Future<bool> loadFamilyIntoEngine(String familyName) async {
+  Future<bool> loadFamilyIntoEngine(String familyName) {
+    if (_loadedFamilies.contains(familyName)) return Future<bool>.value(true);
+    final pending = _familyLoadsInFlight[familyName];
+    if (pending != null) return pending;
+    final loading = _loadFamilyIntoEngine(familyName);
+    _familyLoadsInFlight[familyName] = loading;
+    return loading.whenComplete(() {
+      if (identical(_familyLoadsInFlight[familyName], loading)) {
+        _familyLoadsInFlight.remove(familyName);
+      }
+    });
+  }
+
+  Future<bool> _loadFamilyIntoEngine(String familyName) async {
     if (_loadedFamilies.contains(familyName)) return true;
     if (_fontsFolder == null) return false;
 
@@ -672,12 +715,54 @@ class CustomFontService extends ChangeNotifier {
       await loader.load();
       _loadedFamilies.add(familyName);
       notifyListeners();
-      logInfo('CustomFontService', 'Dynamically registered font family "$familyName" into engine.');
       return true;
     } catch (e) {
-      logWarning('CustomFontService', 'Failed to load font family "$familyName": $e');
+      logWarning(
+        'CustomFontService',
+        'Failed to load font family "$familyName": $e',
+      );
       return false;
     }
+  }
+
+  Future<void> ensureFontsForSettings(WidgetSettings settings) async {
+    await init();
+    final families = <String>{
+      settings.fontFamily,
+      ...settings.elementFonts.values,
+      for (final element in settings.customElements) ...[
+        element.fontFamily,
+        if (element.iconFontFamily != null) element.iconFontFamily!,
+      ],
+      for (final savedWidget in settings.savedCustomWidgets)
+        for (final element in savedWidget.elements) ...[
+          element.fontFamily,
+          if (element.iconFontFamily != null) element.iconFontFamily!,
+        ],
+    };
+    final builtInFamilies = builtInFonts
+        .map((family) => family.toLowerCase())
+        .toSet();
+    final toLoad = families
+        .where(
+          (family) =>
+              family.isNotEmpty &&
+              !builtInFamilies.contains(family.toLowerCase()),
+        )
+        .toList(growable: false);
+    if (toLoad.isEmpty) return;
+
+    final stopwatch = Stopwatch()..start();
+    var loaded = 0;
+    for (final family in toLoad) {
+      if (await loadFamilyIntoEngine(family)) loaded++;
+      await Future<void>.delayed(Duration.zero);
+    }
+    logPerf(
+      'CustomFontService',
+      'Loaded $loaded/${toLoad.length} saved widget font families '
+          'in ${stopwatch.elapsedMilliseconds}ms.',
+    );
   }
 
   /// Deletes downloaded font files for a specific family.
@@ -697,7 +782,10 @@ class CustomFontService extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      logWarning('CustomFontService', 'Failed to delete font files for ${family.familyName}: $e');
+      logWarning(
+        'CustomFontService',
+        'Failed to delete font files for ${family.familyName}: $e',
+      );
     }
   }
 
@@ -708,7 +796,9 @@ class CustomFontService extends ChangeNotifier {
 
     // 1. Try local cached json
     if (_customFontsDirectory != null) {
-      final localJson = File('${_customFontsDirectory!.path}\\font_categories.json');
+      final localJson = File(
+        '${_customFontsDirectory!.path}\\font_categories.json',
+      );
       if (await localJson.exists()) {
         try {
           content = await localJson.readAsString();
@@ -728,32 +818,31 @@ class CustomFontService extends ChangeNotifier {
         final Map<String, dynamic> parsed = jsonDecode(content);
         _families = _parseFamiliesFromJson(parsed);
       } catch (e) {
-        logWarning('CustomFontService', 'Error parsing font_categories.json: $e');
+        logWarning(
+          'CustomFontService',
+          'Error parsing font_categories.json: $e',
+        );
       }
     }
   }
 
   Future<void> _scanAndLoadDownloadedFonts() async {
     if (_fontsFolder == null) return;
-    _refreshDownloadedFileNames();
-
-    for (final family in _families) {
-      if (isFamilyDownloaded(family)) {
-        await loadFamilyIntoEngine(family.familyName);
-      }
-    }
+    await _refreshDownloadedFileNames();
   }
 
-  void _refreshDownloadedFileNames() {
+  Future<void> _refreshDownloadedFileNames() async {
     _downloadedFileNames.clear();
-    if (_fontsFolder == null || !_fontsFolder!.existsSync()) return;
+    if (_fontsFolder == null || !await _fontsFolder!.exists()) return;
 
-    for (final entity in _fontsFolder!.listSync()) {
-      if (entity is File) {
-        final name = entity.uri.pathSegments.last;
-        if (entity.lengthSync() > 0) {
-          _downloadedFileNames.add(name);
-        }
+    var filesSinceYield = 0;
+    await for (final entity in _fontsFolder!.list(followLinks: false)) {
+      if (entity is File && (await entity.stat()).size > 0) {
+        _downloadedFileNames.add(entity.uri.pathSegments.last);
+      }
+      if (++filesSinceYield >= 16) {
+        filesSinceYield = 0;
+        await Future<void>.delayed(Duration.zero);
       }
     }
   }
@@ -782,7 +871,9 @@ class CustomFontService extends ChangeNotifier {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(Uri.parse(githubCommitApiUrl));
       request.headers.set('User-Agent', 'WallSyncPro/1.0');
-      final response = await request.close().timeout(const Duration(seconds: 5));
+      final response = await request.close().timeout(
+        const Duration(seconds: 5),
+      );
       if (response.statusCode == 200) {
         final text = await response.transform(utf8.decoder).join();
         final Map<String, dynamic> json = jsonDecode(text);
@@ -802,7 +893,9 @@ class CustomFontService extends ChangeNotifier {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
       final request = await client.getUrl(Uri.parse(url));
       request.headers.set('User-Agent', 'WallSyncPro/1.0');
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
       if (response.statusCode == 200) {
         return await response.transform(utf8.decoder).join();
       }
@@ -820,7 +913,9 @@ class CustomFontService extends ChangeNotifier {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
       final request = await client.getUrl(Uri.parse(url));
       request.headers.set('User-Agent', 'WallSyncPro/1.0');
-      final response = await request.close().timeout(const Duration(seconds: 15));
+      final response = await request.close().timeout(
+        const Duration(seconds: 15),
+      );
 
       if (response.statusCode != 200) return false;
 
