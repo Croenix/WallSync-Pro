@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wall_sync/services/custom_asset_service.dart';
+import 'package:wall_sync/services/settings_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -117,6 +119,20 @@ void main() {
       expect(iconNames.contains('thunder.png'), isTrue);
       expect(iconNames.contains('windy-rain.png'), isTrue);
       expect(iconNames.contains('windy.png'), isTrue);
+    });
+
+    test('resetLocalState clears stale on-disk downloads before catalog initialization', () async {
+      final service = CustomAssetService.instance;
+      final appDir = await SettingsService().getAppDirectory();
+      final customAssetsDir = Directory('${appDir.path}\\custom_assets');
+      final gifsDir = Directory('${customAssetsDir.path}\\Gifs');
+      await gifsDir.create(recursive: true);
+      await File('${gifsDir.path}\\cloud.gif').writeAsString('stale test payload');
+
+      await service.init(resetLocalState: true);
+
+      expect(service.getGifs().every((g) => !g.isDownloaded), isTrue);
+      expect(service.getIcons().every((i) => !i.isDownloaded), isTrue);
     });
 
     test('usability rule: un-downloaded items have isDownloaded=false and localPath=null', () {

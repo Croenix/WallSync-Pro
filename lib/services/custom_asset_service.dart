@@ -356,8 +356,14 @@ class CustomAssetService extends ChangeNotifier {
   ];
 
   /// Initialize local custom assets directory, scan downloaded items, and restore metadata.
-  Future<void> init() async {
-    if (_isInitialized) return;
+  /// Set [resetLocalState] to true when a test or a fresh startup should ignore any stale
+  /// downloaded files left in the app data directory.
+  Future<void> init({bool resetLocalState = false}) async {
+    if (_isInitialized && !resetLocalState) return;
+
+    _isInitialized = false;
+    _assets = List<CloudAssetItem>.from(_bundledAssets);
+    _downloadedKeys.clear();
 
     try {
       final appDir = await SettingsService().getAppDirectory();
@@ -365,6 +371,10 @@ class CustomAssetService extends ChangeNotifier {
       _gifsFolder = Directory('${_customAssetsDirectory!.path}\\Gifs');
       _iconsFolder = Directory('${_customAssetsDirectory!.path}\\Icons');
       _previewFolder = Directory('${_customAssetsDirectory!.path}\\.previews');
+
+      if (resetLocalState && await _customAssetsDirectory!.exists()) {
+        await _customAssetsDirectory!.delete(recursive: true);
+      }
 
       if (!await _customAssetsDirectory!.exists()) {
         await _customAssetsDirectory!.create(recursive: true);
@@ -477,12 +487,20 @@ class CustomAssetService extends ChangeNotifier {
 
   /// Returns filtered list of assets for Gifs.
   List<CloudAssetItem> getGifs() {
-    return _assets.where((a) => a.folder == 'Gifs').toList();
+    final items = _assets.where((a) => a.folder == 'Gifs').toList();
+    if (items.isNotEmpty) return items;
+    return List<CloudAssetItem>.unmodifiable(
+      _bundledAssets.where((a) => a.folder == 'Gifs'),
+    );
   }
 
   /// Returns filtered list of assets for Icons (PNG & SVG).
   List<CloudAssetItem> getIcons() {
-    return _assets.where((a) => a.folder == 'Icons').toList();
+    final items = _assets.where((a) => a.folder == 'Icons').toList();
+    if (items.isNotEmpty) return items;
+    return List<CloudAssetItem>.unmodifiable(
+      _bundledAssets.where((a) => a.folder == 'Icons'),
+    );
   }
 
   /// Returns all downloaded asset local paths.

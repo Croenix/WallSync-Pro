@@ -125,7 +125,10 @@ void main() {
   setUpAll(() async {
     HttpOverrides.global = _TestHttpOverrides();
     await CustomFontService.instance.init();
-    await CustomAssetService.instance.init();
+  });
+
+  setUp(() async {
+    await CustomAssetService.instance.init(resetLocalState: true);
   });
 
   group('Cloud Asset & Font Studio Dialog Tests', () {
